@@ -78,7 +78,10 @@ services:
     ports:
       - "127.0.0.1:${PR_S3_PORT:-8333}:8333"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      # Master (9333) DAN gateway S3 (8333): gateway naik belakangan, jadi cek master saja membuat
+      # "healthy" sebelum S3 bisa dipakai. S3 tanpa tanda tangan menjawab 403 (wget exit ≠ 0), jadi
+      # yang dicek adalah adanya respons HTTP, bukan statusnya.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status && wget -S -O /dev/null http://127.0.0.1:8333/ 2>&1 | grep -q 'HTTP/'"]
       interval: 3s
       timeout: 3s
       retries: 30
