@@ -54,6 +54,10 @@ linters:
         # Waktu bisnis dari clock.Clock (bisa dipalsukan di test, C-31). Pengecualian di bawah.
         - pattern: ^time\.Now$
           msg: pakai clock.Clock, bukan time.Now (C-31)
+        # Mode platform (app.user_id) dan perpindahan mode manual hanya untuk iam/tenancy (ADR-P02,
+        # 13-db-rls §2.4). depguard bekerja per package, bukan per fungsi, jadi aturannya di sini.
+        - pattern: ^db\.(WithPlatformTx|SetPlatformUser|SetTenant)$
+          msg: jalur platform/perpindahan mode hanya untuk modul iam dan tenancy; modul bisnis pakai db.WithTenantTx
     gosec:
       excludes:
         - G104                 # sudah dicakup errcheck
@@ -65,6 +69,9 @@ linters:
         linters: [forbidigo]   # implementasi jam sistem, backoff, dan durasi request
       - path: internal/platform/db/dbtest/
         linters: [gosec]       # nama DB test dibangkitkan sendiri, bukan input user
+      - path: internal/modules/(iam|tenancy)/
+        text: "db\\.(WithPlatformTx|SetPlatformUser|SetTenant)"
+        linters: [forbidigo]   # pemakai sah jalur platform
 
 formatters:
   enable:

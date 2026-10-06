@@ -308,3 +308,19 @@ Catatan khusus yang tidak ada di katalog:
 | `23505` `uq_payroll_periods_month` | Tidak seharusnya muncul: create run memakai `INSERT … ON CONFLICT DO NOTHING` + `SELECT` di bawah `tenant_settings FOR UPDATE` (Step 12: R1-8). Jika tetap muncul → `INTERNAL` + alert (bug) |
 | `23514` `ck_payroll_items_ok_amounts`, `P0006`, `42501` | Bug → `INTERNAL` (500) + alert |
 | `23514` `ck_jobs_tenant_matches_context` | Bug → `INTERNAL` + `payrun_tenant_isolation_violations_total` |
+
+---
+
+## Catatan implementasi (Sprint 1)
+
+Migrasi `db/migrations/00002_tenancy_iam.sql`. Deviasi dari desain di atas, masing-masing dengan alasannya:
+
+| Aspek | Desain | Implementasi S1 | Alasan |
+|---|---|---|---|
+| `auth_lookup_user` di bawah `FORCE RLS` | Fungsi `SECURITY DEFINER` milik `payrun_owner` | Sama, **ditambah** policy `users_owner_auth_lookup ON users FOR SELECT TO payrun_owner USING (true)` | `FORCE ROW LEVEL SECURITY` juga berlaku untuk owner. Tanpa policy ini fungsi berjalan sebagai owner tanpa tenant/user context dan selalu melihat 0 baris: login tidak akan pernah berhasil. Policy hanya untuk role migrasi (kredensialnya tidak ada di container api/worker), SELECT saja |
+| `ix_memberships_user` | Partial `(user_id) WHERE status = 'ACTIVE'` | Penuh `(user_id)` | Index ini sekaligus index FK `fk_memberships_user_id`; Step 12 C4 mensyaratkan index FK mencakup semua baris (`TestCatalog_EveryFKHasIndex`) |
+| `jobs_enforce_tenant` | `nullif(current_setting(...), '')::uuid` | `payrun.current_tenant()` | Satu definisi helper (C3) |
+| Batas penulisan jalur platform | depguard (`tenancy`/`iam` saja) | forbidigo `db.(WithPlatformTx\|SetPlatformUser\|SetTenant)` di luar `internal/modules/(iam\|tenancy)` | depguard membatasi import package, bukan pemakaian fungsi |
+| `payrun_readonly` | Tidak dirinci | `SELECT` pada `tenants`, `tenant_settings`, `memberships`, `audit_log`, `jobs`, dan kolom `users` tanpa `password_hash` | Investigasi tetap di bawah RLS; hash password dan token tidak terbaca |
+
+Test katalog §2.5 (a)–(f) dan matriks grant §1.2 ada di `db/migrations/catalog_test.go`, masing-masing dengan test negatif. Test perilaku (tanpa context = 0 baris, query tanpa filter, `WITH CHECK`, kebocoran pool setelah COMMIT/ROLLBACK, mode eksklusif C2, `password_hash`, `jobs_enforce_tenant`, PI-16, audit platform) ada di `internal/platform/db/rls_test.go` dan berjalan sebagai `payrun_app`.
