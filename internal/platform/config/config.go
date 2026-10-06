@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"net/url"
 	"strings"
 	"time"
 
@@ -136,9 +137,47 @@ func (c *Config) ValidateAPI() error {
 		}
 		c.TrustedProxies = append(c.TrustedProxies, p)
 	}
+	if c.RefreshTTL <= 0 || c.RefreshTTL > c.RefreshFamilyTTL {
+		errs = append(errs, fmt.Errorf("REFRESH_TTL (%s) harus > 0 dan <= REFRESH_FAMILY_TTL (%s)", c.RefreshTTL, c.RefreshFamilyTTL))
+	}
+	errs = append(errs, c.validatePublicURLs()...)
 	errs = append(errs, c.validateShared()...)
 	c.JWTKeys = keys
 	return errors.Join(errs...)
+}
+
+// validatePublicURLs: ALLOWED_ORIGINS dan PUBLIC_BASE_URL punya default localhost (nyaman di dev).
+// Di luar dev/test/perf, default yang terbawa ke production berarti CSRF Origin check dan link
+// undangan salah tanpa ada yang sadar, jadi ditolak di startup.
+func (c *Config) validatePublicURLs() []error {
+	var errs []error
+	strict := !c.Dev() && c.AppEnv != "perf"
+	check := func(name, raw string) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" || (u.Path != "" && u.Path != "/") {
+			errs = append(errs, fmt.Errorf("%s: %q harus berbentuk scheme://host[:port]", name, raw))
+			return
+		}
+		if strict && (u.Scheme != "https" || isLoopbackHost(u.Hostname())) {
+			errs = append(errs, fmt.Errorf("%s: %q harus https dan bukan localhost di APP_ENV=%s", name, raw, c.AppEnv))
+		}
+	}
+	if len(c.AllowedOrigins) == 0 {
+		errs = append(errs, errors.New("ALLOWED_ORIGINS wajib"))
+	}
+	for _, o := range c.AllowedOrigins {
+		check("ALLOWED_ORIGINS", strings.TrimSpace(o))
+	}
+	check("PUBLIC_BASE_URL", c.PublicBaseURL)
+	return errs
+}
+
+func isLoopbackHost(h string) bool {
+	if h == "localhost" {
+		return true
+	}
+	a, err := netip.ParseAddr(h)
+	return err == nil && a.IsLoopback()
 }
 
 func parseKeys(raw string) (map[string][]byte, error) {

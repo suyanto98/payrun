@@ -61,8 +61,10 @@ func (d Deps) ValidateAPI() error {
 // APIRouter adalah router API publik, di-mount di /api/v1.
 func APIRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
-	r.Use(httpx.RequestID(d.Logger), httpx.Recover, tracing.Middleware, httpx.Metrics, httpx.SecurityHeaders,
-		httpx.ClientIP(d.TrustedProxies), httpx.AccessLog, httpx.BodyLimit(httpx.MaxBodyBytes))
+	// Recover di DALAM Metrics dan AccessLog: panic diubah menjadi 500 sebelum keduanya mencatat,
+	// sehingga request yang panic tetap muncul di log akses dan app_http_requests_total{status="500"}.
+	r.Use(httpx.RequestID(d.Logger), tracing.Middleware, httpx.Metrics, httpx.SecurityHeaders,
+		httpx.ClientIP(d.TrustedProxies), httpx.AccessLog, httpx.Recover, httpx.BodyLimit(httpx.MaxBodyBytes))
 	// Route tidak dikenal dan method salah sama-sama 404 problem+json: tidak membocorkan route mana
 	// yang ada (dan konsisten dengan aturan "resource tenant lain = 404").
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, apperr.ErrNotFound) })

@@ -10,16 +10,29 @@
 #   payrun_backup    pg_dump. BYPASSRLS (dump dengan role ber-RLS gagal atau kosong) + baca saja.
 set -eu
 
-BACKUP_LOGIN="NOLOGIN"
-[ -n "${PAYRUN_BACKUP_PASSWORD:-}" ] && BACKUP_LOGIN="LOGIN PASSWORD '${PAYRUN_BACKUP_PASSWORD}'"
-READONLY_LOGIN="NOLOGIN"
-[ -n "${PAYRUN_READONLY_PASSWORD:-}" ] && READONLY_LOGIN="LOGIN PASSWORD '${PAYRUN_READONLY_PASSWORD}'"
+# Password dikirim sebagai variabel psql dan dipakai dengan :'nama' (psql meng-quote sebagai literal),
+# BUKAN diinterpolasi shell ke dalam SQL: password berisi ' tidak bisa merusak/menyuntik SQL.
+# Heredoc ber-quote ('EOSQL') mematikan ekspansi shell di dalamnya.
+has_readonly=false; [ -n "${PAYRUN_READONLY_PASSWORD:-}" ] && has_readonly=true
+has_backup=false;   [ -n "${PAYRUN_BACKUP_PASSWORD:-}" ] && has_backup=true
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-  CREATE ROLE payrun_owner    LOGIN PASSWORD '${PAYRUN_OWNER_PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
-  CREATE ROLE payrun_app      LOGIN PASSWORD '${PAYRUN_APP_PASSWORD}'   NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-  CREATE ROLE payrun_readonly ${READONLY_LOGIN} NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-  CREATE ROLE payrun_backup   ${BACKUP_LOGIN}   NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  -v owner_pw="${PAYRUN_OWNER_PASSWORD:?PAYRUN_OWNER_PASSWORD wajib}" \
+  -v app_pw="${PAYRUN_APP_PASSWORD:?PAYRUN_APP_PASSWORD wajib}" \
+  -v readonly_pw="${PAYRUN_READONLY_PASSWORD:-}" -v has_readonly="$has_readonly" \
+  -v backup_pw="${PAYRUN_BACKUP_PASSWORD:-}" -v has_backup="$has_backup" <<-'EOSQL'
+  CREATE ROLE payrun_owner LOGIN PASSWORD :'owner_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+  CREATE ROLE payrun_app   LOGIN PASSWORD :'app_pw'   NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+  \if :has_readonly
+    CREATE ROLE payrun_readonly LOGIN PASSWORD :'readonly_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+  \else
+    CREATE ROLE payrun_readonly NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+  \endif
+  \if :has_backup
+    CREATE ROLE payrun_backup LOGIN PASSWORD :'backup_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+  \else
+    CREATE ROLE payrun_backup NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+  \endif
   -- Baca semua data (predefined role PG14+), tanpa hak tulis/DDL. Kalau kredensial backup bocor,
   -- penyerang bisa membaca (karena itu dump dienkripsi), tetapi tidak bisa mengubah data.
   GRANT pg_read_all_data TO payrun_backup;

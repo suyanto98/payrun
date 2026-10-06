@@ -39,4 +39,9 @@ func TestKeyring_RoundTripRotationAndAAD(t *testing.T) {
 	if _, err := ParseKeyring(`{"v1":"`+base64.StdEncoding.EncodeToString([]byte("short"))+`"}`, "v1"); err == nil {
 		t.Fatal("keys must be exactly 32 bytes")
 	}
+	for _, v := range []string{"", "v:1"} {
+		if _, err := ParseKeyring(`{"`+v+`":"`+key(1)+`"}`, v); err == nil {
+			t.Fatalf("key version %q must be rejected (':' is the ciphertext separator)", v)
+		}
+	}
 }

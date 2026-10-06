@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var ErrDecrypt = errors.New("crypto: cannot decrypt (unknown key version, tampered data, or wrong AAD)")
@@ -35,6 +36,11 @@ func ParseKeyring(raw, active string) (*Keyring, error) {
 	}
 	k := &Keyring{active: active, aeads: map[string]cipher.AEAD{}}
 	for v, b64 := range enc {
+		// ':' adalah pemisah versi di ciphertext: versi "v:1" akan terenkripsi tetapi tidak pernah
+		// bisa didekripsi (Decrypt memotong di ':' pertama).
+		if v == "" || strings.Contains(v, ":") {
+			return nil, fmt.Errorf("crypto: versi kunci %q tidak valid (tidak boleh kosong atau mengandung ':')", v)
+		}
 		key, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil || len(key) != 32 {
 			return nil, fmt.Errorf("crypto: kunci %q harus base64 dari tepat 32 byte (AES-256)", v)

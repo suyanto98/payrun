@@ -39,14 +39,17 @@ func Decode(r *http.Request, dst any) error {
 		default:
 			var syn *json.SyntaxError
 			var typ *json.UnmarshalTypeError
-			if errors.As(err, &syn) || errors.As(err, &typ) {
+			// io.ErrUnexpectedEOF: JSON terpotong (contoh `{"a":`).
+			if errors.As(err, &syn) || errors.As(err, &typ) || errors.Is(err, io.ErrUnexpectedEOF) {
 				return apperr.ErrMalformedJSON.WithCause(err)
 			}
 			// Contoh: "json: unknown field \"role\"" → tolak sebagai validasi, sebutkan field-nya.
 			return apperr.Validation(apperr.FieldError{Field: "body", Code: "INVALID", Message: err.Error()})
 		}
 	}
-	if dec.More() {
+	// Decode kedua harus EOF. dec.More() tidak cukup: `}` atau `]` sisa (contoh `{"a":1}}`)
+	// dianggap "tidak ada lagi", sehingga body seperti itu lolos.
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return apperr.ErrMalformedJSON.WithDetail("body must contain a single JSON object")
 	}
 	return nil
