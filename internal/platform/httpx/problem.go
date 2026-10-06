@@ -11,7 +11,7 @@ import (
 	"payrun/internal/platform/observability"
 )
 
-// Problem adalah body RFC 9457 (docs/design/11-api-conventions.md §4).
+// Problem adalah body RFC 9457 (docs/design/14-api-conventions.md §4).
 type Problem struct {
 	Type      string              `json:"type"`
 	Title     string              `json:"title"`

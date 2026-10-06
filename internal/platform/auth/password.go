@@ -1,5 +1,5 @@
 // Package auth: hashing password (argon2id), access token JWT, dan principal di context.
-// Keputusan: docs/adr/ADR-009-authentication.md; threat T-SH-01..05 (docs/design/15-…).
+// Keputusan: docs/adr/ADR-009-authentication.md; threat T-SH-01..05 (docs/design/18-security-shared-threats.md).
 package auth
 
 import (

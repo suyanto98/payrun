@@ -1,5 +1,5 @@
 // Package observability menyiapkan logger terstruktur (JSON) dan konteks log per request.
-// Skema field: docs/design/21-observability.md §1. Redaction berbasis allowlist (C-23):
+// Skema field: docs/design/24-observability.md §1. Redaction berbasis allowlist (C-23):
 // handler hanya me-log field yang memang dimaksudkan; body request tidak pernah di-log.
 package observability
 

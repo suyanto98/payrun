@@ -1,5 +1,5 @@
 // Package apperr adalah satu-satunya tempat error domain didefinisikan bersama HTTP status
-// dan `code`-nya. Sumber kebenaran: docs/design/12-api-error-catalogue.md. Kode lain
+// dan `code`-nya. Sumber kebenaran: docs/design/15-api-error-catalogue.md. Kode lain
 // mengembalikan *apperr.Error (atau membungkusnya); lapisan HTTP mengubahnya menjadi RFC 9457.
 package apperr
 
@@ -106,7 +106,7 @@ var (
 )
 
 // Kode khusus PayRun (katalog §3: tenancy, IAM, payroll, approval) ditambahkan bersama fiturnya,
-// SETELAH masuk katalog docs/design/12-api-error-catalogue.md (pelajaran LedgerPay §6).
+// SETELAH masuk katalog docs/design/15-api-error-catalogue.md (pelajaran LedgerPay §6).
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.
 func Validation(fields ...FieldError) *Error {

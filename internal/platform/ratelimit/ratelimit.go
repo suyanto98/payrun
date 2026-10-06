@@ -1,4 +1,4 @@
-// Package ratelimit: rate limiter token bucket in-memory per tier (C-07, docs/design/11-api-conventions.md §7).
+// Package ratelimit: rate limiter token bucket in-memory per tier (C-07, docs/design/14-api-conventions.md §7).
 //
 // V1 in-memory per instance (ADR-007): cukup untuk satu VM. Dengan banyak instance, batas efektif
 // = batas × jumlah instance; versi terdistribusi (Redis) dicatat sebagai future migration.

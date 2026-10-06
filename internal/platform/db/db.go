@@ -1,7 +1,7 @@
 // Package db membungkus pgx: pool dengan timeout dari ADR-011, WithTx dengan retry terbatas,
 // dan pemetaan error Postgres → error domain (errors.go).
 //
-// Aturan transaksi (docs/design/18-tx-global-rules.md):
+// Aturan transaksi (docs/design/21-tx-global-rules.md):
 //   - service layer yang membuka transaksi (WithTx), lalu meneruskan pgx.Tx ke modul lain;
 //   - tidak ada panggilan jaringan di dalam transaksi;
 //   - deadlock / serialization failure → seluruh fungsi transaksi diulang, maksimal 3×.

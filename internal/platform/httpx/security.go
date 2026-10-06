@@ -9,7 +9,7 @@ import (
 	"payrun/internal/platform/apperr"
 )
 
-// SecurityHeaders memasang header keamanan untuk respons API (C-10, docs/design/17-security-controls.md §2).
+// SecurityHeaders memasang header keamanan untuk respons API (C-10, docs/design/20-security-controls.md §2).
 // Header yang berlaku untuk SPA (HSTS, CSP SPA, Permissions-Policy) dipasang Caddy di Sprint 7.
 // Header dipasang SEBELUM handler berjalan, sehingga ikut ada di respons error dan 404.
 func SecurityHeaders(next http.Handler) http.Handler {

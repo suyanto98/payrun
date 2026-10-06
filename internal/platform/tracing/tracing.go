@@ -1,4 +1,4 @@
-// Package tracing: OpenTelemetry (docs/design/21-observability.md §5).
+// Package tracing: OpenTelemetry (docs/design/24-observability.md §5).
 //
 //   - HTTP server: span per route template (otelhttp), atribut tanpa PII;
 //   - pgx: span per query (nama query sqlc, TANPA nilai parameter);

@@ -1,6 +1,6 @@
 // Package config membaca konfigurasi dari environment variable dan gagal cepat (fail fast)
 // kalau ada yang salah: lebih baik proses tidak mau start daripada berjalan dengan konfigurasi
-// setengah benar. Katalog env var: docs/design/24-docker-compose.md §8.
+// setengah benar. Katalog env var: docs/design/27-docker-compose.md §8.
 package config
 
 import (
@@ -54,7 +54,7 @@ type Config struct {
 	// Ditolak di demo/production.
 	RateLimitDisabled bool `env:"RATE_LIMIT_DISABLED"`
 	PprofEnabled      bool `env:"PPROF_ENABLED"`
-	// Kill switch env (docs/design/26-deploy-migrations-backup.md §4.3): false = matikan jalur itu
+	// Kill switch env (docs/design/29-deploy-migrations-backup.md §4.3): false = matikan jalur itu
 	// tanpa build ulang. Dipakai worker mulai Sprint 4 (kalkulasi) dan Sprint 7 (render PDF).
 	PayrollCalcEnabled   bool `env:"PR_PAYROLL_CALC_ENABLED" envDefault:"true"`
 	PayslipRenderEnabled bool `env:"PR_PAYSLIP_RENDER_ENABLED" envDefault:"true"`

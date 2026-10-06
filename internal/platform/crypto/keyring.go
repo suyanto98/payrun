@@ -1,5 +1,5 @@
 // Package crypto: enkripsi PII at-rest dengan AES-256-GCM dan keyring berversi
-// (docs/design/17-security-controls.md §6.3).
+// (docs/design/20-security-controls.md §6.3).
 //
 // Format ciphertext: "<versi>:" + nonce(12) + ciphertext+tag. Versi di depan membuat rotasi kunci
 // tanpa downtime: data baru memakai kunci aktif, data lama tetap terbaca dengan kunci lamanya,

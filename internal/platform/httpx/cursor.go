@@ -10,7 +10,7 @@ import (
 	"payrun/internal/platform/apperr"
 )
 
-// Cursor adalah posisi keyset (created_at, id) untuk pagination (docs/design/11-api-conventions.md).
+// Cursor adalah posisi keyset (created_at, id) untuk pagination (docs/design/14-api-conventions.md).
 // Di kabel ia opaque: base64url(JSON). Client tidak boleh (dan tidak perlu) merakitnya sendiri.
 type Cursor struct {
 	At time.Time
