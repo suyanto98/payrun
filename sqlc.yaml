@@ -1,0 +1,40 @@
+version: "2"
+
+# Satu package hasil generate per modul: modul hanya memegang query untuk tabel miliknya (ADR-001).
+# Entri `sql:` pertama ditambahkan Sprint 1 (tenancy, iam). Semua query tenant berjalan di dalam
+# WithTenantTx; sqlc tidak tahu RLS, jadi RLS-lah (bukan WHERE di query) jaring pengaman terakhir.
+overrides:
+  go:
+    overrides:
+      - db_type: uuid
+        go_type: github.com/google/uuid.UUID
+      - db_type: uuid
+        nullable: true
+        go_type:
+          import: github.com/google/uuid
+          type: UUID
+          pointer: true
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          import: time
+          type: Time
+          pointer: true
+      - db_type: date
+        go_type: time.Time
+      - db_type: date
+        nullable: true
+        go_type:
+          import: time
+          type: Time
+          pointer: true
+      - db_type: inet
+        nullable: true
+        go_type:
+          import: net/netip
+          type: Addr
+          pointer: true
+
+sql: []

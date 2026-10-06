@@ -1,0 +1,118 @@
+# CI untuk PR (docs/design/28-cicd.md). Diport dari LedgerPay (skeleton 0.0.1): lint, unit, integration,
+# migration, lint workflow/OpenAPI/shell, security. Deploy (main.yml, rollback.yml) menyusul Sprint 8.
+# Semua action di-pin ke commit SHA (C-27); komentar menunjukkan tag aslinya.
+name: pr
+
+on:
+  pull_request:
+  workflow_call: # main.yml (Sprint 8) memanggil workflow ini sebagai gate "verify" sebelum build + deploy
+
+
+permissions:
+  contents: read
+
+concurrency:
+  # Saat dipanggil main.yml, github.workflow = "main" → grup berbeda dari grup deploy pemanggil.
+  group: ${{ github.workflow }}-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Install tools
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+      - name: golangci-lint (gosec, depguard, ...)
+        run: |
+          "$(go env GOPATH)/bin/golangci-lint" run ./...
+      # Langkah "generated code is up to date (sqlc)" diaktifkan Sprint 1 bersama query pertama:
+      # sqlc menolak konfigurasi tanpa package ("no packages").
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Unit tests (race detector, no Docker)
+        run: go test -race -short ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Integration tests (Postgres via testcontainers, race detector)
+        run: go test -race -count=1 -tags testhooks ./internal/...
+
+  migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Migrations up-from-zero + catalogue checks
+        run: go test -race -count=1 ./db/...
+
+  lint-workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint"
+
+  lint-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: shellcheck
+        run: make lint-shell
+
+  # Dependency dengan CVE yang terpanggil dan secret di SELURUH history gagal di PR (sejak Sprint 0).
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # gitleaks memindai semua commit, bukan hanya diff
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: govulncheck (hanya kerentanan yang benar-benar terpanggil)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          "$(go env GOPATH)/bin/govulncheck" ./...
+      - name: gitleaks (seluruh history)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact --config /repo/.gitleaks.toml
+
+  lint-openapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Redocly lint
+        run: npx --yes @redocly/cli@1 lint api/openapi.yaml

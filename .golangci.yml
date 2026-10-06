@@ -1,0 +1,72 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # Lint juga file test interleaving (//go:build testhooks).
+  build-tags: [testhooks]
+
+linters:
+  default: standard            # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - gosec                    # keamanan (SQL dinamis, crypto lemah, dll.; C-12)
+    - depguard                 # batas antar package (ADR-001, docs/design/32-repository-structure.md §5)
+    - bodyclose
+    - errorlint
+    - noctx
+    - forbidigo
+  settings:
+    depguard:
+      rules:
+        # D1: platform adalah fondasi; tidak boleh tahu modul bisnis.
+        platform-no-modules:
+          files: ["**/internal/platform/**"]
+          deny:
+            - pkg: payrun/internal/modules
+              desc: platform tidak boleh meng-import modul bisnis (ADR-001)
+            - pkg: payrun/internal/app
+              desc: platform tidak boleh meng-import composition root
+        # D3: modul tidak meng-import composition root.
+        modules-no-app:
+          files: ["**/internal/modules/**"]
+          deny:
+            - pkg: payrun/internal/app
+              desc: modul tidak boleh meng-import composition root
+        # D4: engine payroll adalah PURE function (determinisme, PI-12): tanpa database, jaringan,
+        # file, atau angka acak. Input yang sama + ruleset yang sama = hasil yang sama, selamanya.
+        # Dipasang sejak Sprint 0 supaya package engine (Sprint 3) lahir di bawah aturan ini.
+        payroll-engine-pure:
+          files: ["**/internal/modules/payroll/engine/**", "!$test"]
+          deny:
+            - pkg: payrun/internal/platform/db
+              desc: engine tidak boleh menyentuh database (ADR-P03, PI-12)
+            - pkg: github.com/jackc/pgx
+              desc: engine tidak boleh menyentuh database (ADR-P03, PI-12)
+            - pkg: net
+              desc: engine tidak boleh memanggil jaringan (ADR-P03)
+            - pkg: os
+              desc: engine tidak boleh membaca file/env (ADR-P03)
+            - pkg: math/rand
+              desc: engine harus deterministik (PI-12)
+            - pkg: payrun/internal/platform/clock
+              desc: tanggal periode masuk sebagai input, bukan dibaca dari jam (PI-12)
+    forbidigo:
+      forbid:
+        # Waktu bisnis dari clock.Clock (bisa dipalsukan di test, C-31). Pengecualian di bawah.
+        - pattern: ^time\.Now$
+          msg: pakai clock.Clock, bukan time.Now (C-31)
+    gosec:
+      excludes:
+        - G104                 # sudah dicakup errcheck
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx, forbidigo]
+      - path: internal/platform/(clock|db|httpx)/
+        linters: [forbidigo]   # implementasi jam sistem, backoff, dan durasi request
+      - path: internal/platform/db/dbtest/
+        linters: [gosec]       # nama DB test dibangkitkan sendiri, bukan input user
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

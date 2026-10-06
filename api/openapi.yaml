@@ -1,0 +1,2235 @@
+openapi: 3.1.0
+info:
+  title: PayRun API
+  version: 0.1.0
+  summary: Multi-tenant workforce and payroll platform.
+  description: |
+    Spec-first contract (ADR-003). Sprint 0 skeleton: every P0/P1 endpoint from
+    docs/design/16-api-endpoints.md §2 with roles, idempotency, and rate tier, but request and
+    response bodies are placeholders. Each body is filled in by the sprint that builds the feature,
+    together with its contract test.
+
+    - **Tenant comes only from the `tid` claim** of the access token, never from path, header,
+      query, or body (ADR-P02). Paths therefore have no `/tenants/{id}` prefix, and a body field
+      `tenant_id` is rejected as an unknown field. A token without `tid` on a tenant endpoint → 403.
+    - Another tenant's resource id → **404**, the same as a missing resource (no existence oracle).
+    - Money is a **string** decimal with 2 digits (`"6888609.00"`), never a JSON number (ADR-P06).
+    - Errors use RFC 9457 `application/problem+json` with a stable `code` (docs/design/15-api-error-catalogue.md).
+    - `x-roles`, `x-feature`, `x-rate-tier`, `x-priority` document the authorization matrix
+      (docs/design/17-api-authorization-matrix.md); the matrix test in Sprint 2 reads them.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /api/v1
+    description: Relative to the host serving the SPA (Caddy routes /api/* to the API)
+
+tags:
+  - name: auth
+    description: Login, refresh, and tenant selection (ADR-009, ADR-P02). Platform scope: no tid required.
+  - name: tenancy
+    description: Tenant signup, settings, and holiday calendar (PF-01, PF-08).
+  - name: members
+    description: Memberships, roles, and invitations (PF-02).
+  - name: org
+    description: Departments and positions (PF-05).
+  - name: employees
+    description: Employees and their PII, masked by default (PF-06, PF-20).
+  - name: compensation
+    description: Effective-dated salary and pay components (PF-07, ADR-P04).
+  - name: attendance
+    description: Clock in/out, HR corrections, CSV import (PF-08, PF-21).
+  - name: leave
+    description: Leave types, balances, and requests (PF-09).
+  - name: overtime
+    description: Overtime requests (PF-10).
+  - name: approvals
+    description: One approval engine for leave, overtime, and payroll runs (PF-11, ADR-P09).
+  - name: payroll
+    description: Payroll periods and runs: calculate, review, submit, finalize (PF-12…PF-14).
+  - name: adjustments
+    description: Post-final corrections (PF-19).
+  - name: payslips
+    description: Payslips for employees and payroll staff (PF-15, PF-22).
+  - name: audit
+    description: Audit log (PF-16).
+
+security:
+  - tenantJWT: []
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in; returns an access token without a tenant (tid) claim
+      x-endpoint: A1
+      x-feature: PF-02
+      x-roles: "public"
+      x-rate-tier: auth-strict
+      x-priority: P0
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `AccessToken` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshSession
+      summary: Rotate the refresh token and issue a new access token (keeps tid)
+      x-endpoint: A2
+      x-feature: PF-02
+      x-roles: "cookie"
+      x-rate-tier: auth-strict
+      x-priority: P0
+      security:
+        - refreshCookie: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `AccessToken` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the refresh token family
+      x-endpoint: A3
+      x-feature: PF-02
+      x-roles: "cookie"
+      x-rate-tier: auth-ip
+      x-priority: P0
+      security:
+        - refreshCookie: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestedWith'
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: Current user (platform scope)
+      x-endpoint: A4
+      x-feature: PF-02
+      x-roles: "user"
+      x-rate-tier: read
+      x-priority: P0
+      security:
+        - userJWT: []
+      responses:
+        '200':
+          description: OK. Body model `Me` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /me/memberships:
+    get:
+      tags: [auth]
+      operationId: listMyMemberships
+      summary: Tenants the user belongs to, with roles
+      x-endpoint: A5
+      x-feature: PF-02
+      x-roles: "user"
+      x-rate-tier: read
+      x-priority: P0
+      security:
+        - userJWT: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `MembershipList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /session/switch-tenant:
+    post:
+      tags: [auth]
+      operationId: switchTenant
+      summary: Issue an access token for one tenant (tid claim) after checking the membership
+      x-endpoint: A6
+      x-feature: PF-02
+      x-roles: "user + active membership"
+      x-rate-tier: write
+      x-priority: P0
+      security:
+        - userJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `AccessToken` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /tenants/signup:
+    post:
+      tags: [tenancy]
+      operationId: signupTenant
+      summary: Create tenant + user + OWNER membership + default seed in one transaction
+      x-endpoint: T1
+      x-feature: PF-01
+      x-roles: "public"
+      x-rate-tier: auth-strict
+      x-priority: P0
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `SignupResult` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /tenant:
+    get:
+      tags: [tenancy]
+      operationId: getTenant
+      summary: Current tenant and its settings
+      x-endpoint: T2
+      x-feature: PF-01
+      x-roles: "all roles"
+      x-rate-tier: read
+      x-priority: P0
+      responses:
+        '200':
+          description: OK. Body model `Tenant` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /tenant/settings:
+    patch:
+      tags: [tenancy]
+      operationId: updateTenantSettings
+      summary: Update tenant settings (cut-off, proration, rounding)
+      x-endpoint: T3
+      x-feature: PF-01
+      x-roles: "O"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Tenant` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /holidays:
+    get:
+      tags: [tenancy]
+      operationId: listHolidays
+      summary: Tenant holiday calendar
+      x-endpoint: T4
+      x-feature: PF-08
+      x-roles: "all roles"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `HolidayList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [tenancy]
+      operationId: createHoliday
+      summary: Add a holiday (unique per date)
+      x-endpoint: T5
+      x-feature: PF-08
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Holiday` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /holidays/{id}:
+    delete:
+      tags: [tenancy]
+      operationId: deleteHoliday
+      summary: Remove a holiday (PERIOD_LOCKED if the period is final)
+      x-endpoint: T6
+      x-feature: PF-08
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '204':
+          description: Done.
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /members:
+    get:
+      tags: [members]
+      operationId: listMembers
+      summary: Members and roles of the tenant
+      x-endpoint: U1
+      x-feature: PF-02
+      x-roles: "O, H"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `MemberList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /invitations:
+    post:
+      tags: [members]
+      operationId: createInvitation
+      summary: Invite a user by email (single use, 7 days)
+      x-endpoint: U2
+      x-feature: PF-02
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Invitation` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /invitations/accept:
+    post:
+      tags: [members]
+      operationId: acceptInvitation
+      summary: Accept an invitation with the secret from the link
+      x-endpoint: U3
+      x-feature: PF-02
+      x-roles: "user (email must match)"
+      x-rate-tier: auth-ip
+      x-priority: P0
+      security:
+        - userJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /members/{id}/roles:
+    patch:
+      tags: [members]
+      operationId: updateMemberRoles
+      summary: Change roles (LAST_OWNER guard)
+      x-endpoint: U4
+      x-feature: PF-02
+      x-roles: "O (H limited)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /members/{id}/revoke:
+    post:
+      tags: [members]
+      operationId: revokeMember
+      summary: Revoke a membership (LAST_OWNER guard)
+      x-endpoint: U5
+      x-feature: PF-02
+      x-roles: "O (H limited)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /departments:
+    get:
+      tags: [org]
+      operationId: listDepartments
+      summary: Departments
+      x-endpoint: G1a
+      x-feature: PF-05
+      x-roles: "all roles"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `DepartmentList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [org]
+      operationId: createDepartment
+      summary: Create a department (unique code)
+      x-endpoint: G2a
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Department` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /departments/{id}:
+    patch:
+      tags: [org]
+      operationId: updateDepartment
+      summary: Update a department
+      x-endpoint: G3a
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Department` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /departments/{id}/deactivate:
+    post:
+      tags: [org]
+      operationId: deactivateDepartment
+      summary: Deactivate a department
+      x-endpoint: G4a
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Department` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /positions:
+    get:
+      tags: [org]
+      operationId: listPositions
+      summary: Positions
+      x-endpoint: G1b
+      x-feature: PF-05
+      x-roles: "all roles"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PositionList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [org]
+      operationId: createPosition
+      summary: Create a position (unique code)
+      x-endpoint: G2b
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Position` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /positions/{id}:
+    patch:
+      tags: [org]
+      operationId: updatePosition
+      summary: Update a position
+      x-endpoint: G3b
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Position` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /positions/{id}/deactivate:
+    post:
+      tags: [org]
+      operationId: deactivatePosition
+      summary: Deactivate a position
+      x-endpoint: G4b
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Position` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees:
+    get:
+      tags: [employees]
+      operationId: listEmployees
+      summary: Employees (filter + cursor); PII masked
+      x-endpoint: W1
+      x-feature: PF-06
+      x-roles: "O, H, P; M (reports)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `EmployeeList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [employees]
+      operationId: createEmployee
+      summary: Create an employee (PII encrypted at rest)
+      x-endpoint: W2
+      x-feature: PF-06
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Employee` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}:
+    get:
+      tags: [employees]
+      operationId: getEmployee
+      summary: Employee detail; another tenant's id returns 404
+      x-endpoint: W3
+      x-feature: PF-06
+      x-roles: "O, H, P; M (reports); E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    patch:
+      tags: [employees]
+      operationId: updateEmployee
+      summary: Update employee data
+      x-endpoint: W4
+      x-feature: PF-06
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/terminate:
+    post:
+      tags: [employees]
+      operationId: terminateEmployee
+      summary: Resign/terminate with an end date
+      x-endpoint: W5
+      x-feature: PF-06
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/pii:
+    get:
+      tags: [employees]
+      operationId: getEmployeePII
+      summary: Full NIK/NPWP/bank account; every access is audited
+      x-endpoint: W6
+      x-feature: PF-20
+      x-roles: "O, H; E (self)"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `EmployeePII` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/org-assignments:
+    post:
+      tags: [employees]
+      operationId: assignEmployeeOrg
+      summary: Department/position/manager assignment (MANAGER_CYCLE guard)
+      x-endpoint: W7
+      x-feature: PF-05
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `OrgAssignment` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/salary-history:
+    get:
+      tags: [compensation]
+      operationId: getSalaryHistory
+      summary: Effective-dated salary records
+      x-endpoint: W8
+      x-feature: PF-07
+      x-roles: "O, H, P; E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `SalaryHistory` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/salary-changes:
+    post:
+      tags: [compensation]
+      operationId: changeSalary
+      summary: Close the current salary record and open a new one (OVERLAPPING_PERIOD, PERIOD_LOCKED)
+      x-endpoint: W9
+      x-feature: PF-07
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `SalaryAssignment` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /employees/{id}/component-assignments:
+    post:
+      tags: [compensation]
+      operationId: assignComponent
+      summary: Effective-dated component assignment for one employee
+      x-endpoint: W10
+      x-feature: PF-07
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `EmployeeComponent` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /component-definitions:
+    get:
+      tags: [compensation]
+      operationId: listComponentDefinitions
+      summary: Pay component definitions
+      x-endpoint: C1
+      x-feature: PF-07
+      x-roles: "O, H, P"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `ComponentDefinitionList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    post:
+      tags: [compensation]
+      operationId: createComponentDefinition
+      summary: Create a component (INVALID_COMPONENT_REFERENCE, COMPONENT_CYCLE)
+      x-endpoint: C2
+      x-feature: PF-07
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /component-definitions/{id}:
+    patch:
+      tags: [compensation]
+      operationId: updateComponentDefinition
+      summary: Update a component definition
+      x-endpoint: C3
+      x-feature: PF-07
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /component-definitions/{id}/deactivate:
+    post:
+      tags: [compensation]
+      operationId: deactivateComponentDefinition
+      summary: Deactivate a component
+      x-endpoint: C4
+      x-feature: PF-07
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance/clock-in:
+    post:
+      tags: [attendance]
+      operationId: clockIn
+      summary: Clock in (one record per work day; repeat = same record)
+      x-endpoint: D1
+      x-feature: PF-08
+      x-roles: "E (self)"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance/clock-out:
+    post:
+      tags: [attendance]
+      operationId: clockOut
+      summary: Clock out (CLOCK_OUT_WITHOUT_CLOCK_IN)
+      x-endpoint: D2
+      x-feature: PF-08
+      x-roles: "E (self)"
+      x-rate-tier: write
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance:
+    get:
+      tags: [attendance]
+      operationId: listAttendance
+      summary: Attendance records
+      x-endpoint: D3
+      x-feature: PF-08
+      x-roles: "O, H, P; M (reports); E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `AttendanceList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance/{id}:
+    patch:
+      tags: [attendance]
+      operationId: correctAttendance
+      summary: HR correction with a reason (PERIOD_LOCKED after final)
+      x-endpoint: D4
+      x-feature: PF-08
+      x-roles: "O, H"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance-imports:
+    post:
+      tags: [attendance]
+      operationId: createAttendanceImport
+      summary: Upload an attendance CSV (validated by a background job; IMPORT_DUPLICATE)
+      x-endpoint: D5
+      x-feature: PF-21
+      x-roles: "O, H"
+      x-rate-tier: heavy-import
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '202':
+          description: Accepted; processing continues in the background. Body model `AttendanceImport` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance-imports/{id}:
+    get:
+      tags: [attendance]
+      operationId: getAttendanceImport
+      summary: Import status
+      x-endpoint: D6
+      x-feature: PF-21
+      x-roles: "O, H"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `AttendanceImport` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /attendance-imports/{id}/errors:
+    get:
+      tags: [attendance]
+      operationId: listAttendanceImportErrors
+      summary: Per-row import errors
+      x-endpoint: D7
+      x-feature: PF-21
+      x-roles: "O, H"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `ImportErrorList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /leave-types:
+    get:
+      tags: [leave]
+      operationId: listLeaveTypes
+      summary: Leave types
+      x-endpoint: L1
+      x-feature: PF-09
+      x-roles: "all roles"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `LeaveTypeList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /me/leave-balances:
+    get:
+      tags: [leave]
+      operationId: listMyLeaveBalances
+      summary: My leave balances
+      x-endpoint: L2
+      x-feature: PF-09
+      x-roles: "E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `LeaveBalanceList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /leave-requests:
+    post:
+      tags: [leave]
+      operationId: createLeaveRequest
+      summary: Request leave (OVERLAPPING_LEAVE); balance is deducted on approval
+      x-endpoint: L3
+      x-feature: PF-09
+      x-roles: "E (self)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `LeaveRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [leave]
+      operationId: listLeaveRequests
+      summary: Leave requests
+      x-endpoint: L5
+      x-feature: PF-09
+      x-roles: "O, H; M (reports); E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `LeaveRequestList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /leave-requests/{id}/cancel:
+    post:
+      tags: [leave]
+      operationId: cancelLeaveRequest
+      summary: Cancel a pending leave request
+      x-endpoint: L4
+      x-feature: PF-09
+      x-roles: "E (self, PENDING)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `LeaveRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /overtime-requests:
+    post:
+      tags: [overtime]
+      operationId: createOvertimeRequest
+      summary: Request overtime
+      x-endpoint: V1
+      x-feature: PF-10
+      x-roles: "E (self)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `OvertimeRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [overtime]
+      operationId: listOvertimeRequests
+      summary: Overtime requests
+      x-endpoint: V3
+      x-feature: PF-10
+      x-roles: "O, H, P; M (reports); E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `OvertimeRequestList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /overtime-requests/{id}/cancel:
+    post:
+      tags: [overtime]
+      operationId: cancelOvertimeRequest
+      summary: Cancel a pending overtime request
+      x-endpoint: V2
+      x-feature: PF-10
+      x-roles: "E (self, PENDING)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `OvertimeRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /approvals/inbox:
+    get:
+      tags: [approvals]
+      operationId: listApprovalInbox
+      summary: Requests waiting for my decision
+      x-endpoint: R1
+      x-feature: PF-11
+      x-roles: "approver"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `ApprovalList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /approvals/{id}/approve:
+    post:
+      tags: [approvals]
+      operationId: approveRequest
+      summary: Approve (APPROVAL_ALREADY_DECIDED, SELF_APPROVAL_FORBIDDEN; payroll runs: RUN_STALE guard)
+      x-endpoint: R2
+      x-feature: PF-11, PF-13
+      x-roles: "snapshotted approver; H override (not runs)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `ApprovalRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /approvals/{id}/reject:
+    post:
+      tags: [approvals]
+      operationId: rejectRequest
+      summary: Reject with a note
+      x-endpoint: R3
+      x-feature: PF-11, PF-13
+      x-roles: "snapshotted approver; H override (not runs)"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `ApprovalRequest` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-periods:
+    get:
+      tags: [payroll]
+      operationId: listPayrollPeriods
+      summary: Payroll periods (OPEN, PROCESSING, FINALIZED)
+      x-endpoint: Y1
+      x-feature: PF-13
+      x-roles: "O, H, P"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PayrollPeriodList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs:
+    post:
+      tags: [payroll]
+      operationId: createPayrollRun
+      summary: Create a run; the period is created on demand (ACTIVE_RUN_EXISTS)
+      x-endpoint: Y2
+      x-feature: PF-13
+      x-roles: "O, P"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [payroll]
+      operationId: listPayrollRuns
+      summary: Payroll runs
+      x-endpoint: Y3
+      x-feature: PF-13
+      x-roles: "O, H, P"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PayrollRunList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}:
+    get:
+      tags: [payroll]
+      operationId: getPayrollRun
+      summary: Run status, progress, totals, stale flag
+      x-endpoint: Y4
+      x-feature: PF-13
+      x-roles: "O, H, P"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/calculate:
+    post:
+      tags: [payroll]
+      operationId: calculatePayrollRun
+      summary: Start (re)calculation in background chunks; new calc_version
+      x-endpoint: Y5
+      x-feature: PF-13
+      x-roles: "O, P"
+      x-rate-tier: heavy-calculate
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '202':
+          description: Accepted; processing continues in the background. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/items:
+    get:
+      tags: [payroll]
+      operationId: listPayrollItems
+      summary: Items of the current calc_version
+      x-endpoint: Y6
+      x-feature: PF-13
+      x-roles: "O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PayrollItemList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/items/{item_id}:
+    get:
+      tags: [payroll]
+      operationId: getPayrollItem
+      summary: One item with lines and explanations
+      x-endpoint: Y7
+      x-feature: PF-12, PF-13
+      x-roles: "O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/ItemId'
+      responses:
+        '200':
+          description: OK. Body model `PayrollItem` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/items/{item_id}/exclude:
+    post:
+      tags: [payroll]
+      operationId: excludePayrollItem
+      summary: Exclude an item with a reason (unblocks RUN_HAS_ERRORS)
+      x-endpoint: Y8
+      x-feature: PF-13
+      x-roles: "O, P"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `PayrollItem` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/diff:
+    get:
+      tags: [payroll]
+      operationId: getPayrollRunDiff
+      summary: Net difference vs the previous final run, with flags
+      x-endpoint: Y9
+      x-feature: PF-23
+      x-roles: "O, P"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `PayrollRunDiff` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/submit:
+    post:
+      tags: [payroll]
+      operationId: submitPayrollRun
+      summary: Submit for approval; creates an approval request (RUN_HAS_ERRORS)
+      x-endpoint: Y10
+      x-feature: PF-13
+      x-roles: "O, P"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/finalize:
+    post:
+      tags: [payroll]
+      operationId: finalizePayrollRun
+      summary: Freeze snapshots and lock the period (RUN_FINALIZED afterwards)
+      x-endpoint: Y11
+      x-feature: PF-14
+      x-roles: "O, P"
+      x-rate-tier: heavy-finalize
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/cancel:
+    post:
+      tags: [payroll]
+      operationId: cancelPayrollRun
+      summary: Cancel a run that is not final
+      x-endpoint: Y12
+      x-feature: PF-13
+      x-roles: "O, P"
+      x-rate-tier: write
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /adjustments:
+    post:
+      tags: [adjustments]
+      operationId: createAdjustment
+      summary: Post-final correction applied to a later run, referencing the origin period
+      x-endpoint: J1
+      x-feature: PF-19
+      x-roles: "O, H, P"
+      x-rate-tier: write
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '201':
+          description: Created. Body model `Adjustment` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [adjustments]
+      operationId: listAdjustments
+      summary: Adjustments
+      x-endpoint: J2
+      x-feature: PF-19
+      x-roles: "O, H, P"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `AdjustmentList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /adjustments/{id}/cancel:
+    post:
+      tags: [adjustments]
+      operationId: cancelAdjustment
+      summary: Cancel an adjustment that is not applied yet
+      x-endpoint: J3
+      x-feature: PF-19
+      x-roles: "O, H, P"
+      x-rate-tier: write
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pending' }
+      responses:
+        '200':
+          description: OK. Body model `Adjustment` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /me/payslips:
+    get:
+      tags: [payslips]
+      operationId: listMyPayslips
+      summary: My payslips
+      x-endpoint: S1
+      x-feature: PF-15
+      x-roles: "E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PayslipList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /me/payslips/{id}:
+    get:
+      tags: [payslips]
+      operationId: getMyPayslip
+      summary: One of my payslips; another employee's id returns 404
+      x-endpoint: S2
+      x-feature: PF-15
+      x-roles: "E (self)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `Payslip` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payslips:
+    get:
+      tags: [payslips]
+      operationId: listPayslips
+      summary: Payslips of all employees (non-owner access is audited)
+      x-endpoint: S3
+      x-feature: PF-15
+      x-roles: "O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `PayslipList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payslips/{id}:
+    get:
+      tags: [payslips]
+      operationId: getPayslip
+      summary: One payslip (non-owner access is audited)
+      x-endpoint: S4
+      x-feature: PF-15
+      x-roles: "O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `Payslip` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /payslips/{id}/download:
+    get:
+      tags: [payslips]
+      operationId: downloadPayslip
+      summary: Presigned PDF URL valid for 5 minutes (PAYSLIP_NOT_READY)
+      x-endpoint: S5
+      x-feature: PF-22
+      x-roles: "owner; O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: OK. Body model `PayslipDownload` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /audit-log:
+    get:
+      tags: [audit]
+      operationId: listAuditLog
+      summary: Tenant audit log (append-only)
+      x-endpoint: Z1
+      x-feature: PF-16
+      x-roles: "O, H"
+      x-rate-tier: read
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: OK. Body model `AuditEntryList` (docs/design/16-api-endpoints.md §16).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Pending' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+components:
+  securitySchemes:
+    tenantJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token (15 minutes) WITH a `tid` claim, issued by POST /session/switch-tenant after checking an ACTIVE membership.
+    userJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token with or without `tid` (platform-scope endpoints).
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: pr_refresh
+      description: Opaque refresh token, rotated on every use with reuse detection.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated key; same key + same payload = same result. Scoped per tenant (signup: platform scope).
+      schema: { type: string, minLength: 8, maxLength: 255, pattern: '^[A-Za-z0-9_\-:.]{8,255}$' }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+      schema: { type: string }
+    XRequestedWith:
+      name: X-Requested-With
+      in: header
+      required: true
+      description: CSRF guard for cookie-authenticated endpoints. Must be `fetch`.
+      schema: { type: string, enum: [fetch] }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from `page.next_cursor`.
+      schema: { type: string }
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ItemId:
+      name: item_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Pending:
+      type: object
+      description: Placeholder until the feature sprint defines the body (Sprint 0 skeleton).
+    Money:
+      type: string
+      description: Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+      pattern: '^-?[0-9]{1,16}\.[0-9]{2}$'
+      examples: ['6888609.00']
+    Rate:
+      type: string
+      description: Decimal rate with 6 fraction digits, as a string (e.g. BPJS 2% = "0.020000").
+      pattern: '^[0-9]{1,4}\.[0-9]{6}$'
+      examples: ['0.020000']
+    Period:
+      type: string
+      description: Payroll period, calendar month in the tenant timezone.
+      pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      examples: ['2026-03']
+    Page:
+      type: object
+      required: [has_more]
+      properties:
+        next_cursor: { type: [string, 'null'] }
+        has_more: { type: boolean }
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details with a stable machine-readable code.
+      required: [type, title, status, code, request_id]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string, examples: [RUN_STALE] }
+        detail: { type: string }
+        instance: { type: string }
+        request_id: { type: string }
+        errors:
+          type: array
+          description: Field-level errors, only for VALIDATION_ERROR.
+          items:
+            type: object
+            required: [field, code]
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }
+        existing_resource_id:
+          type: string
+          format: uuid
+          description: ACTIVE_RUN_EXISTS and IMPORT_DUPLICATE — the resource that already exists.
+  responses:
+    ValidationError:
+      description: VALIDATION_ERROR (including an unknown `tenant_id` body field), MALFORMED_JSON, INVALID_CURSOR, IDEMPOTENCY_KEY_REQUIRED, or IDEMPOTENCY_KEY_INVALID.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: UNAUTHENTICATED, TOKEN_EXPIRED, INVALID_CREDENTIALS, or REFRESH_TOKEN_REUSED.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: FORBIDDEN — no tenant selected (token without tid), missing role, or failed CSRF guard.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: NOT_FOUND — the resource does not exist, belongs to another tenant, or must not be known to the caller.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Domain conflicts from the catalogue, e.g. ACTIVE_RUN_EXISTS, APPROVAL_ALREADY_DECIDED, VERSION_CONFLICT, RUN_FINALIZED, PERIOD_LOCKED, LAST_OWNER, REQUEST_IN_PROGRESS.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    UnprocessableEntity:
+      description: Business rule violations from the catalogue, e.g. RUN_STALE, RUN_HAS_ERRORS, SELF_APPROVAL_FORBIDDEN, OVERLAPPING_PERIOD, INSUFFICIENT_LEAVE_BALANCE, IDEMPOTENCY_KEY_REUSED.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: RATE_LIMITED — see Retry-After.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }

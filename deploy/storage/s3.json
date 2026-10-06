@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "payrun-app",
+      "credentials": [{ "accessKey": "payrun-dev-access", "secretKey": "payrun-dev-secret-only-for-local" }],
+      "actions": ["Read:payrun-private", "Write:payrun-private"]
+    }
+  ]
+}

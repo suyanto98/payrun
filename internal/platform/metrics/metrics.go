@@ -1,0 +1,97 @@
+// Package metrics: satu tempat untuk semua metrik Prometheus (katalog docs/design (Step 8 `01`) §3).
+//
+// Aturan:
+//   - event → counter (_total); keadaan hasil verifikasi/query periodik → gauge;
+//   - label hanya dari himpunan TERBATAS (route template, kind job, code katalog error, outcome) —
+//     tidak pernah tenant_id, user_id, employee_id, email, atau nominal (kardinalitas + PII);
+//   - metrik INVARIANT (payrun_*_violations_*) normalnya selalu 0; alert-nya critical.
+package metrics
+
+import (
+	"net/http"
+	"runtime"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// Registry sendiri (bukan default global), supaya test bisa membaca nilai tanpa efek samping library lain.
+var Registry = prometheus.NewRegistry()
+
+var (
+	httpBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2.5, 5} // 0.2/0.3 = batas SLO
+	jobBuckets  = []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300}
+)
+
+func counter(name, help string, labels ...string) *prometheus.CounterVec {
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{Name: name, Help: help}, labels)
+	Registry.MustRegister(c)
+	return c
+}
+
+func gauge(name, help string, labels ...string) *prometheus.GaugeVec {
+	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: name, Help: help}, labels)
+	Registry.MustRegister(g)
+	return g
+}
+
+func histogram(name, help string, buckets []float64, labels ...string) *prometheus.HistogramVec {
+	h := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: name, Help: help, Buckets: buckets}, labels)
+	Registry.MustRegister(h)
+	return h
+}
+
+// ---------------------------------------------------------------- platform (app_)
+var (
+	BuildInfo        = gauge("app_build_info", "Running version (always 1).", "service", "version", "go_version")
+	Ready            = gauge("app_ready", "1 = ready to serve, 0 = not ready.", "service")
+	HTTPRequests     = counter("app_http_requests_total", "Completed HTTP requests.", "route", "method", "status")
+	HTTPDuration     = histogram("app_http_request_duration_seconds", "Server-side HTTP latency.", httpBuckets, "route", "method")
+	HTTPInFlight     = gauge("app_http_in_flight_requests", "Requests being served.")
+	Errors           = counter("app_errors_total", "Error responses by catalogue code.", "code")
+	RateLimited      = counter("app_rate_limited_total", "429 responses by tier.", "tier")
+	DBTxRetries      = counter("app_db_tx_retries_total", "WithTx retries.", "reason")
+	DBDeadlocks      = counter("app_db_deadlocks_total", "40P01 detected (before retry).")
+	DBLockTimeouts   = counter("app_db_lock_timeouts_total", "55P03 lock timeouts.", "kind")
+	JobsEnqueued     = counter("app_job_enqueued_total", "Jobs written to the outbox.", "kind")
+	JobDuration      = histogram("app_job_duration_seconds", "Job execution time.", jobBuckets, "kind", "outcome")
+	JobFailures      = counter("app_job_failures_total", "Failed job attempts.", "kind", "class")
+	JobDead          = counter("app_job_dead_total", "Jobs moved to dead (DLQ).", "kind")
+	JobFenced        = counter("app_job_fenced_total", "CompleteInTx found the lease taken: business tx rolled back (zombie worker).", "kind")
+	JobLeaseLost     = counter("app_job_lease_lost_total", "Heartbeat found the lease taken.", "kind")
+	JobQueueDepth    = gauge("app_job_queue_depth", "Jobs per kind and status (periodic query).", "kind", "status")
+	JobOldestAge     = gauge("app_job_oldest_age_seconds", "Age of the oldest due queued job per kind.", "kind")
+	OutboxLag        = gauge("app_outbox_lag_seconds", "Age of the oldest never-claimed due job: how long side effects are delayed after commit.")
+	Outbound         = counter("app_outbound_requests_total", "Outbound HTTP calls.", "target", "outcome")
+	OutboundDuration = histogram("app_outbound_request_duration_seconds", "Outbound HTTP latency.", httpBuckets, "target")
+	AuthnFailures    = counter("app_authn_failures_total", "Authentication failures.", "reason")
+	RefreshReuse     = counter("app_refresh_reuse_detected_total", "Refresh token reuse detected (family revoked).")
+	IdemReplays      = counter("app_idempotency_replays_total", "Replayed responses (Idempotent-Replayed).", "route")
+	IdemKeyReused    = counter("app_idempotency_key_reused_total", "422 IDEMPOTENCY_KEY_REUSED.", "route")
+)
+
+// ---------------------------------------------------------------- PayRun (payrun_)
+// Metrik domain ditambahkan per sprint bersama fiturnya (Step 8 `01` §3), contoh
+// payrun_tenant_isolation_violations_total (INVARIANT, S2) dan payrun_payroll_runs_total (S4).
+
+func init() {
+	Registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+}
+
+// SetBuildInfo dipanggil sekali saat start.
+func SetBuildInfo(service, version string) {
+	BuildInfo.WithLabelValues(service, version, runtime.Version()).Set(1)
+}
+
+// Handler melayani /metrics (port ops internal, tidak lewat Caddy).
+func Handler() http.Handler {
+	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{Registry: Registry})
+}
+
+// Since mengembalikan detik sejak t (helper histogram).
+func Since(t time.Time) float64 { return time.Since(t).Seconds() } //nolint:forbidigo // durasi teknis, bukan waktu bisnis
+
+// Start menandai awal pengukuran durasi teknis (pasangan Since); bukan waktu bisnis (C-31).
+func Start() time.Time { return time.Now() } //nolint:forbidigo // durasi teknis, bukan waktu bisnis

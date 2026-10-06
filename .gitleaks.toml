@@ -1,0 +1,9 @@
+# gitleaks (CI job `security`, seluruh history). Aturan bawaan + pengecualian SEMPIT yang dijelaskan.
+[extend]
+useDefault = true
+
+# Idempotency-Key bukan rahasia (dikirim client sebagai pengenal niat); contoh nilainya ada di test/dokumen.
+[[allowlists]]
+description = "Idempotency-Key example values"
+regexTarget = "line"
+regexes = ['''Idempotency-Key''']

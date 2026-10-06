@@ -1,0 +1,44 @@
+# Binaries & build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Go
+/vendor/
+go.work
+go.work.sum
+
+# Env & secrets (never commit — Step 6 C-18/C-19)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / web
+node_modules/
+web/dist/
+.vite/
+playwright-report/
+test-results/
+
+# Editors & OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+
+# Local data
+/tmp/
+*.log
+
+# rapid: file replay kegagalan property test (lokal saja)
+**/testdata/rapid/
+
+# Secret environment (dibuat deploy/prod/init-env.sh) — JANGAN di-commit
+deploy/prod/env/
+build/
