@@ -88,10 +88,9 @@ gen: gen-api gen-sql ## Semua codegen (OpenAPI + SQL)
 gen-api: ## Generate types Go dari api/openapi.yaml (oapi-codegen) → api/gen
 	oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
 
-gen-sql: ## Generate kode dari SQL (sqlc) — aktif mulai Sprint 1 (belum ada query)
+gen-sql: ## Generate kode dari SQL (sqlc) → internal/modules/*/store
 	sqlc generate
 
-# Sprint 0: hanya gen-api (sqlc menolak config tanpa query). Ganti ke `gen` bersama query pertama (Sprint 1).
-gen-check: gen-api ## Pastikan kode hasil generate sudah di-commit (dipakai CI)
+gen-check: gen ## Pastikan kode hasil generate (oapi-codegen + sqlc) sudah di-commit (dipakai CI)
 	@# git diff saja tidak melihat file BARU yang belum di-commit; status --porcelain melihat keduanya.
 	@test -z "$$(git status --porcelain -- api/gen internal/)" || { git status --porcelain -- api/gen internal/; git diff -- api/gen internal/; echo "kode generate tidak sinkron: jalankan make gen-api dan commit"; exit 1; }

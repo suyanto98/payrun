@@ -1,7 +1,7 @@
 version: "2"
 
 # Satu package hasil generate per modul: modul hanya memegang query untuk tabel miliknya (ADR-001).
-# Entri `sql:` pertama ditambahkan Sprint 1 (tenancy, iam). Semua query tenant berjalan di dalam
+# Semua query tenant berjalan di dalam
 # WithTenantTx; sqlc tidak tahu RLS, jadi RLS-lah (bukan WHERE di query) jaring pengaman terakhir.
 overrides:
   go:
@@ -37,4 +37,13 @@ overrides:
           type: Addr
           pointer: true
 
-sql: []
+sql:
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries/iam.sql
+    gen:
+      go:
+        package: store
+        out: internal/modules/iam/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true

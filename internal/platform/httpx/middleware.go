@@ -22,8 +22,9 @@ type requestIDKey struct{}
 // DALAM (contoh: auth mengisi user_id). AccessLog berjalan di luar auth, jadi ia membaca holder
 // ini setelah handler selesai — begitulah log akses bisa memuat user_id (skema log Step 8).
 type reqInfo struct {
-	mu     sync.Mutex
-	userID string
+	mu       sync.Mutex
+	userID   string
+	tenantID string
 }
 
 type reqInfoKey struct{}
@@ -33,6 +34,16 @@ func SetUserID(ctx context.Context, id string) {
 	if ri, ok := ctx.Value(reqInfoKey{}).(*reqInfo); ok {
 		ri.mu.Lock()
 		ri.userID = id
+		ri.mu.Unlock()
+	}
+}
+
+// SetTenantID dipanggil middleware auth setelah claim `tid` terverifikasi (PF-17: tenant_id di
+// setiap log request).
+func SetTenantID(ctx context.Context, id string) {
+	if ri, ok := ctx.Value(reqInfoKey{}).(*reqInfo); ok {
+		ri.mu.Lock()
+		ri.tenantID = id
 		ri.mu.Unlock()
 	}
 }
@@ -107,6 +118,9 @@ func AccessLog(next http.Handler) http.Handler {
 			ri.mu.Lock()
 			if ri.userID != "" {
 				attrs = append(attrs, "user_id", ri.userID)
+			}
+			if ri.tenantID != "" {
+				attrs = append(attrs, "tenant_id", ri.tenantID)
 			}
 			ri.mu.Unlock()
 		}

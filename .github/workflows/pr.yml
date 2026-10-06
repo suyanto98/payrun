@@ -31,12 +31,11 @@ jobs:
       - name: golangci-lint (gosec, depguard, ...)
         run: |
           "$(go env GOPATH)/bin/golangci-lint" run ./...
-      - name: Generated code is up to date (oapi-codegen)
+      - name: Generated code is up to date (oapi-codegen + sqlc)
         run: |
           go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
-          make gen-check
-      # sqlc ikut gen-check mulai Sprint 1 bersama query pertama: sqlc menolak konfigurasi tanpa
-      # package ("no packages").
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          PATH="$(go env GOPATH)/bin:$PATH" make gen-check
 
   unit:
     runs-on: ubuntu-latest

@@ -67,6 +67,7 @@ var (
 	Outbound         = counter("app_outbound_requests_total", "Outbound HTTP calls.", "target", "outcome")
 	OutboundDuration = histogram("app_outbound_request_duration_seconds", "Outbound HTTP latency.", httpBuckets, "target")
 	AuthnFailures    = counter("app_authn_failures_total", "Authentication failures.", "reason")
+	AuthnLockouts    = counter("app_authn_lockouts_total", "Accounts locked by the progressive lockout (C-03).")
 	RefreshReuse     = counter("app_refresh_reuse_detected_total", "Refresh token reuse detected (family revoked).")
 	IdemReplays      = counter("app_idempotency_replays_total", "Replayed responses (Idempotent-Replayed).", "route")
 	IdemKeyReused    = counter("app_idempotency_key_reused_total", "422 IDEMPOTENCY_KEY_REUSED.", "route")

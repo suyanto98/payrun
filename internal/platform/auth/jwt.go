@@ -12,9 +12,12 @@ import (
 	"payrun/internal/platform/idgen"
 )
 
-// Claims adalah isi access token (ADR-009): sub, roles, iat, exp, jti, iss, aud.
+// Claims adalah isi access token (ADR-009, ADR-P02): sub, tid, roles, iat, exp, jti, iss, aud.
+// `tid` = tenant aktif, hanya diterbitkan setelah membership ACTIVE dicek di DB; `roles` = role di
+// tenant itu (kosong kalau token tanpa tid). Ditandatangani, jadi tidak bisa diubah client.
 type Claims struct {
-	Roles []string `json:"roles"`
+	TenantID string   `json:"tid,omitempty"`
+	Roles    []string `json:"roles"`
 	jwt.RegisteredClaims
 }
 
@@ -43,20 +46,22 @@ func NewTokens(keys map[string][]byte, activeKID, issuer string, ttl time.Durati
 	return &Tokens{keys: keys, activeKID: activeKID, issuer: issuer, ttl: ttl, clock: c, ids: ids}, nil
 }
 
-// Issue membuat access token untuk user.
-func (t *Tokens) Issue(userID uuid.UUID, roles []string) (token string, expiresAt time.Time, err error) {
+// Issue membuat access token untuk user. tenantID = uuid.Nil → token tanpa `tid` (user belum memilih
+// tenant); roles diabaikan karena role selalu melekat pada membership tenant.
+func (t *Tokens) Issue(userID, tenantID uuid.UUID, roles []string) (token string, expiresAt time.Time, err error) {
 	now := t.clock.Now()
 	expiresAt = now.Add(t.ttl)
-	claims := Claims{
-		Roles: roles,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID.String(),
-			Issuer:    t.issuer,
-			Audience:  jwt.ClaimStrings{audience},
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			ID:        t.ids.New().String(),
-		},
+	claims := Claims{Roles: []string{}}
+	if tenantID != uuid.Nil {
+		claims.TenantID, claims.Roles = tenantID.String(), roles
+	}
+	claims.RegisteredClaims = jwt.RegisteredClaims{
+		Subject:   userID.String(),
+		Issuer:    t.issuer,
+		Audience:  jwt.ClaimStrings{audience},
+		IssuedAt:  jwt.NewNumericDate(now),
+		ExpiresAt: jwt.NewNumericDate(expiresAt),
+		ID:        t.ids.New().String(),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tok.Header["kid"] = t.activeKID
@@ -103,6 +108,11 @@ func (t *Tokens) Verify(token string) (*Claims, error) {
 	}
 	if _, err := uuid.Parse(claims.Subject); err != nil {
 		return nil, ErrTokenInvalid
+	}
+	if claims.TenantID != "" {
+		if tid, err := uuid.Parse(claims.TenantID); err != nil || tid == uuid.Nil {
+			return nil, ErrTokenInvalid
+		}
 	}
 	return &claims, nil
 }

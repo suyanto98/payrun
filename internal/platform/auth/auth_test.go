@@ -33,8 +33,8 @@ func newTokens(t *testing.T, c clock.Clock) *auth.Tokens {
 func TestJWT_RoundTrip(t *testing.T) {
 	clk := clock.NewFake(time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC))
 	tk := newTokens(t, clk)
-	uid := uuid.Must(uuid.NewV7())
-	tok, _, err := tk.Issue(uid, []string{"USER"})
+	uid, tid := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	tok, _, err := tk.Issue(uid, tid, []string{"OWNER"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,8 +42,14 @@ func TestJWT_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid token rejected: %v", err)
 	}
-	if c.Subject != uid.String() || len(c.Roles) != 1 || c.Roles[0] != "USER" {
+	if c.Subject != uid.String() || c.TenantID != tid.String() || len(c.Roles) != 1 || c.Roles[0] != "OWNER" {
 		t.Fatalf("unexpected claims: %+v", c)
+	}
+
+	// Tanpa tenant: tidak ada `tid`, dan roles selalu kosong (role melekat pada membership tenant).
+	tok, _, _ = tk.Issue(uid, uuid.Nil, []string{"OWNER"})
+	if c, err = tk.Verify(tok); err != nil || c.TenantID != "" || len(c.Roles) != 0 {
+		t.Fatalf("token without tenant: want no tid and no roles, got %+v (%v)", c, err)
 	}
 }
 
@@ -54,7 +60,7 @@ func TestJWT_VerifiesTokenSignedByNonActiveKnownKid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, _, _ := old.Issue(uuid.Must(uuid.NewV7()), nil)
+	tok, _, _ := old.Issue(uuid.Must(uuid.NewV7()), uuid.Nil, nil)
 	if _, err := newTokens(t, clk).Verify(tok); err != nil {
 		t.Fatalf("token signed with known non-active kid should verify: %v", err)
 	}
@@ -89,27 +95,33 @@ func TestJWT_RejectsAlgSwap(t *testing.T) {
 	}
 }
 
-// Payload diubah (sub diganti ke user lain) tanpa menandatangani ulang → signature tidak cocok.
+// Payload diubah tanpa menandatangani ulang → signature tidak cocok. Demo A: `tid` diganti ke
+// tenant lain, atau role dinaikkan, ditolak di verifikasi signature (401), bukan di handler.
 func TestJWT_RejectsTamperedClaims(t *testing.T) {
 	clk := clock.NewFake(time.Now())
 	tk := newTokens(t, clk)
-	tok, _, _ := tk.Issue(uuid.Must(uuid.NewV7()), []string{"USER"})
-	parts := strings.Split(tok, ".")
-	payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
-	var m map[string]any
-	_ = json.Unmarshal(payload, &m)
-	m["roles"] = []string{"OPS"} // eskalasi hak akses
-	forged, _ := json.Marshal(m)
-	parts[1] = base64.RawURLEncoding.EncodeToString(forged)
-	if _, err := tk.Verify(strings.Join(parts, ".")); !errors.Is(err, auth.ErrTokenInvalid) {
-		t.Fatalf("tampered token must be rejected, got %v", err)
+	tok, _, _ := tk.Issue(uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), []string{"EMPLOYEE"})
+	for name, tamper := range map[string]func(map[string]any){
+		"tid swapped to another tenant": func(m map[string]any) { m["tid"] = uuid.NewString() },
+		"role escalated":                func(m map[string]any) { m["roles"] = []string{"OWNER"} },
+	} {
+		parts := strings.Split(tok, ".")
+		payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+		var m map[string]any
+		_ = json.Unmarshal(payload, &m)
+		tamper(m)
+		forged, _ := json.Marshal(m)
+		parts[1] = base64.RawURLEncoding.EncodeToString(forged)
+		if _, err := tk.Verify(strings.Join(parts, ".")); !errors.Is(err, auth.ErrTokenInvalid) {
+			t.Errorf("%s: tampered token must be rejected, got %v", name, err)
+		}
 	}
 }
 
 func TestJWT_RejectsUnknownKid(t *testing.T) {
 	clk := clock.NewFake(time.Now())
 	other, _ := auth.NewTokens(map[string][]byte{"kZ": keyA}, "kZ", "payrun", time.Minute, clk, idgen.V7{})
-	tok, _, _ := other.Issue(uuid.Must(uuid.NewV7()), nil)
+	tok, _, _ := other.Issue(uuid.Must(uuid.NewV7()), uuid.Nil, nil)
 	if _, err := newTokens(t, clk).Verify(tok); !errors.Is(err, auth.ErrTokenInvalid) {
 		t.Fatalf("unknown kid must be rejected, got %v", err)
 	}
@@ -118,7 +130,7 @@ func TestJWT_RejectsUnknownKid(t *testing.T) {
 func TestJWT_ExpiryWithClockSkew(t *testing.T) {
 	clk := clock.NewFake(time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC))
 	tk := newTokens(t, clk)
-	tok, _, _ := tk.Issue(uuid.Must(uuid.NewV7()), nil)
+	tok, _, _ := tk.Issue(uuid.Must(uuid.NewV7()), uuid.Nil, nil)
 
 	clk.Advance(15*time.Minute + 20*time.Second) // lewat exp, masih dalam toleransi 30 dtk
 	if _, err := tk.Verify(tok); err != nil {

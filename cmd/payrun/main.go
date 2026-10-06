@@ -23,6 +23,7 @@ import (
 
 	"payrun/db/migrations"
 	"payrun/internal/app"
+	"payrun/internal/modules/iam"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/config"
@@ -109,6 +110,7 @@ func runAPI() error {
 	deps := app.Deps{
 		Logger: logger, Pool: pool, Tokens: tokens, Clock: clk, IDs: ids, CookieSecure: cfg.CookieSecure,
 		AllowedOrigins: cfg.AllowedOrigins, TrustedProxies: cfg.TrustedProxies, PublicBaseURL: cfg.PublicBaseURL, Tiers: &tiers,
+		IAM: iam.Config{Argon2: auth.DefaultArgon2, RefreshTTL: cfg.RefreshTTL, RefreshFamilyTTL: cfg.RefreshFamilyTTL},
 	}
 	if err := deps.ValidateAPI(); err != nil {
 		return err

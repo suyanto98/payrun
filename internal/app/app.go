@@ -1,9 +1,8 @@
 // Package app merakit dependency dan router. Ini satu-satunya tempat yang boleh mengenal
 // semua modul sekaligus (composition root); modul tidak saling meng-import (ADR-001).
 //
-// Sprint 0: belum ada modul domain. Router sudah memasang middleware platform lengkap (request id,
-// recover, tracing, metrics, security header, client IP, access log, body limit) supaya setiap modul
-// yang ditambahkan mulai Sprint 1 otomatis mendapatkannya.
+// Router memasang middleware platform lengkap (request id, tracing, metrics, security header, client
+// IP, access log, recover, body limit) sebelum modul mana pun, sehingga setiap modul mendapatkannya.
 package app
 
 import (
@@ -19,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"payrun/db/migrations"
+	"payrun/internal/modules/iam"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
@@ -42,6 +42,8 @@ type Deps struct {
 	TrustedProxies []netip.Prefix
 	PublicBaseURL  string
 	Tiers          *ratelimit.Tiers // nil → ratelimit.DefaultTiers()
+
+	IAM iam.Config
 }
 
 // ValidateAPI memastikan dependency wajib API terisi. Wiring yang lupa harus menggagalkan boot,
@@ -54,6 +56,9 @@ func (d Deps) ValidateAPI() error {
 		if missing {
 			errs = append(errs, fmt.Errorf("app: dependency %s is required", name))
 		}
+	}
+	if d.IAM.Argon2.Memory == 0 || d.IAM.RefreshTTL <= 0 || d.IAM.RefreshFamilyTTL < d.IAM.RefreshTTL {
+		errs = append(errs, errors.New("app: IAM config (Argon2, RefreshTTL <= RefreshFamilyTTL) is required"))
 	}
 	return errors.Join(errs...)
 }
@@ -69,8 +74,23 @@ func APIRouter(d Deps) http.Handler {
 	// yang ada (dan konsisten dengan aturan "resource tenant lain = 404").
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, apperr.ErrNotFound) })
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, apperr.ErrNotFound) })
-	r.Route("/api/v1", func(chi.Router) {
-		// Modul didaftarkan di sini mulai Sprint 1: tenancy (signup), iam (session, switch tenant).
+	tiers := ratelimit.DefaultTiers()
+	if d.Tiers != nil {
+		tiers = *d.Tiers
+	}
+	limiter := ratelimit.New(d.Clock)
+	iamSvc := iam.NewService(d.Pool, d.Tokens, d.Clock, d.IDs, d.IAM)
+	iamH := iam.NewHandler(iamSvc, iam.HandlerConfig{
+		CookieSecure: d.CookieSecure, AllowedOrigins: d.AllowedOrigins, Limiter: limiter, Tiers: tiers,
+	})
+
+	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
+	r.Route("/api/v1", func(v1 chi.Router) {
+		authed := v1.With(auth.RequireUser(d.Tokens))
+		read := authed.With(limiter.Middleware(tiers.Read, byUser))
+		write := authed.With(limiter.Middleware(tiers.Write, byUser))
+		// Endpoint tenant-scoped (mulai tahap tenancy): authed.With(auth.RequireTenant, ...).
+		iamH.Routes(v1, read, write)
 	})
 	return r
 }
