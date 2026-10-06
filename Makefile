@@ -5,13 +5,18 @@ export PATH := $(GOBIN):$(PATH)
 
 COMPOSE := docker compose -f deploy/compose.yml
 REDOCLY := npx --yes @redocly/cli@1
+# trivy fs (C-26, docs/design/28-cicd.md job security-static): vuln dependency + misconfig (Dockerfile,
+# compose, workflow). Gagal hanya untuk CRITICAL/HIGH yang sudah punya fix. Versi sama dengan LedgerPay.
+TRIVY_FS := docker run --rm -v "$$PWD:/src:ro" aquasec/trivy:0.65.0 fs --no-progress --scanners vuln,misconfig \
+	--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --skip-dirs docs /src
 
-.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration lint lint-go lint-api lint-actions lint-shell gen gen-check security cover
+.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover
 
 help: ## Tampilkan daftar target
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-tools: ## Pasang toolchain Go (sqlc, goose, golangci-lint, actionlint, govulncheck) — versi sama dengan LedgerPay
+tools: ## Pasang toolchain Go (sqlc, goose, oapi-codegen, golangci-lint, actionlint, govulncheck)
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
 	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 	go install github.com/pressly/goose/v3/cmd/goose@v3.28.0
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
@@ -70,12 +75,23 @@ lint-api: ## Lint kontrak OpenAPI
 lint-actions: ## Lint workflow GitHub Actions
 	actionlint
 
-security: ## govulncheck + gitleaks (seluruh history)
+security: ## govulncheck + gitleaks (seluruh history) + trivy fs — sama dengan job CI `security`
 	govulncheck ./...
-	docker run --rm -v "$$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact
+	docker run --rm -v "$$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact --config /repo/.gitleaks.toml
+	$(MAKE) trivy-fs
 
-gen: ## Generate kode dari SQL (sqlc) — aktif mulai Sprint 1 (belum ada query)
+trivy-fs: ## trivy fs: vuln dependency + misconfig (Dockerfile, compose, workflow)
+	$(TRIVY_FS)
+
+gen: gen-api gen-sql ## Semua codegen (OpenAPI + SQL)
+
+gen-api: ## Generate types Go dari api/openapi.yaml (oapi-codegen) → api/gen
+	oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+
+gen-sql: ## Generate kode dari SQL (sqlc) — aktif mulai Sprint 1 (belum ada query)
 	sqlc generate
 
-gen-check: gen ## Pastikan kode hasil generate sudah di-commit (dipakai CI)
-	git diff --exit-code -- internal/
+# Sprint 0: hanya gen-api (sqlc menolak config tanpa query). Ganti ke `gen` bersama query pertama (Sprint 1).
+gen-check: gen-api ## Pastikan kode hasil generate sudah di-commit (dipakai CI)
+	@# git diff saja tidak melihat file BARU yang belum di-commit; status --porcelain melihat keduanya.
+	@test -z "$$(git status --porcelain -- api/gen internal/)" || { git status --porcelain -- api/gen internal/; git diff -- api/gen internal/; echo "kode generate tidak sinkron: jalankan make gen-api dan commit"; exit 1; }

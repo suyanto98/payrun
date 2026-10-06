@@ -31,8 +31,12 @@ jobs:
       - name: golangci-lint (gosec, depguard, ...)
         run: |
           "$(go env GOPATH)/bin/golangci-lint" run ./...
-      # Langkah "generated code is up to date (sqlc)" diaktifkan Sprint 1 bersama query pertama:
-      # sqlc menolak konfigurasi tanpa package ("no packages").
+      - name: Generated code is up to date (oapi-codegen)
+        run: |
+          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
+          make gen-check
+      # sqlc ikut gen-check mulai Sprint 1 bersama query pertama: sqlc menolak konfigurasi tanpa
+      # package ("no packages").
 
   unit:
     runs-on: ubuntu-latest
@@ -105,6 +109,8 @@ jobs:
           "$(go env GOPATH)/bin/govulncheck" ./...
       - name: gitleaks (seluruh history)
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact --config /repo/.gitleaks.toml
+      - name: trivy fs (vuln + misconfig; gagal CRITICAL/HIGH yang punya fix)
+        run: make trivy-fs
 
   lint-openapi:
     runs-on: ubuntu-latest

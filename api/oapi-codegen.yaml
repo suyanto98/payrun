@@ -1,0 +1,7 @@
+# oapi-codegen (ADR-003, spec-first). `make gen-api` → api/gen; hasil di-commit dan dicek CI (gen-check).
+# Sprint 0: types saja (model + parameter). Server interface chi (`chi-server: true`) diaktifkan saat
+# endpoint pertama diimplementasikan (Sprint 1), supaya tidak ada 78 operasi "unimplemented" yang terpasang.
+package: gen
+output: api/gen/types.gen.go
+generate:
+  models: true
