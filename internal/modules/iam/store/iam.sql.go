@@ -219,6 +219,26 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const employeeReservedByInvitation = `-- name: EmployeeReservedByInvitation :one
+SELECT EXISTS (SELECT 1 FROM invitations
+               WHERE employee_id = $1 AND membership_id <> $2
+                 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > $3)
+`
+
+type EmployeeReservedByInvitationParams struct {
+	EmployeeID   *uuid.UUID
+	MembershipID uuid.UUID
+	Now          time.Time
+}
+
+// [tenant] Employee sudah dicadangkan undangan lain yang masih berlaku (email lain).
+func (q *Queries) EmployeeReservedByInvitation(ctx context.Context, arg EmployeeReservedByInvitationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, employeeReservedByInvitation, arg.EmployeeID, arg.MembershipID, arg.Now)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getActiveMembership = `-- name: GetActiveMembership :one
 SELECT m.tenant_id, t.name AS tenant_name, t.status AS tenant_status, m.roles
 FROM memberships m
@@ -341,6 +361,26 @@ func (q *Queries) GetInvitationForUpdate(ctx context.Context, tokenHash []byte) 
 	return i, err
 }
 
+const getPendingMembershipByEmail = `-- name: GetPendingMembershipByEmail :one
+SELECT id, roles FROM memberships
+WHERE status = 'INVITED' AND lower(invited_email) = lower($1)
+FOR UPDATE
+`
+
+type GetPendingMembershipByEmailRow struct {
+	ID    uuid.UUID
+	Roles []string
+}
+
+// [tenant] Undangan INVITED untuk email ini (re-invite: link baru menggantikan link lama). FOR UPDATE:
+// dua re-invite paralel diserialkan.
+func (q *Queries) GetPendingMembershipByEmail(ctx context.Context, email string) (GetPendingMembershipByEmailRow, error) {
+	row := q.db.QueryRow(ctx, getPendingMembershipByEmail, email)
+	var i GetPendingMembershipByEmailRow
+	err := row.Scan(&i.ID, &i.Roles)
+	return i, err
+}
+
 const getRefreshTokenForUpdate = `-- name: GetRefreshTokenForUpdate :one
 SELECT id, user_id, family_id, used_at, revoked_at, expires_at, family_expires_at
 FROM refresh_tokens
@@ -373,6 +413,18 @@ func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, tokenHash []byte
 		&i.FamilyExpiresAt,
 	)
 	return i, err
+}
+
+const getTenantStatus = `-- name: GetTenantStatus :one
+SELECT status FROM tenants WHERE id = $1
+`
+
+// [tenant] Accept undangan hanya untuk tenant ACTIVE.
+func (q *Queries) GetTenantStatus(ctx context.Context, id uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getTenantStatus, id)
+	var status string
+	err := row.Scan(&status)
+	return status, err
 }
 
 const getUser = `-- name: GetUser :one
@@ -747,6 +799,22 @@ func (q *Queries) RevokeFamily(ctx context.Context, arg RevokeFamilyParams) (int
 	return result.RowsAffected(), nil
 }
 
+const revokePendingInvitations = `-- name: RevokePendingInvitations :exec
+UPDATE invitations SET revoked_at = $1
+WHERE membership_id = $2 AND accepted_at IS NULL AND revoked_at IS NULL
+`
+
+type RevokePendingInvitationsParams struct {
+	Now          *time.Time
+	MembershipID uuid.UUID
+}
+
+// [tenant] Link lama (belum diterima) dimatikan saat undangan dikirim ulang (12-db-schema §2.3).
+func (q *Queries) RevokePendingInvitations(ctx context.Context, arg RevokePendingInvitationsParams) error {
+	_, err := q.db.Exec(ctx, revokePendingInvitations, arg.Now, arg.MembershipID)
+	return err
+}
+
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
 UPDATE refresh_tokens SET revoked_at = $1, revoke_reason = $2
 WHERE user_id = $3 AND revoked_at IS NULL
@@ -761,5 +829,22 @@ type RevokeUserRefreshTokensParams struct {
 // [none] Semua sesi user dicabut (kredensial berganti).
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.Now, arg.Reason, arg.UserID)
+	return err
+}
+
+const updateInvitedRoles = `-- name: UpdateInvitedRoles :exec
+UPDATE memberships SET roles = $1, updated_by = $2, version = version + 1
+WHERE id = $3 AND status = 'INVITED'
+`
+
+type UpdateInvitedRolesParams struct {
+	Roles []string
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+// [tenant]
+func (q *Queries) UpdateInvitedRoles(ctx context.Context, arg UpdateInvitedRolesParams) error {
+	_, err := q.db.Exec(ctx, updateInvitedRoles, arg.Roles, arg.Actor, arg.ID)
 	return err
 }

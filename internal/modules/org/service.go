@@ -147,7 +147,7 @@ func (s *Service) List(ctx context.Context, k Kind, status string) ([]Unit, erro
 var codePattern = regexp.MustCompile(`^[A-Z0-9_]{1,20}$`)
 
 func validName(name string) *apperr.FieldError {
-	if n := utf8.RuneCountInString(name); n < 1 || n > 100 {
+	if n := utf8.RuneCountInString(name); n < 1 || n > 100 || strings.IndexFunc(name, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return &apperr.FieldError{Field: "name", Code: "LENGTH", Message: "must be 1..100 characters"}
 	}
 	return nil

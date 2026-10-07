@@ -5,10 +5,13 @@ import LoginView from './pages/LoginView.vue'
 import SelectTenantView from './pages/SelectTenantView.vue'
 import EmployeesView from './pages/EmployeesView.vue'
 import EmployeeDetailView from './pages/EmployeeDetailView.vue'
+import InviteView from './pages/InviteView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
     guest?: boolean
+    /** Boleh dibuka dengan atau tanpa login (halaman undangan). */
+    public?: boolean
     /** Halaman yang butuh tenant aktif (token ber-`tid`). */
     tenant?: boolean
     title?: string
@@ -19,6 +22,7 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: LoginView, meta: { guest: true } },
+    { path: '/invite', component: InviteView, meta: { public: true, title: 'Undangan' } },
     { path: '/select-tenant', component: SelectTenantView, meta: { title: 'Pilih perusahaan' } },
     { path: '/', redirect: '/employees' },
     { path: '/employees', component: EmployeesView, meta: { tenant: true, title: 'Karyawan' } },
@@ -32,7 +36,15 @@ router.beforeEach(async (to) => {
     await auth.refresh() // sesi dipulihkan dari cookie; access token tidak pernah disimpan
     auth.ready = true
   }
-  if (!to.meta.guest && !auth.loggedIn) return { path: '/login', query: { next: to.fullPath } }
+  // Undangan: rahasia di fragment dipindah ke memori dan dihapus dari URL OLEH ROUTER (redirect tanpa
+  // hash). replaceState manual tidak cukup: navigasi awal router menulis ulang URL lengkap.
+  if (to.path === '/invite' && to.hash.length > 1) {
+    auth.pendingInvite = decodeURIComponent(to.hash.slice(1))
+    return { path: '/invite', hash: '', replace: true }
+  }
+  if (to.meta.public) return
+  // `next` memakai path + query saja, TANPA hash: fragment bisa berisi rahasia (undangan).
+  if (!to.meta.guest && !auth.loggedIn) return { path: '/login', query: { next: to.path } }
   if (to.meta.guest && auth.loggedIn) return '/'
   if (to.meta.tenant && !auth.tenant) return '/select-tenant'
   // EMPLOYEE tanpa akses daftar (W1 → 403): langsung ke profilnya sendiri.
@@ -40,3 +52,9 @@ router.beforeEach(async (to) => {
     return auth.employeeId ? `/employees/${auth.employeeId}` : '/select-tenant'
   }
 })
+
+/** Hanya path internal ("/x"), bukan "//host" atau URL absolut (open redirect). */
+export function safeNext(next: unknown): string {
+  return typeof next === 'string' && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : '/'
+}
+

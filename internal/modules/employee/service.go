@@ -208,6 +208,9 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 		afterKey, afterID = &after.Key, &after.ID
 	}
 	lim := lq.Limit + 1 // satu ekstra untuk has_more
+	// sort_key dari SQL (lower() Postgres): kunci cursor harus PERSIS kunci urut di DB. strings.ToLower
+	// Go bisa berbeda untuk nama non-ASCII → baris terlewat/berulang (review S2).
+	var sortKeys []string
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
 		st := store.New(tx)
 		if q == "" {
@@ -232,6 +235,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 				return err
 			}
 			items = append(items, ListItem{ID: r.ID, EmployeeNo: r.EmployeeNo, FullName: r.FullName, Status: r.Status, HireDate: r.HireDate.Format(dateLayout)})
+			sortKeys = append(sortKeys, r.SortKey)
 		}
 		return nil
 	})
@@ -244,7 +248,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 		lastSent := items[len(items)-1]
 		key := lastSent.EmployeeNo
 		if q != "" {
-			key = strings.ToLower(lastSent.FullName)
+			key = sortKeys[len(items)-1]
 		}
 		c := httpx.EncodeKeyCursor(httpx.KeyCursor{Key: key, ID: lastSent.ID})
 		page = httpx.Page{NextCursor: &c, HasMore: true}
@@ -287,7 +291,15 @@ type piiFields struct {
 	sealedNIK, sealedNPWP, sAcc *sealed
 }
 
-func validFullName(v string) bool { n := utf8.RuneCountInString(v); return n >= 1 && n <= 120 }
+// validFullName: 1..120 karakter, tanpa karakter kontrol (NUL ditolak Postgres → 500; review S2).
+func validFullName(v string) bool {
+	n := utf8.RuneCountInString(v)
+	return n >= 1 && n <= 120 && !hasControl(v)
+}
+
+func hasControl(v string) bool {
+	return strings.IndexFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0
+}
 
 func validEmail(v string) bool {
 	a, err := mail.ParseAddress(v)
@@ -320,7 +332,7 @@ func collectPII(nik, npwp *string, bank *BankInput, fe *[]apperr.FieldError) pii
 		}
 		if bank.Name != nil {
 			v := strings.TrimSpace(*bank.Name)
-			if n := utf8.RuneCountInString(v); n < 1 || n > 50 {
+			if n := utf8.RuneCountInString(v); n < 1 || n > 50 || hasControl(v) {
 				*fe = append(*fe, apperr.FieldError{Field: "bank.name", Code: "LENGTH", Message: "must be 1..50 characters"})
 			}
 			f.bankName = &v
@@ -541,6 +553,10 @@ func (s *Service) Update(ctx context.Context, p auth.Principal, id uuid.UUID, pr
 			params.PiiKeyVersion = ptr(s.pii.Keyring.ActiveVersion())
 		}
 		changed = append(changed, f.names()...)
+		if len(changed) == 0 {
+			// PATCH {} tidak menaikkan versi dan tidak menulis audit kosong (review S2).
+			return apperr.Validation(apperr.FieldError{Field: "body", Code: "REQUIRED", Message: "at least one field"})
+		}
 		if _, err := q.UpdateEmployee(ctx, params); errors.Is(err, pgx.ErrNoRows) {
 			// 0 baris: tidak ada / tenant lain (404) ATAU versi basi (412). Wajib dibedakan lewat lookup:
 			// menjawab 412 untuk id tenant lain membocorkan keberadaannya (ditangkap TestCrossTenant).
@@ -581,7 +597,7 @@ func (s *Service) Terminate(ctx context.Context, p auth.Principal, id uuid.UUID,
 		fe = append(fe, apperr.FieldError{Field: "end_date", Code: "FORMAT", Message: "must be YYYY-MM-DD"})
 	}
 	in.Reason = strings.TrimSpace(in.Reason)
-	if utf8.RuneCountInString(in.Reason) > 500 {
+	if utf8.RuneCountInString(in.Reason) > 500 || strings.ContainsRune(in.Reason, 0) {
 		fe = append(fe, apperr.FieldError{Field: "reason", Code: "LENGTH", Message: "must be at most 500 characters"})
 	}
 	if len(fe) > 0 {

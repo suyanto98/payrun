@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import AuthLayout from '../components/AuthLayout.vue'
 import { useAuth } from '../stores/auth'
+import { safeNext } from '../router'
 
 const email = ref('')
 const password = ref('')
@@ -20,7 +21,8 @@ async function submit() {
   try {
     await auth.login(email.value, password.value)
     // Belum ada tenant aktif (punya beberapa perusahaan, atau belum terverifikasi) → pilih dulu.
-    router.push(auth.tenant ? (route.query.next as string) || '/' : '/select-tenant')
+    if (auth.pendingInvite) router.push('/invite') // kembali ke undangan yang sedang dibuka
+    else router.push(auth.tenant ? safeNext(route.query.next) : '/select-tenant')
   } catch (e) {
     error.value = (e as Error).message
   } finally {

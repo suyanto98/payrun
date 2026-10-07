@@ -177,3 +177,30 @@ WHERE (sqlc.narg(status)::text IS NULL OR m.status = sqlc.narg(status))
        OR (m.created_at, m.id) < (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY m.created_at DESC, m.id DESC
 LIMIT @lim;
+
+-- name: GetPendingMembershipByEmail :one
+-- [tenant] Undangan INVITED untuk email ini (re-invite: link baru menggantikan link lama). FOR UPDATE:
+-- dua re-invite paralel diserialkan.
+SELECT id, roles FROM memberships
+WHERE status = 'INVITED' AND lower(invited_email) = lower(@email)
+FOR UPDATE;
+
+-- name: UpdateInvitedRoles :exec
+-- [tenant]
+UPDATE memberships SET roles = @roles, updated_by = @actor, version = version + 1
+WHERE id = @id AND status = 'INVITED';
+
+-- name: RevokePendingInvitations :exec
+-- [tenant] Link lama (belum diterima) dimatikan saat undangan dikirim ulang (12-db-schema §2.3).
+UPDATE invitations SET revoked_at = @now
+WHERE membership_id = @membership_id AND accepted_at IS NULL AND revoked_at IS NULL;
+
+-- name: EmployeeReservedByInvitation :one
+-- [tenant] Employee sudah dicadangkan undangan lain yang masih berlaku (email lain).
+SELECT EXISTS (SELECT 1 FROM invitations
+               WHERE employee_id = @employee_id AND membership_id <> @membership_id
+                 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > @now);
+
+-- name: GetTenantStatus :one
+-- [tenant] Accept undangan hanya untuk tenant ACTIVE.
+SELECT status FROM tenants WHERE id = @id;

@@ -92,6 +92,7 @@ func (s *Service) Invite(ctx context.Context, p auth.Principal, in InviteInput, 
 	now := s.clock.Now()
 	inv := Invitation{MembershipID: s.ids.New(), Status: "INVITED", ExpiresAt: now.Add(invitationTTL),
 		InviteURL: s.cfg.PublicBaseURL + "/invite#" + tid.String() + "." + secret}
+	action := "membership.invited"
 	err = db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		exists, err := q.ActiveMemberEmailExists(ctx, email)
@@ -101,6 +102,35 @@ func (s *Service) Invite(ctx context.Context, p auth.Principal, in InviteInput, 
 		if exists {
 			return apperr.ErrMembershipExists
 		}
+		// Re-invite (review S2): undangan INVITED untuk email yang sama TIDAK menghalangi. Link lama
+		// (kedaluwarsa, hilang, atau respons 201 tidak sampai) dimatikan dan diganti link baru pada
+		// membership yang sama. HR_ADMIN tidak boleh menimpa undangan ber-role admin buatan OWNER.
+		pending, err := q.GetPendingMembershipByEmail(ctx, email)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			if err := q.CreateInvitedMembership(ctx, store.CreateInvitedMembershipParams{
+				TenantID: tid, ID: inv.MembershipID, Email: email, Roles: roles, Actor: &p.UserID,
+			}); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		default:
+			if !p.HasRole(auth.RoleOwner) {
+				for _, r := range pending.Roles {
+					if r != auth.RoleManager && r != auth.RoleEmployee {
+						return apperr.ErrForbidden.WithDetail("HR_ADMIN cannot replace an invitation with admin roles")
+					}
+				}
+			}
+			inv.MembershipID, action = pending.ID, "membership.reinvited"
+			if err := q.UpdateInvitedRoles(ctx, store.UpdateInvitedRolesParams{Roles: roles, Actor: &p.UserID, ID: pending.ID}); err != nil {
+				return err
+			}
+			if err := q.RevokePendingInvitations(ctx, store.RevokePendingInvitationsParams{Now: &now, MembershipID: pending.ID}); err != nil {
+				return err
+			}
+		}
 		if in.EmployeeID != nil {
 			if s.linker == nil {
 				return errors.New("iam: employee linker not wired")
@@ -108,11 +138,15 @@ func (s *Service) Invite(ctx context.Context, p auth.Principal, in InviteInput, 
 			if err := s.linker.CheckLinkableTx(ctx, tx, *in.EmployeeID); err != nil {
 				return err
 			}
-		}
-		if err := q.CreateInvitedMembership(ctx, store.CreateInvitedMembershipParams{
-			TenantID: tid, ID: inv.MembershipID, Email: email, Roles: roles, Actor: &p.UserID,
-		}); err != nil {
-			return err
+			// Satu employee hanya boleh dicadangkan satu undangan yang masih berlaku.
+			reserved, err := q.EmployeeReservedByInvitation(ctx, store.EmployeeReservedByInvitationParams{
+				EmployeeID: in.EmployeeID, MembershipID: inv.MembershipID, Now: now})
+			if err != nil {
+				return err
+			}
+			if reserved {
+				return apperr.ErrInvalidState.WithDetail("Employee already has a pending invitation")
+			}
 		}
 		invID := s.ids.New()
 		if err := q.CreateInvitation(ctx, store.CreateInvitationParams{
@@ -125,7 +159,7 @@ func (s *Service) Invite(ctx context.Context, p auth.Principal, in InviteInput, 
 		if in.EmployeeID != nil {
 			diff["employee_id"] = in.EmployeeID.String()
 		}
-		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "membership.invited",
+		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: action,
 			TargetType: "membership", TargetID: inv.MembershipID, Diff: diff}, meta)
 	})
 	if err != nil {
@@ -185,8 +219,13 @@ func (s *Service) AcceptInvitation(ctx context.Context, userID uuid.UUID, token 
 		if err := db.GuardTenantFor(ctx, tid, "invitations", inv.TenantID); err != nil {
 			return err
 		}
-		if inv.AcceptedAt != nil || inv.RevokedAt != nil || !now.Before(inv.ExpiresAt) || !strings.EqualFold(inv.Email, email) {
+		// Email dibandingkan byte-per-byte setelah lowercase (keduanya disimpan lowercase), BUKAN
+		// strings.EqualFold yang memakai Unicode folding (contoh tanda Kelvin "K" = "k").
+		if inv.AcceptedAt != nil || inv.RevokedAt != nil || !now.Before(inv.ExpiresAt) || inv.Email != strings.ToLower(email) {
 			return apperr.ErrInvitationInvalid
+		}
+		if st, err := q.GetTenantStatus(ctx, tid); err != nil || st != "ACTIVE" {
+			return apperr.ErrInvitationInvalid // tenant belum aktif / ditangguhkan: undangan tidak bisa dipakai
 		}
 		m, err := q.AcceptMembership(ctx, store.AcceptMembershipParams{UserID: &userID, Now: &now, ID: inv.MembershipID})
 		if errors.Is(err, pgx.ErrNoRows) {

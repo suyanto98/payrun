@@ -46,6 +46,9 @@ func TestDepartments_CRUDAndConcurrency(t *testing.T) {
 	if r, b := e.doH(t, http.MethodPatch, path, tok, map[string]string{"If-Match": `"1"`}, map[string]any{"name": "Lagi"}); r.StatusCode != http.StatusPreconditionFailed || b["code"] != "VERSION_CONFLICT" {
 		t.Fatalf("stale If-Match: want 412, got %d %v", r.StatusCode, b)
 	}
+	if r, b := e.doH(t, http.MethodPatch, path, tok, map[string]string{"If-Match": `"2"`}, map[string]any{"name": "nul\u0000byte"}); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("control character in name: want 400 (not 500), got %d %v", r.StatusCode, b)
+	}
 	if r, b := e.doH(t, http.MethodPatch, path, tok, map[string]string{"If-Match": `"2"`}, map[string]any{"name": "X", "code": "NEW"}); r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("code is immutable (unknown field): want 400, got %d %v", r.StatusCode, b)
 	}
@@ -246,6 +249,9 @@ func TestEmployee_Terminate(t *testing.T) {
 	if r, b := e.doH(t, http.MethodPost, path, f.tokens[roleH], map[string]string{"If-Match": `"2"`}, body); r.StatusCode != http.StatusConflict || b["code"] != "INVALID_STATE_TRANSITION" {
 		t.Fatalf("second terminate: want 409, got %d %v", r.StatusCode, b)
 	}
+	if r, b := e.doH(t, http.MethodPatch, "/api/v1/employees/"+f.empSelf.String(), f.tokens[roleH], map[string]string{"If-Match": `"1"`}, map[string]any{}); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty PATCH: want 400 without bumping the version, got %d %v", r.StatusCode, b)
+	}
 	if n := e.auditCount(t, f.id, "employee.terminated"); n != 1 {
 		t.Fatalf("terminate audit: %d", n)
 	}
@@ -273,9 +279,20 @@ func TestInvitation_InviteAcceptAndLinkEmployee(t *testing.T) {
 	if r.StatusCode != http.StatusCreated || inv["status"] != "INVITED" || r.Header.Get("Cache-Control") != "no-store" {
 		t.Fatalf("invite: %d %v", r.StatusCode, inv)
 	}
-	token := inviteToken(t, inv)
-	if r, b := e.do(t, http.MethodPost, "/api/v1/invitations", f.tokens[roleH], map[string]any{"email": "tono@alpha.test", "roles": []string{"EMPLOYEE"}}); r.StatusCode != http.StatusConflict || b["code"] != "MEMBERSHIP_EXISTS" {
-		t.Fatalf("second invitation for the same email: want 409, got %d %v", r.StatusCode, b)
+	oldToken := inviteToken(t, inv)
+	// Re-invite (review S2): link lama hilang/kedaluwarsa → undangan baru untuk email yang sama
+	// menggantikan link lama pada membership yang sama, bukan 409.
+	r, inv2 := e.do(t, http.MethodPost, "/api/v1/invitations", f.tokens[roleH], map[string]any{"email": "tono@alpha.test", "roles": []string{"EMPLOYEE"}, "employee_id": emp})
+	if r.StatusCode != http.StatusCreated || inv2["membership_id"] != inv["membership_id"] {
+		t.Fatalf("re-invite: want 201 on the same membership, got %d %v", r.StatusCode, inv2)
+	}
+	token := inviteToken(t, inv2)
+	if e.auditCount(t, f.id, "membership.reinvited") != 1 {
+		t.Fatal("re-invite must be audited")
+	}
+	// Employee yang sama tidak boleh dicadangkan undangan lain (email lain) yang masih berlaku.
+	if r, b := e.do(t, http.MethodPost, "/api/v1/invitations", f.tokens[roleH], map[string]any{"email": "lain@alpha.test", "roles": []string{"EMPLOYEE"}, "employee_id": emp}); r.StatusCode != http.StatusConflict || b["code"] != "INVALID_STATE_TRANSITION" {
+		t.Fatalf("employee reserved by another pending invitation: want 409, got %d %v", r.StatusCode, b)
 	}
 
 	tono := e.createUser(t, "tono@alpha.test")
@@ -292,6 +309,9 @@ func TestInvitation_InviteAcceptAndLinkEmployee(t *testing.T) {
 		t.Fatalf("email mismatch: want 410, got %d %v", r.StatusCode, b)
 	}
 
+	if r, _ := e.do(t, http.MethodPost, "/api/v1/invitations/accept", tonoTok, map[string]string{"token": oldToken}); r.StatusCode != http.StatusGone {
+		t.Fatalf("link replaced by a re-invite: want 410, got %d", r.StatusCode)
+	}
 	r, acc := e.do(t, http.MethodPost, "/api/v1/invitations/accept", tonoTok, map[string]string{"token": token})
 	m, _ := acc["membership"].(map[string]any)
 	if r.StatusCode != http.StatusOK || m["status"] != "ACTIVE" || m["tenant_id"] != f.id.String() {
@@ -345,6 +365,21 @@ func TestInvitation_RulesAndBadTokens(t *testing.T) {
 		if r, b := e.do(t, http.MethodPost, "/api/v1/invitations/accept", zTok, map[string]string{"token": bad}); r.StatusCode != http.StatusGone || b["code"] != "INVITATION_INVALID" {
 			t.Fatalf("%s: want 410 INVITATION_INVALID, got %d %v", name, r.StatusCode, b)
 		}
+	}
+	// HR_ADMIN tidak boleh menimpa undangan ber-role admin buatan OWNER.
+	e.do(t, http.MethodPost, "/api/v1/invitations", f.tokens[roleO], map[string]any{"email": "admin2@alpha.test", "roles": []string{"PAYROLL_ADMIN"}})
+	if r, b := e.do(t, http.MethodPost, "/api/v1/invitations", f.tokens[roleH], map[string]any{"email": "admin2@alpha.test", "roles": []string{"EMPLOYEE"}}); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("HR replacing an admin invitation: want 403, got %d %v", r.StatusCode, b)
+	}
+	// Tenant yang ditangguhkan: undangan tidak bisa dipakai.
+	if _, err := e.tdb.Super(t).Exec(context.Background(), `UPDATE payrun.tenants SET status = 'SUSPENDED', suspended_at = now() WHERE id = $1`, f.id); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := e.do(t, http.MethodPost, "/api/v1/invitations/accept", zTok, map[string]string{"token": token}); r.StatusCode != http.StatusGone {
+		t.Fatalf("suspended tenant: want 410, got %d", r.StatusCode)
+	}
+	if _, err := e.tdb.Super(t).Exec(context.Background(), `UPDATE payrun.tenants SET status = 'ACTIVE', suspended_at = NULL WHERE id = $1`, f.id); err != nil {
+		t.Fatal(err)
 	}
 	e.clk.Advance(7*24*time.Hour + time.Second)
 	zTok, _, _ = e.login(t, "z@alpha.test") // access token lama ikut kedaluwarsa

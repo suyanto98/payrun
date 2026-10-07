@@ -24,6 +24,9 @@ export const useAuth = defineStore('auth', {
     emailVerified: true,
     tenant: null as ActiveTenant | null,
     employeeId: null as string | null,
+    // Token undangan (`<tenant_id>.<secret>`) dari fragment /invite#… — HANYA di memori: tidak pernah
+    // masuk URL query, storage, atau log (review S2).
+    pendingInvite: '' as string,
     ready: false,
   }),
   getters: {
@@ -92,6 +95,7 @@ export const useAuth = defineStore('auth', {
     },
     async logout() {
       await fetch('/api/v1/auth/logout', { method: 'POST', headers: cookieHeaders })
+      storeTenant('') // user berikutnya di perangkat ini tidak mewarisi tenant terakhir
       this.$reset()
       this.ready = true
     },
