@@ -1,0 +1,137 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "5000000",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "22",
+        "from": "2026-03-01",
+        "period_days": "22",
+        "salary": "5000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp5.000.000 × 22/22 hari kerja (1 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "TUNJ_JABATAN",
+      "name": "Tunjangan jabatan",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "1000000",
+      "basis": {
+        "amount": "1000000",
+        "days": "22",
+        "period_days": "22"
+      },
+      "explanation": "Tunjangan jabatan Rp1.000.000 (aktif penuh)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "TUNJ_KINERJA",
+      "name": "Tunjangan kinerja",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "100000",
+      "basis": {
+        "base": "1000000",
+        "base_ref": "TUNJ_JABATAN",
+        "rate": "0.1"
+      },
+      "explanation": "10% × tunj jabatan Rp1.000.000",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BONUS_KECIL",
+      "name": "Bonus kecil",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "50000",
+      "basis": {
+        "base": "100000",
+        "base_ref": "TUNJ_KINERJA",
+        "rate": "0.5"
+      },
+      "explanation": "50% × tunj kinerja Rp100.000",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "120000",
+      "basis": {
+        "base": "6000000",
+        "capped_base": "6000000",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp6.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "60000",
+      "basis": {
+        "base": "6000000",
+        "capped_base": "6000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "60000",
+      "basis": {
+        "base": "6000000",
+        "capped_base": "6000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "PPH21",
+      "name": "PPh 21 (simplified)",
+      "category": "DEDUCTION",
+      "stage": "TAX",
+      "amount": "61500",
+      "basis": {
+        "category": "A",
+        "rate": "0.01",
+        "taxable_gross": "6150000"
+      },
+      "explanation": "Kategori A: penghasilan kena pajak Rp6.150.000 × 1% (bracket Rp5.400.000–Rp7.000.000)",
+      "taxable": false,
+      "rounding": "DOWN"
+    }
+  ],
+  "gross": "6150000",
+  "deductions": "301500",
+  "net": "5848500",
+  "errors": [],
+  "warnings": []
+}

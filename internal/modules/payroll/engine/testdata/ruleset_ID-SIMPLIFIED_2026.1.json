@@ -1,0 +1,38 @@
+{
+  "code": "ID-SIMPLIFIED",
+  "version": "2026.1",
+  "label": "simplified — not compliance-certified",
+  "overtime_divisor": "173",
+  "overtime_tiers": [
+    { "from_hour": "0", "multiplier": "1.5" },
+    { "from_hour": "1", "multiplier": "2" }
+  ],
+  "statutory": [
+    { "code": "BPJS_JHT_EE", "rate": "0.02", "rounding": "HALF_UP" },
+    { "code": "BPJS_JP_EE", "rate": "0.01", "cap_max": "10000000", "rounding": "HALF_UP" },
+    { "code": "BPJS_KES_EE", "rate": "0.01", "cap_max": "12000000", "rounding": "HALF_UP" }
+  ],
+  "tax_brackets": {
+    "A": [
+      { "max": "5400000", "rate": "0" },
+      { "max": "7000000", "rate": "0.01" },
+      { "max": "7500000", "rate": "0.015" },
+      { "max": "9000000", "rate": "0.02" },
+      { "max": "12000000", "rate": "0.03" },
+      { "rate": "0.05" }
+    ],
+    "B": [
+      { "max": "6200000", "rate": "0" },
+      { "max": "8000000", "rate": "0.01" },
+      { "max": "10000000", "rate": "0.02" },
+      { "rate": "0.04" }
+    ],
+    "C": [
+      { "max": "6600000", "rate": "0" },
+      { "max": "9000000", "rate": "0.01" },
+      { "max": "12000000", "rate": "0.02" },
+      { "rate": "0.04" }
+    ]
+  },
+  "tax_rounding": "DOWN"
+}

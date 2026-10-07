@@ -1,0 +1,95 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "1136364",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "5",
+        "from": "2026-03-01",
+        "period_days": "22",
+        "salary": "5000000",
+        "to": "2026-03-07"
+      },
+      "explanation": "Gaji pokok Rp5.000.000 × 5/22 hari kerja (1 Mar–6 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "1590909",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "7",
+        "from": "2026-03-23",
+        "period_days": "22",
+        "salary": "5000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp5.000.000 × 7/22 hari kerja (23 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "54545",
+      "basis": {
+        "base": "2727273",
+        "capped_base": "2727273",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp2.727.273",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "27273",
+      "basis": {
+        "base": "2727273",
+        "capped_base": "2727273",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp2.727.273",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "27273",
+      "basis": {
+        "base": "2727273",
+        "capped_base": "2727273",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp2.727.273",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    }
+  ],
+  "gross": "2727273",
+  "deductions": "109091",
+  "net": "2618182",
+  "errors": [],
+  "warnings": []
+}

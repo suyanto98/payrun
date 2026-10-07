@@ -1,0 +1,124 @@
+{
+  "snapshot_version": 1,
+  "employee_id": "00000000-0000-7000-8000-000000000001",
+  "period": {
+    "from": "2026-03-01",
+    "to": "2026-04-01"
+  },
+  "work_days": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "holidays": [],
+  "employment": [
+    {
+      "from": "2025-01-01",
+      "to": null
+    }
+  ],
+  "salary": [
+    {
+      "range": {
+        "from": "2025-01-01",
+        "to": null
+      },
+      "base_salary": "5000000"
+    }
+  ],
+  "components": [
+    {
+      "def": {
+        "code": "BPJS_JHT_EE",
+        "name": "BPJS JHT (karyawan)",
+        "category": "DEDUCTION",
+        "stage": "STATUTORY",
+        "calc_type": "PERCENT_OF",
+        "ruleset_ref": "BPJS_JHT_EE",
+        "base_ref": "BPJS_WAGE",
+        "taxable": false,
+        "bpjs_base": false,
+        "rounding": "HALF_UP",
+        "active": true
+      },
+      "range": {
+        "from": "2026-01-01",
+        "to": null
+      }
+    },
+    {
+      "def": {
+        "code": "BPJS_JP_EE",
+        "name": "BPJS JP (karyawan)",
+        "category": "DEDUCTION",
+        "stage": "STATUTORY",
+        "calc_type": "PERCENT_OF",
+        "ruleset_ref": "BPJS_JP_EE",
+        "base_ref": "BPJS_WAGE",
+        "taxable": false,
+        "bpjs_base": false,
+        "rounding": "HALF_UP",
+        "active": true
+      },
+      "range": {
+        "from": "2026-01-01",
+        "to": null
+      }
+    },
+    {
+      "def": {
+        "code": "BPJS_KES_EE",
+        "name": "BPJS Kesehatan (karyawan)",
+        "category": "DEDUCTION",
+        "stage": "STATUTORY",
+        "calc_type": "PERCENT_OF",
+        "ruleset_ref": "BPJS_KES_EE",
+        "base_ref": "BPJS_WAGE",
+        "taxable": false,
+        "bpjs_base": false,
+        "rounding": "HALF_UP",
+        "active": true
+      },
+      "range": {
+        "from": "2026-01-01",
+        "to": null
+      }
+    },
+    {
+      "def": {
+        "code": "TRANSPORT",
+        "name": "Uang transport",
+        "category": "EARNING",
+        "stage": "EARNING",
+        "calc_type": "PER_DAY",
+        "default_amount": "25000",
+        "day_source": "PRESENT",
+        "taxable": true,
+        "bpjs_base": false,
+        "rounding": "HALF_UP",
+        "active": true
+      },
+      "range": {
+        "from": "2025-01-01",
+        "to": null
+      }
+    }
+  ],
+  "attendance": [
+    {
+      "date": "2026-03-12",
+      "status": "INCOMPLETE"
+    }
+  ],
+  "overtime": [],
+  "adjustments": [],
+  "tax_category": "A",
+  "policy": {
+    "proration_basis": "WORKING_DAYS",
+    "overtime_basis": "BASE",
+    "incomplete_policy": "COUNT_AS_PRESENT",
+    "overtime_max_hours_per_day": "4"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "15000000",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "22",
+        "from": "2026-03-01",
+        "period_days": "22",
+        "salary": "15000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp15.000.000 × 22/22 hari kerja (1 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "300000",
+      "basis": {
+        "base": "15000000",
+        "capped_base": "15000000",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp15.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "100000",
+      "basis": {
+        "base": "15000000",
+        "capped_base": "10000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × Rp10.000.000 (upah BPJS Rp15.000.000, dibatasi cap)",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "120000",
+      "basis": {
+        "base": "15000000",
+        "capped_base": "12000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × Rp12.000.000 (upah BPJS Rp15.000.000, dibatasi cap)",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "PPH21",
+      "name": "PPh 21 (simplified)",
+      "category": "DEDUCTION",
+      "stage": "TAX",
+      "amount": "750000",
+      "basis": {
+        "category": "A",
+        "rate": "0.05",
+        "taxable_gross": "15000000"
+      },
+      "explanation": "Kategori A: penghasilan kena pajak Rp15.000.000 × 5% (bracket \u003e Rp12.000.000)",
+      "taxable": false,
+      "rounding": "DOWN"
+    }
+  ],
+  "gross": "15000000",
+  "deductions": "1270000",
+  "net": "13730000",
+  "errors": [],
+  "warnings": []
+}

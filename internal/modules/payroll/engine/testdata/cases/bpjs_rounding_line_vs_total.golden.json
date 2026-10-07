@@ -1,0 +1,92 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "6548387",
+      "basis": {
+        "basis": "CALENDAR_DAYS",
+        "days": "29",
+        "from": "2026-03-03",
+        "period_days": "31",
+        "salary": "7000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp7.000.000 × 29/31 hari kalender (3 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "130968",
+      "basis": {
+        "base": "6548387",
+        "capped_base": "6548387",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp6.548.387",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "65484",
+      "basis": {
+        "base": "6548387",
+        "capped_base": "6548387",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.548.387",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "65484",
+      "basis": {
+        "base": "6548387",
+        "capped_base": "6548387",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.548.387",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "PPH21",
+      "name": "PPh 21 (simplified)",
+      "category": "DEDUCTION",
+      "stage": "TAX",
+      "amount": "65483",
+      "basis": {
+        "category": "A",
+        "rate": "0.01",
+        "taxable_gross": "6548387"
+      },
+      "explanation": "Kategori A: penghasilan kena pajak Rp6.548.387 × 1% (bracket Rp5.400.000–Rp7.000.000)",
+      "taxable": false,
+      "rounding": "DOWN"
+    }
+  ],
+  "gross": "6548387",
+  "deductions": "327419",
+  "net": "6220968",
+  "errors": [],
+  "warnings": []
+}

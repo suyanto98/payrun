@@ -1,0 +1,77 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "2580645",
+      "basis": {
+        "basis": "CALENDAR_DAYS",
+        "days": "16",
+        "from": "2026-03-16",
+        "period_days": "31",
+        "salary": "5000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp5.000.000 × 16/31 hari kalender (16 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "51613",
+      "basis": {
+        "base": "2580645",
+        "capped_base": "2580645",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp2.580.645",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "25806",
+      "basis": {
+        "base": "2580645",
+        "capped_base": "2580645",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp2.580.645",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "25806",
+      "basis": {
+        "base": "2580645",
+        "capped_base": "2580645",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp2.580.645",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    }
+  ],
+  "gross": "2580645",
+  "deductions": "103225",
+  "net": "2477420",
+  "errors": [],
+  "warnings": []
+}

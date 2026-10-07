@@ -1,0 +1,15 @@
+{
+  "status": "ERROR",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [],
+  "gross": "0",
+  "deductions": "0",
+  "net": "0",
+  "errors": [
+    {
+      "code": "COMPONENT_REF_MISSING",
+      "detail": "TUNJ_X: base_ref TUNJ_HILANG does not exist or is inactive"
+    }
+  ],
+  "warnings": []
+}

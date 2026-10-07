@@ -1,0 +1,15 @@
+{
+  "status": "ERROR",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [],
+  "gross": "0",
+  "deductions": "0",
+  "net": "0",
+  "errors": [
+    {
+      "code": "NOT_ELIGIBLE",
+      "detail": "not employed on any day of the period"
+    }
+  ],
+  "warnings": []
+}

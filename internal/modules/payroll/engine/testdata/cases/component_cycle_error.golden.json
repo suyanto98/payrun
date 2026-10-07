@@ -1,0 +1,15 @@
+{
+  "status": "ERROR",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [],
+  "gross": "0",
+  "deductions": "0",
+  "net": "0",
+  "errors": [
+    {
+      "code": "COMPONENT_CYCLE",
+      "detail": "TUNJ_A: TUNJ_A → TUNJ_B → TUNJ_A"
+    }
+  ],
+  "warnings": []
+}

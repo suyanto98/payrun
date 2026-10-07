@@ -1,0 +1,107 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "5000000",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "22",
+        "from": "2026-03-01",
+        "period_days": "22",
+        "salary": "5000000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp5.000.000 × 22/22 hari kerja (1 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "100000",
+      "basis": {
+        "base": "5000000",
+        "capped_base": "5000000",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp5.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "50000",
+      "basis": {
+        "base": "5000000",
+        "capped_base": "5000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp5.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "50000",
+      "basis": {
+        "base": "5000000",
+        "capped_base": "5000000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp5.000.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "PPH21",
+      "name": "PPh 21 (simplified)",
+      "category": "DEDUCTION",
+      "stage": "TAX",
+      "amount": "56000",
+      "basis": {
+        "category": "A",
+        "rate": "0.01",
+        "taxable_gross": "5600000"
+      },
+      "explanation": "Kategori A: penghasilan kena pajak Rp5.600.000 × 1% (bracket Rp5.400.000–Rp7.000.000)",
+      "taxable": false,
+      "rounding": "DOWN"
+    },
+    {
+      "code": "ADJUSTMENT",
+      "name": "Koreksi",
+      "category": "EARNING",
+      "stage": "ADJUSTMENT",
+      "amount": "600000",
+      "basis": {
+        "adjustment_id": "ADJ-1",
+        "amount": "600000",
+        "origin_period": "2026-02"
+      },
+      "explanation": "Koreksi periode 2026-02: Koreksi lembur Februari (ADJ-1)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    }
+  ],
+  "gross": "5600000",
+  "deductions": "256000",
+  "net": "5344000",
+  "errors": [],
+  "warnings": []
+}

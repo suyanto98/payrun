@@ -1,0 +1,33 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "0",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "22",
+        "from": "2026-03-01",
+        "period_days": "22",
+        "salary": "0",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp0 × 22/22 hari kerja (1 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    }
+  ],
+  "gross": "0",
+  "deductions": "0",
+  "net": "0",
+  "errors": [],
+  "warnings": [
+    {
+      "code": "ZERO_BASE_SALARY"
+    }
+  ]
+}
