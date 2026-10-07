@@ -27,6 +27,13 @@ var constraintErrors = map[string]*apperr.Error{
 	"uq_employees_npwp_bidx":       apperr.ErrNPWPTaken,
 	"uq_memberships_user":          apperr.ErrMembershipExists,
 	"uq_memberships_invited_email": apperr.ErrMembershipExists,
+	// Sprint 3: EXCLUDE effective-dated (23P01) → OVERLAPPING_PERIOD; kode unik master data.
+	"ex_salary_assignments_no_overlap":  apperr.ErrOverlappingPeriod,
+	"ex_employee_components_no_overlap": apperr.ErrOverlappingPeriod,
+	"ex_org_assignments_no_overlap":     apperr.ErrOverlappingPeriod,
+	"ex_employment_spans_no_overlap":    apperr.ErrOverlappingPeriod,
+	"uq_component_definitions_code":     apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "code", Code: "DUPLICATE"}),
+	"uq_holidays_date":                  apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "date", Code: "DUPLICATE"}),
 	// Berikutnya bersama tabelnya, contoh uq_payroll_runs_active_per_period → ACTIVE_RUN_EXISTS (S4).
 	// Pelanggaran yang berarti BUG (RLS WITH CHECK 42501, trigger immutability run final) sengaja
 	// TIDAK dipetakan → 500 + alert.
@@ -70,6 +77,8 @@ func MapError(err error) error {
 		return apperr.ErrUnavailable.WithCause(err)
 	case "23503": // FK: referensi tidak ada; tidak membedakan "tidak ada" vs "bukan milikmu"
 		return apperr.ErrNotFound.WithCause(err)
+	case "P0005": // trigger PI-19 forbid_manager_cycle
+		return apperr.ErrManagerCycle.WithCause(err)
 	}
 	return err
 }

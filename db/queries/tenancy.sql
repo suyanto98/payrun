@@ -63,3 +63,23 @@ WHERE id = @id;
 -- [tenant]
 INSERT INTO audit_log (id, tenant_id, actor_type, actor_id, action, target_type, target_id, request_id, ip, user_agent)
 VALUES (@id, @tenant_id, @actor_type, @actor_id, @action, @target_type, @target_id, @request_id, @ip, @user_agent);
+
+-- name: SeedSystemComponents :exec
+-- [tenant] Seed O6: komponen sistem (BASE_SALARY, OVERTIME, ABSENCE_*, BPJS_*, PPH21, ADJUSTMENT).
+SELECT seed_system_components(@tenant_id::uuid, @actor::uuid);
+
+-- name: ListHolidays :many
+-- [tenant] T4: libur satu tahun (maksimal 366 baris, tanpa pagination).
+SELECT tenant_id, id, holiday_date, name, version FROM holidays
+WHERE holiday_date >= @from_date AND holiday_date < @to_date
+ORDER BY holiday_date;
+
+-- name: CreateHoliday :one
+-- [tenant] T5. Tanggal duplikat → uq_holidays_date → 409 DUPLICATE_CODE (field date).
+INSERT INTO holidays (tenant_id, id, holiday_date, name, created_by, updated_by)
+VALUES (@tenant_id, @id, @holiday_date, @name, @actor, @actor)
+RETURNING tenant_id, id, holiday_date, name, version;
+
+-- name: DeleteHoliday :one
+-- [tenant] T6. Tidak ada / tenant lain → 0 baris → 404.
+DELETE FROM holidays WHERE id = @id RETURNING holiday_date;

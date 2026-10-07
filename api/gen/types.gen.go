@@ -26,6 +26,237 @@ func (e AcceptedInvitationMembershipStatus) Valid() bool {
 	}
 }
 
+// Defines values for ComponentDefinitionCalcType.
+const (
+	ComponentDefinitionCalcTypeFIXED             ComponentDefinitionCalcType = "FIXED"
+	ComponentDefinitionCalcTypePERCENTOF         ComponentDefinitionCalcType = "PERCENT_OF"
+	ComponentDefinitionCalcTypePERDAY            ComponentDefinitionCalcType = "PER_DAY"
+	ComponentDefinitionCalcTypePERHOURMULTIPLIER ComponentDefinitionCalcType = "PER_HOUR_MULTIPLIER"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCalcType enum.
+func (e ComponentDefinitionCalcType) Valid() bool {
+	switch e {
+	case ComponentDefinitionCalcTypeFIXED:
+		return true
+	case ComponentDefinitionCalcTypePERCENTOF:
+		return true
+	case ComponentDefinitionCalcTypePERDAY:
+		return true
+	case ComponentDefinitionCalcTypePERHOURMULTIPLIER:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionCategory.
+const (
+	ComponentDefinitionCategoryDEDUCTION ComponentDefinitionCategory = "DEDUCTION"
+	ComponentDefinitionCategoryEARNING   ComponentDefinitionCategory = "EARNING"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCategory enum.
+func (e ComponentDefinitionCategory) Valid() bool {
+	switch e {
+	case ComponentDefinitionCategoryDEDUCTION:
+		return true
+	case ComponentDefinitionCategoryEARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionDaySource.
+const (
+	ComponentDefinitionDaySourceLessThannil ComponentDefinitionDaySource = "<nil>"
+	ComponentDefinitionDaySourcePRESENT     ComponentDefinitionDaySource = "PRESENT"
+	ComponentDefinitionDaySourceWORKING     ComponentDefinitionDaySource = "WORKING"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionDaySource enum.
+func (e ComponentDefinitionDaySource) Valid() bool {
+	switch e {
+	case ComponentDefinitionDaySourceLessThannil:
+		return true
+	case ComponentDefinitionDaySourcePRESENT:
+		return true
+	case ComponentDefinitionDaySourceWORKING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionRounding.
+const (
+	ComponentDefinitionRoundingDOWN   ComponentDefinitionRounding = "DOWN"
+	ComponentDefinitionRoundingHALFUP ComponentDefinitionRounding = "HALF_UP"
+	ComponentDefinitionRoundingUP     ComponentDefinitionRounding = "UP"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionRounding enum.
+func (e ComponentDefinitionRounding) Valid() bool {
+	switch e {
+	case ComponentDefinitionRoundingDOWN:
+		return true
+	case ComponentDefinitionRoundingHALFUP:
+		return true
+	case ComponentDefinitionRoundingUP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionStage.
+const (
+	ComponentDefinitionStageABSENCE    ComponentDefinitionStage = "ABSENCE"
+	ComponentDefinitionStageADJUSTMENT ComponentDefinitionStage = "ADJUSTMENT"
+	ComponentDefinitionStageEARNING    ComponentDefinitionStage = "EARNING"
+	ComponentDefinitionStageOVERTIME   ComponentDefinitionStage = "OVERTIME"
+	ComponentDefinitionStageSTATUTORY  ComponentDefinitionStage = "STATUTORY"
+	ComponentDefinitionStageTAX        ComponentDefinitionStage = "TAX"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionStage enum.
+func (e ComponentDefinitionStage) Valid() bool {
+	switch e {
+	case ComponentDefinitionStageABSENCE:
+		return true
+	case ComponentDefinitionStageADJUSTMENT:
+		return true
+	case ComponentDefinitionStageEARNING:
+		return true
+	case ComponentDefinitionStageOVERTIME:
+		return true
+	case ComponentDefinitionStageSTATUTORY:
+		return true
+	case ComponentDefinitionStageTAX:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionStatus.
+const (
+	ComponentDefinitionStatusACTIVE   ComponentDefinitionStatus = "ACTIVE"
+	ComponentDefinitionStatusINACTIVE ComponentDefinitionStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionStatus enum.
+func (e ComponentDefinitionStatus) Valid() bool {
+	switch e {
+	case ComponentDefinitionStatusACTIVE:
+		return true
+	case ComponentDefinitionStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionCreateCalcType.
+const (
+	ComponentDefinitionCreateCalcTypeFIXED     ComponentDefinitionCreateCalcType = "FIXED"
+	ComponentDefinitionCreateCalcTypePERCENTOF ComponentDefinitionCreateCalcType = "PERCENT_OF"
+	ComponentDefinitionCreateCalcTypePERDAY    ComponentDefinitionCreateCalcType = "PER_DAY"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCreateCalcType enum.
+func (e ComponentDefinitionCreateCalcType) Valid() bool {
+	switch e {
+	case ComponentDefinitionCreateCalcTypeFIXED:
+		return true
+	case ComponentDefinitionCreateCalcTypePERCENTOF:
+		return true
+	case ComponentDefinitionCreateCalcTypePERDAY:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionCreateCategory.
+const (
+	ComponentDefinitionCreateCategoryDEDUCTION ComponentDefinitionCreateCategory = "DEDUCTION"
+	ComponentDefinitionCreateCategoryEARNING   ComponentDefinitionCreateCategory = "EARNING"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCreateCategory enum.
+func (e ComponentDefinitionCreateCategory) Valid() bool {
+	switch e {
+	case ComponentDefinitionCreateCategoryDEDUCTION:
+		return true
+	case ComponentDefinitionCreateCategoryEARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionCreateDaySource.
+const (
+	ComponentDefinitionCreateDaySourcePRESENT ComponentDefinitionCreateDaySource = "PRESENT"
+	ComponentDefinitionCreateDaySourceWORKING ComponentDefinitionCreateDaySource = "WORKING"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCreateDaySource enum.
+func (e ComponentDefinitionCreateDaySource) Valid() bool {
+	switch e {
+	case ComponentDefinitionCreateDaySourcePRESENT:
+		return true
+	case ComponentDefinitionCreateDaySourceWORKING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionCreateRounding.
+const (
+	ComponentDefinitionCreateRoundingDOWN   ComponentDefinitionCreateRounding = "DOWN"
+	ComponentDefinitionCreateRoundingHALFUP ComponentDefinitionCreateRounding = "HALF_UP"
+	ComponentDefinitionCreateRoundingUP     ComponentDefinitionCreateRounding = "UP"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionCreateRounding enum.
+func (e ComponentDefinitionCreateRounding) Valid() bool {
+	switch e {
+	case ComponentDefinitionCreateRoundingDOWN:
+		return true
+	case ComponentDefinitionCreateRoundingHALFUP:
+		return true
+	case ComponentDefinitionCreateRoundingUP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComponentDefinitionUpdateRounding.
+const (
+	ComponentDefinitionUpdateRoundingDOWN   ComponentDefinitionUpdateRounding = "DOWN"
+	ComponentDefinitionUpdateRoundingHALFUP ComponentDefinitionUpdateRounding = "HALF_UP"
+	ComponentDefinitionUpdateRoundingUP     ComponentDefinitionUpdateRounding = "UP"
+)
+
+// Valid indicates whether the value is a known member of the ComponentDefinitionUpdateRounding enum.
+func (e ComponentDefinitionUpdateRounding) Valid() bool {
+	switch e {
+	case ComponentDefinitionUpdateRoundingDOWN:
+		return true
+	case ComponentDefinitionUpdateRoundingHALFUP:
+		return true
+	case ComponentDefinitionUpdateRoundingUP:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EmployeePtkpStatus.
 const (
 	EmployeePtkpStatusK0  EmployeePtkpStatus = "K/0"
@@ -461,6 +692,42 @@ func (e RefreshSessionParamsXRequestedWith) Valid() bool {
 	}
 }
 
+// Defines values for ListComponentDefinitionsParamsStatus.
+const (
+	ListComponentDefinitionsParamsStatusACTIVE   ListComponentDefinitionsParamsStatus = "ACTIVE"
+	ListComponentDefinitionsParamsStatusINACTIVE ListComponentDefinitionsParamsStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ListComponentDefinitionsParamsStatus enum.
+func (e ListComponentDefinitionsParamsStatus) Valid() bool {
+	switch e {
+	case ListComponentDefinitionsParamsStatusACTIVE:
+		return true
+	case ListComponentDefinitionsParamsStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListComponentDefinitionsParamsCategory.
+const (
+	ListComponentDefinitionsParamsCategoryDEDUCTION ListComponentDefinitionsParamsCategory = "DEDUCTION"
+	ListComponentDefinitionsParamsCategoryEARNING   ListComponentDefinitionsParamsCategory = "EARNING"
+)
+
+// Valid indicates whether the value is a known member of the ListComponentDefinitionsParamsCategory enum.
+func (e ListComponentDefinitionsParamsCategory) Valid() bool {
+	switch e {
+	case ListComponentDefinitionsParamsCategoryDEDUCTION:
+		return true
+	case ListComponentDefinitionsParamsCategoryEARNING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListDepartmentsParamsStatus.
 const (
 	ListDepartmentsParamsStatusACTIVE   ListDepartmentsParamsStatus = "ACTIVE"
@@ -580,13 +847,160 @@ type BankInput struct {
 	Name          *string `json:"name,omitempty"`
 }
 
+// ComponentAssignmentRequest defines model for ComponentAssignmentRequest.
+type ComponentAssignmentRequest struct {
+	// Amount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Amount      *Money              `json:"amount,omitempty"`
+	ComponentId openapi_types.UUID  `json:"component_id"`
+	Rate        *string             `json:"rate,omitempty"`
+	ValidFrom   openapi_types.Date  `json:"valid_from"`
+	ValidTo     *openapi_types.Date `json:"valid_to,omitempty"`
+}
+
+// ComponentDefinition defines model for ComponentDefinition.
+type ComponentDefinition struct {
+	BaseRef       *string                       `json:"base_ref"`
+	BpjsBase      bool                          `json:"bpjs_base"`
+	CalcType      ComponentDefinitionCalcType   `json:"calc_type"`
+	CapMax        *string                       `json:"cap_max"`
+	CapMin        *string                       `json:"cap_min"`
+	Category      ComponentDefinitionCategory   `json:"category"`
+	Code          string                        `json:"code"`
+	DaySource     *ComponentDefinitionDaySource `json:"day_source"`
+	DefaultAmount *string                       `json:"default_amount"`
+	Id            openapi_types.UUID            `json:"id"`
+	IsSystem      bool                          `json:"is_system"`
+	Name          string                        `json:"name"`
+	Rate          *string                       `json:"rate"`
+	Rounding      ComponentDefinitionRounding   `json:"rounding"`
+	RulesetRef    *string                       `json:"ruleset_ref"`
+	Stage         ComponentDefinitionStage      `json:"stage"`
+	Status        ComponentDefinitionStatus     `json:"status"`
+	Taxable       bool                          `json:"taxable"`
+	Version       int32                         `json:"version"`
+}
+
+// ComponentDefinitionCalcType defines model for ComponentDefinition.CalcType.
+type ComponentDefinitionCalcType string
+
+// ComponentDefinitionCategory defines model for ComponentDefinition.Category.
+type ComponentDefinitionCategory string
+
+// ComponentDefinitionDaySource defines model for ComponentDefinition.DaySource.
+type ComponentDefinitionDaySource string
+
+// ComponentDefinitionRounding defines model for ComponentDefinition.Rounding.
+type ComponentDefinitionRounding string
+
+// ComponentDefinitionStage defines model for ComponentDefinition.Stage.
+type ComponentDefinitionStage string
+
+// ComponentDefinitionStatus defines model for ComponentDefinition.Status.
+type ComponentDefinitionStatus string
+
+// ComponentDefinitionCreate Tenant components are always stage EARNING; PER_HOUR_MULTIPLIER is system-only.
+type ComponentDefinitionCreate struct {
+	// BaseRef BASE_SALARY, FIXED_ALLOWANCES, or the code of an earlier component
+	BaseRef  *string                           `json:"base_ref,omitempty"`
+	BpjsBase *bool                             `json:"bpjs_base,omitempty"`
+	CalcType ComponentDefinitionCreateCalcType `json:"calc_type"`
+
+	// CapMax Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	CapMax *Money `json:"cap_max,omitempty"`
+
+	// CapMin Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	CapMin    *Money                              `json:"cap_min,omitempty"`
+	Category  ComponentDefinitionCreateCategory   `json:"category"`
+	Code      string                              `json:"code"`
+	DaySource *ComponentDefinitionCreateDaySource `json:"day_source,omitempty"`
+
+	// DefaultAmount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	DefaultAmount *Money `json:"default_amount,omitempty"`
+	Name          string `json:"name"`
+
+	// Rate 0..1, up to 6 fraction digits
+	Rate     *string                            `json:"rate,omitempty"`
+	Rounding *ComponentDefinitionCreateRounding `json:"rounding,omitempty"`
+	Taxable  *bool                              `json:"taxable,omitempty"`
+}
+
+// ComponentDefinitionCreateCalcType defines model for ComponentDefinitionCreate.CalcType.
+type ComponentDefinitionCreateCalcType string
+
+// ComponentDefinitionCreateCategory defines model for ComponentDefinitionCreate.Category.
+type ComponentDefinitionCreateCategory string
+
+// ComponentDefinitionCreateDaySource defines model for ComponentDefinitionCreate.DaySource.
+type ComponentDefinitionCreateDaySource string
+
+// ComponentDefinitionCreateRounding defines model for ComponentDefinitionCreate.Rounding.
+type ComponentDefinitionCreateRounding string
+
+// ComponentDefinitionList defines model for ComponentDefinitionList.
+type ComponentDefinitionList struct {
+	Data []ComponentDefinition `json:"data"`
+}
+
+// ComponentDefinitionUpdate `code`, `category`, `calc_type` are immutable; on system components only `name` may change.
+type ComponentDefinitionUpdate struct {
+	BaseRef  *string `json:"base_ref,omitempty"`
+	BpjsBase *bool   `json:"bpjs_base,omitempty"`
+
+	// CapMax Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	CapMax *Money `json:"cap_max,omitempty"`
+
+	// CapMin Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	CapMin *Money `json:"cap_min,omitempty"`
+
+	// DefaultAmount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	DefaultAmount *Money                             `json:"default_amount,omitempty"`
+	Name          *string                            `json:"name,omitempty"`
+	Rate          *string                            `json:"rate,omitempty"`
+	Rounding      *ComponentDefinitionUpdateRounding `json:"rounding,omitempty"`
+	Taxable       *bool                              `json:"taxable,omitempty"`
+}
+
+// ComponentDefinitionUpdateRounding defines model for ComponentDefinitionUpdate.Rounding.
+type ComponentDefinitionUpdateRounding string
+
+// ComponentRef defines model for ComponentRef.
+type ComponentRef struct {
+	CalcType string             `json:"calc_type"`
+	Code     string             `json:"code"`
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+}
+
+// CurrentOrg department/position/valid_from are null when only a manager is set (no placement yet).
+type CurrentOrg struct {
+	Department *Ref                `json:"department"`
+	Manager    *ManagerRef         `json:"manager"`
+	Position   *Ref                `json:"position"`
+	ValidFrom  *openapi_types.Date `json:"valid_from"`
+}
+
 // Employee PII is always masked here (full view: GET /employees/{id}/pii, Sprint 4). MANAGER and EMPLOYEE
 // receive the basic version without `ptkp_status`, `nik_masked`, `npwp_masked` and `bank`.
-// `current_org` is filled from Sprint 3 (org assignments).
+// `current_org` is the placement in force today (department/position effective-dated) plus the
+// current manager (not effective-dated, amendment S14); null when neither exists.
 type Employee struct {
-	Bank       *Bank  `json:"bank,omitempty"`
-	CurrentOrg any    `json:"current_org"`
-	EmployeeNo string `json:"employee_no"`
+	Bank       *Bank       `json:"bank,omitempty"`
+	CurrentOrg *CurrentOrg `json:"current_org"`
+	EmployeeNo string      `json:"employee_no"`
 
 	// EndDate Last working day (inclusive).
 	EndDate  *openapi_types.Date `json:"end_date"`
@@ -612,7 +1026,18 @@ type EmployeePtkpStatus string
 // EmployeeStatus defines model for Employee.Status.
 type EmployeeStatus string
 
-// EmployeeCreate `org` and `salary` (design W2) are added in Sprint 3 with their tables.
+// EmployeeComponent defines model for EmployeeComponent.
+type EmployeeComponent struct {
+	Amount     *string             `json:"amount"`
+	Component  ComponentRef        `json:"component"`
+	EmployeeId openapi_types.UUID  `json:"employee_id"`
+	Id         openapi_types.UUID  `json:"id"`
+	Rate       *string             `json:"rate"`
+	ValidFrom  openapi_types.Date  `json:"valid_from"`
+	ValidTo    *openapi_types.Date `json:"valid_to"`
+}
+
+// EmployeeCreate `org` and `salary` start at hire_date, in the same transaction as the employee.
 type EmployeeCreate struct {
 	Bank       *BankInput `json:"bank,omitempty"`
 	EmployeeNo string     `json:"employee_no"`
@@ -626,8 +1051,15 @@ type EmployeeCreate struct {
 
 	// Npwp 15–16 digits. Encrypted at rest; unique per tenant (NPWP_TAKEN).
 	Npwp       *string                   `json:"npwp,omitempty"`
+	Org        *OrgInput                 `json:"org,omitempty"`
 	PtkpStatus *EmployeeCreatePtkpStatus `json:"ptkp_status,omitempty"`
-	WorkEmail  *openapi_types.Email      `json:"work_email,omitempty"`
+	Salary     *struct {
+		// BaseSalary Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+		//
+		// Examples: 6888609.00
+		BaseSalary Money `json:"base_salary"`
+	} `json:"salary,omitempty"`
+	WorkEmail *openapi_types.Email `json:"work_email,omitempty"`
 }
 
 // EmployeeCreatePtkpStatus defines model for EmployeeCreate.PtkpStatus.
@@ -641,16 +1073,13 @@ type EmployeeList struct {
 
 // EmployeeListItem defines model for EmployeeListItem.
 type EmployeeListItem struct {
-	// Department Filled from Sprint 3.
-	Department any                `json:"department"`
-	EmployeeNo string             `json:"employee_no"`
-	FullName   string             `json:"full_name"`
-	HireDate   openapi_types.Date `json:"hire_date"`
-	Id         openapi_types.UUID `json:"id"`
-
-	// Position Filled from Sprint 3.
-	Position any                    `json:"position"`
-	Status   EmployeeListItemStatus `json:"status"`
+	Department *Ref                   `json:"department"`
+	EmployeeNo string                 `json:"employee_no"`
+	FullName   string                 `json:"full_name"`
+	HireDate   openapi_types.Date     `json:"hire_date"`
+	Id         openapi_types.UUID     `json:"id"`
+	Position   *Ref                   `json:"position"`
+	Status     EmployeeListItemStatus `json:"status"`
 }
 
 // EmployeeListItemStatus defines model for EmployeeListItem.Status.
@@ -671,6 +1100,25 @@ type EmployeeUpdatePtkpStatus string
 
 // Empty defines model for Empty.
 type Empty = map[string]interface{}
+
+// Holiday defines model for Holiday.
+type Holiday struct {
+	Date    openapi_types.Date `json:"date"`
+	Id      openapi_types.UUID `json:"id"`
+	Name    string             `json:"name"`
+	Version int32              `json:"version"`
+}
+
+// HolidayCreate defines model for HolidayCreate.
+type HolidayCreate struct {
+	Date openapi_types.Date `json:"date"`
+	Name string             `json:"name"`
+}
+
+// HolidayList defines model for HolidayList.
+type HolidayList struct {
+	Data []Holiday `json:"data"`
+}
 
 // Invitation defines model for Invitation.
 type Invitation struct {
@@ -698,6 +1146,12 @@ type InvitationRequest struct {
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
+}
+
+// ManagerRef defines model for ManagerRef.
+type ManagerRef struct {
+	FullName string             `json:"full_name"`
+	Id       openapi_types.UUID `json:"id"`
 }
 
 // Me defines model for Me.
@@ -751,6 +1205,40 @@ type MembershipList struct {
 
 // MembershipListDataStatus defines model for MembershipList.Data.Status.
 type MembershipListDataStatus string
+
+// Money Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+//
+// Examples: 6888609.00
+type Money = string
+
+// OrgAssignment defines model for OrgAssignment.
+type OrgAssignment struct {
+	Department Ref                 `json:"department"`
+	Id         openapi_types.UUID  `json:"id"`
+	Manager    *ManagerRef         `json:"manager"`
+	Position   Ref                 `json:"position"`
+	ValidFrom  openapi_types.Date  `json:"valid_from"`
+	ValidTo    *openapi_types.Date `json:"valid_to"`
+}
+
+// OrgAssignmentRequest defines model for OrgAssignmentRequest.
+type OrgAssignmentRequest struct {
+	DepartmentId      openapi_types.UUID  `json:"department_id"`
+	ManagerEmployeeId *openapi_types.UUID `json:"manager_employee_id,omitempty"`
+	PositionId        openapi_types.UUID  `json:"position_id"`
+
+	// ValidFrom Not before hire_date.
+	ValidFrom openapi_types.Date `json:"valid_from"`
+}
+
+// OrgInput defines model for OrgInput.
+type OrgInput struct {
+	DepartmentId openapi_types.UUID `json:"department_id"`
+
+	// ManagerEmployeeId Current manager (null = none).
+	ManagerEmployeeId *openapi_types.UUID `json:"manager_employee_id,omitempty"`
+	PositionId        openapi_types.UUID  `json:"position_id"`
+}
 
 // OrgUnit defines model for OrgUnit.
 type OrgUnit struct {
@@ -811,8 +1299,49 @@ type Problem struct {
 	Type               string              `json:"type"`
 }
 
+// Ref defines model for Ref.
+type Ref struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
 // Role defines model for Role.
 type Role string
+
+// SalaryAssignment defines model for SalaryAssignment.
+type SalaryAssignment struct {
+	// BaseSalary Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	BaseSalary   Money               `json:"base_salary"`
+	ChangeReason *string             `json:"change_reason"`
+	CreatedAt    time.Time           `json:"created_at"`
+	CreatedBy    *openapi_types.UUID `json:"created_by"`
+	EmployeeId   openapi_types.UUID  `json:"employee_id"`
+	Id           openapi_types.UUID  `json:"id"`
+	ValidFrom    openapi_types.Date  `json:"valid_from"`
+
+	// ValidTo Exclusive (half-open).
+	ValidTo *openapi_types.Date `json:"valid_to"`
+}
+
+// SalaryChangeRequest defines model for SalaryChangeRequest.
+type SalaryChangeRequest struct {
+	// BaseSalary Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	BaseSalary   Money   `json:"base_salary"`
+	ChangeReason *string `json:"change_reason,omitempty"`
+
+	// ValidFrom Not before hire_date, at most 366 days ahead.
+	ValidFrom openapi_types.Date `json:"valid_from"`
+}
+
+// SalaryHistory defines model for SalaryHistory.
+type SalaryHistory struct {
+	Components []EmployeeComponent `json:"components"`
+	Salary     []SalaryAssignment  `json:"salary"`
+}
 
 // Session defines model for Session.
 type Session struct {
@@ -1074,11 +1603,15 @@ type RefreshSessionParamsXRequestedWith string
 
 // ListComponentDefinitionsParams defines parameters for ListComponentDefinitions.
 type ListComponentDefinitionsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Status   *ListComponentDefinitionsParamsStatus   `form:"status,omitempty" json:"status,omitempty"`
+	Category *ListComponentDefinitionsParamsCategory `form:"category,omitempty" json:"category,omitempty"`
 }
+
+// ListComponentDefinitionsParamsStatus defines parameters for ListComponentDefinitions.
+type ListComponentDefinitionsParamsStatus string
+
+// ListComponentDefinitionsParamsCategory defines parameters for ListComponentDefinitions.
+type ListComponentDefinitionsParamsCategory string
 
 // UpdateComponentDefinitionParams defines parameters for UpdateComponentDefinition.
 type UpdateComponentDefinitionParams struct {
@@ -1102,9 +1635,10 @@ type UpdateDepartmentParams struct {
 
 // ListEmployeesParams defines parameters for ListEmployees.
 type ListEmployeesParams struct {
-	Status *ListEmployeesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
-	Q      *string                    `form:"q,omitempty" json:"q,omitempty"`
-	Limit  *Limit                     `form:"limit,omitempty" json:"limit,omitempty"`
+	Status       *ListEmployeesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Q            *string                    `form:"q,omitempty" json:"q,omitempty"`
+	DepartmentId *openapi_types.UUID        `form:"department_id,omitempty" json:"department_id,omitempty"`
+	Limit        *Limit                     `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -1143,6 +1677,11 @@ type ChangeSalaryParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// GetSalaryHistoryParams defines parameters for GetSalaryHistory.
+type GetSalaryHistoryParams struct {
+	AsOf *openapi_types.Date `form:"as_of,omitempty" json:"as_of,omitempty"`
+}
+
 // TerminateEmployeeParams defines parameters for TerminateEmployee.
 type TerminateEmployeeParams struct {
 	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
@@ -1151,10 +1690,7 @@ type TerminateEmployeeParams struct {
 
 // ListHolidaysParams defines parameters for ListHolidays.
 type ListHolidaysParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Year int `form:"year" json:"year"`
 }
 
 // ListLeaveRequestsParams defines parameters for ListLeaveRequests.
@@ -1340,13 +1876,13 @@ type LoginJSONRequestBody = LoginRequest
 type VerifyEmailJSONRequestBody = VerifyEmailRequest
 
 // CreateComponentDefinitionJSONRequestBody defines body for CreateComponentDefinition for application/json ContentType.
-type CreateComponentDefinitionJSONRequestBody = Pending
+type CreateComponentDefinitionJSONRequestBody = ComponentDefinitionCreate
 
 // UpdateComponentDefinitionJSONRequestBody defines body for UpdateComponentDefinition for application/json ContentType.
-type UpdateComponentDefinitionJSONRequestBody = Pending
+type UpdateComponentDefinitionJSONRequestBody = ComponentDefinitionUpdate
 
 // DeactivateComponentDefinitionJSONRequestBody defines body for DeactivateComponentDefinition for application/json ContentType.
-type DeactivateComponentDefinitionJSONRequestBody = Pending
+type DeactivateComponentDefinitionJSONRequestBody = Empty
 
 // CreateDepartmentJSONRequestBody defines body for CreateDepartment for application/json ContentType.
 type CreateDepartmentJSONRequestBody = OrgUnitCreate
@@ -1364,19 +1900,19 @@ type CreateEmployeeJSONRequestBody = EmployeeCreate
 type UpdateEmployeeJSONRequestBody = EmployeeUpdate
 
 // AssignComponentJSONRequestBody defines body for AssignComponent for application/json ContentType.
-type AssignComponentJSONRequestBody = Pending
+type AssignComponentJSONRequestBody = ComponentAssignmentRequest
 
 // AssignEmployeeOrgJSONRequestBody defines body for AssignEmployeeOrg for application/json ContentType.
-type AssignEmployeeOrgJSONRequestBody = Pending
+type AssignEmployeeOrgJSONRequestBody = OrgAssignmentRequest
 
 // ChangeSalaryJSONRequestBody defines body for ChangeSalary for application/json ContentType.
-type ChangeSalaryJSONRequestBody = Pending
+type ChangeSalaryJSONRequestBody = SalaryChangeRequest
 
 // TerminateEmployeeJSONRequestBody defines body for TerminateEmployee for application/json ContentType.
 type TerminateEmployeeJSONRequestBody = TerminateRequest
 
 // CreateHolidayJSONRequestBody defines body for CreateHoliday for application/json ContentType.
-type CreateHolidayJSONRequestBody = Pending
+type CreateHolidayJSONRequestBody = HolidayCreate
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
 type CreateInvitationJSONRequestBody = InvitationRequest

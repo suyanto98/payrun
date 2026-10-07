@@ -32,10 +32,44 @@ func (h *Handler) Routes(read, write chi.Router) {
 	read.Get("/employees/{id}", h.get)
 	write.Patch("/employees/{id}", h.update)
 	write.Post("/employees/{id}/terminate", h.terminate)
+	write.Post("/employees/{id}/org-assignments", h.assignOrg)
+}
+
+// assignOrg (W7): Idempotency-Key wajib.
+func (h *Handler) assignOrg(w http.ResponseWriter, r *http.Request) {
+	id, err := httpx.ParseID(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	req, err := idempotency.FromHTTP(r, p.UserID, "POST /employees/{id}/org-assignments")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	var in OrgAssignmentInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	meta := reqmeta.From(r)
+	resp, err := h.idem.Execute(r, req, func(ctx context.Context, tx pgx.Tx) (idempotency.Outcome, error) {
+		out, err := h.svc.AssignOrgTx(ctx, tx, p, id, in, meta)
+		if err != nil {
+			return idempotency.Outcome{}, err
+		}
+		return idempotency.Outcome{Status: http.StatusCreated, Body: out, ResourceType: "org_assignment", ResourceID: &out.ID}, nil
+	})
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	idempotency.Write(w, resp)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	if err := httpx.OnlyQuery(r, "status", "q", "limit", "cursor"); err != nil {
+	if err := httpx.OnlyQuery(r, "status", "q", "limit", "cursor", "department_id"); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
@@ -46,7 +80,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	qs := r.URL.Query()
 	p, _ := auth.PrincipalFrom(r.Context())
-	items, page, err := h.svc.List(r.Context(), p, ListQuery{Status: qs.Get("status"), Q: qs.Get("q"), Cursor: qs.Get("cursor"), Limit: limit})
+	items, page, err := h.svc.List(r.Context(), p, ListQuery{Status: qs.Get("status"), Q: qs.Get("q"), Cursor: qs.Get("cursor"), DepartmentID: qs.Get("department_id"), Limit: limit})
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

@@ -39,16 +39,36 @@ const dateLayout = "2006-01-02"
 
 // Basic adalah versi yang diterima MANAGER/EMPLOYEE (W3ᴮ): tanpa bank, NIK, NPWP, dan PTKP.
 type Basic struct {
-	ID         uuid.UUID  `json:"id"`
-	EmployeeNo string     `json:"employee_no"`
-	FullName   string     `json:"full_name"`
-	WorkEmail  *string    `json:"work_email"`
-	Status     string     `json:"status"`
-	HireDate   string     `json:"hire_date"`
-	EndDate    *string    `json:"end_date"`
-	CurrentOrg *struct{}  `json:"current_org"` // org_assignments (S3); selalu null di S2
-	UserID     *uuid.UUID `json:"user_id"`
-	Version    int32      `json:"version"`
+	ID         uuid.UUID   `json:"id"`
+	EmployeeNo string      `json:"employee_no"`
+	FullName   string      `json:"full_name"`
+	WorkEmail  *string     `json:"work_email"`
+	Status     string      `json:"status"`
+	HireDate   string      `json:"hire_date"`
+	EndDate    *string     `json:"end_date"`
+	CurrentOrg *CurrentOrg `json:"current_org"` // penempatan yang berlaku hari ini (null = belum ada)
+	UserID     *uuid.UUID  `json:"user_id"`
+	Version    int32       `json:"version"`
+}
+
+// Ref: rujukan ringkas ke departemen/posisi.
+type Ref struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+// ManagerRef: atasan saat ini (amandemen S14: tidak effective-dated).
+type ManagerRef struct {
+	ID       uuid.UUID `json:"id"`
+	FullName string    `json:"full_name"`
+}
+
+// CurrentOrg: department/position/valid_from null bila hanya atasan yang diset (belum ada penempatan).
+type CurrentOrg struct {
+	Department *Ref        `json:"department"`
+	Position   *Ref        `json:"position"`
+	Manager    *ManagerRef `json:"manager"`
+	ValidFrom  *string     `json:"valid_from"`
 }
 
 // Employee adalah model lengkap (16-api §16) dengan PII ter-mask.
@@ -72,20 +92,44 @@ type ListItem struct {
 	EmployeeNo string    `json:"employee_no"`
 	FullName   string    `json:"full_name"`
 	Status     string    `json:"status"`
-	Department *struct{} `json:"department"` // S3
-	Position   *struct{} `json:"position"`   // S3
+	Department *Ref      `json:"department"`
+	Position   *Ref      `json:"position"`
 	HireDate   string    `json:"hire_date"`
 }
 
+// OrgUnits: departemen/posisi milik modul org (ADR-001), dipasang composition root.
+type OrgUnits interface {
+	// CheckAssignableTx: keduanya ada di tenant (404) dan ACTIVE (400 field INACTIVE).
+	CheckAssignableTx(ctx context.Context, tx pgx.Tx, departmentID, positionID uuid.UUID) error
+}
+
+// Salaries: gaji awal saat employee dibuat (tabel milik modul compensation).
+type Salaries interface {
+	CreateInitialSalaryTx(ctx context.Context, tx pgx.Tx, actor, employeeID uuid.UUID, baseSalary string, from time.Time, meta reqmeta.Meta) error
+}
+
 type Service struct {
-	pool  *pgxpool.Pool
-	pii   PII
-	clock clock.Clock
-	ids   idgen.Generator
+	pool     *pgxpool.Pool
+	pii      PII
+	clock    clock.Clock
+	ids      idgen.Generator
+	orgUnits OrgUnits
+	salaries Salaries
 }
 
 func NewService(pool *pgxpool.Pool, pii PII, c clock.Clock, ids idgen.Generator) *Service {
 	return &Service{pool: pool, pii: pii, clock: c, ids: ids}
+}
+
+// Wire memasang dependensi lintas modul (composition root).
+func (s *Service) Wire(orgUnits OrgUnits, salaries Salaries) {
+	s.orgUnits, s.salaries = orgUnits, salaries
+}
+
+// today: tanggal "hari ini" untuk penempatan yang berlaku (UTC; zona tenant masuk bersama kalender S4).
+func (s *Service) today() time.Time {
+	n := s.clock.Now().UTC()
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // tenantWide: role yang melihat seluruh employee tenant.
@@ -95,8 +139,9 @@ func tenantWide(p auth.Principal) bool {
 
 func canWrite(p auth.Principal) bool { return p.HasAnyRole(auth.RoleOwner, auth.RoleHRAdmin) }
 
-// visible: apakah employee id terlihat oleh p (dipakai role non-tenant-wide). Self atau bawahan
-// langsung; bawahan baru ada di S3 (org_assignments).
+// visible: apakah employee id terlihat oleh p (role non-tenant-wide): dirinya sendiri, atau — untuk
+// MANAGER — bawahan langsung saat ini (employees.manager_employee_id; amandemen S14: atasan tidak
+// effective-dated).
 func visible(ctx context.Context, q *store.Queries, p auth.Principal, id uuid.UUID) (bool, error) {
 	self, err := q.GetEmployeeIDByUser(ctx, &p.UserID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -105,7 +150,61 @@ func visible(ctx context.Context, q *store.Queries, p auth.Principal, id uuid.UU
 	if err != nil {
 		return false, err
 	}
-	return self == id, nil
+	if self == id {
+		return true, nil
+	}
+	if !p.HasRole(auth.RoleManager) {
+		return false, nil
+	}
+	r, err := q.GetEmployeeAccess(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return r.ManagerEmployeeID != nil && *r.ManagerEmployeeID == self, nil
+}
+
+// AccessMode untuk AccessTx.
+type AccessMode int
+
+const (
+	// AccessSalaryRead (W8): OWNER/HR_ADMIN/PAYROLL_ADMIN; EMPLOYEE hanya dirinya; MANAGER → 404
+	// (manager tidak melihat gaji bawahan, file 17 §3.4).
+	AccessSalaryRead AccessMode = iota
+	// AccessWrite (W7, W9, W10): OWNER/HR_ADMIN; role lain 403 bila employee terlihat, 404 bila tidak.
+	AccessWrite
+)
+
+// AccessTx dipakai modul lain (compensation) lewat interface di composition root (ADR-001): otorisasi
+// akses ke data turunan employee + tanggal mulai kerja (validasi valid_from ≥ hire_date).
+func (s *Service) AccessTx(ctx context.Context, tx pgx.Tx, p auth.Principal, id uuid.UUID, mode AccessMode) (time.Time, error) {
+	q := store.New(tx)
+	switch mode {
+	case AccessWrite:
+		if err := authorizeWrite(ctx, q, p, id); err != nil {
+			return time.Time{}, db.MapError(err)
+		}
+	case AccessSalaryRead:
+		if !tenantWide(p) {
+			self, err := q.GetEmployeeIDByUser(ctx, &p.UserID)
+			if errors.Is(err, pgx.ErrNoRows) || (err == nil && self != id) {
+				return time.Time{}, apperr.ErrNotFound
+			}
+			if err != nil {
+				return time.Time{}, err
+			}
+		}
+	}
+	r, err := q.GetEmployeeAccess(ctx, id)
+	if err != nil {
+		return time.Time{}, db.MapError(err)
+	}
+	if err := db.GuardTenant(ctx, "employees", r.TenantID); err != nil {
+		return time.Time{}, err
+	}
+	return r.HireDate, nil
 }
 
 // ---------------------------------------------------------------- read
@@ -159,15 +258,42 @@ func (s *Service) load(ctx context.Context, q *store.Queries, id uuid.UUID) (Emp
 	if r.BankName != nil || r.BankAccountLast4 != nil || r.BankAccountHolder != nil {
 		e.Bank = &Bank{Name: r.BankName, AccountMasked: maskAccount(r.BankAccountLast4), Holder: r.BankAccountHolder}
 	}
+	org, err := q.GetCurrentOrg(ctx, store.GetCurrentOrgParams{EmployeeID: id, AsOf: s.today()})
+	switch {
+	case err == nil:
+		vf := org.ValidFrom.Format(dateLayout)
+		e.CurrentOrg = &CurrentOrg{Department: &Ref{ID: org.DepartmentID, Name: org.DepartmentName},
+			Position: &Ref{ID: org.PositionID, Name: org.PositionName}, ValidFrom: &vf}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return Employee{}, err
+	}
+	m, err := q.GetManagerRef(ctx, id)
+	switch {
+	case err == nil:
+		if e.CurrentOrg == nil {
+			e.CurrentOrg = &CurrentOrg{}
+		}
+		e.CurrentOrg.Manager = &ManagerRef{ID: m.ID, FullName: m.FullName}
+	case !errors.Is(err, pgx.ErrNoRows):
+		return Employee{}, err
+	}
 	return e, nil
 }
 
 // ListQuery: filter W1.
 type ListQuery struct {
-	Status string
-	Q      string
-	Cursor string
-	Limit  int32
+	Status       string
+	Q            string
+	Cursor       string
+	DepartmentID string
+	Limit        int32
+}
+
+func refOrNil(id uuid.UUID, name string) *Ref {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &Ref{ID: id, Name: name}
 }
 
 func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]ListItem, httpx.Page, error) {
@@ -195,9 +321,22 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 		}
 		after = &c
 	}
+	var deptID *uuid.UUID
+	if lq.DepartmentID != "" {
+		id, err := uuid.Parse(lq.DepartmentID)
+		if err != nil {
+			return nil, page, apperr.Validation(apperr.FieldError{Field: "department_id", Code: "FORMAT", Message: "must be a UUID"})
+		}
+		deptID = &id
+	}
+	var managerID *uuid.UUID
 	if !tenantWide(p) {
-		// MANAGER: hanya bawahan langsung hari ini. Tanpa org_assignments (S3) himpunannya kosong.
-		return items, page, nil
+		// MANAGER: hanya bawahan langsung saat ini (employees.manager_employee_id = employee milik user).
+		self, err := s.selfID(ctx, p.UserID)
+		if err != nil || self == nil {
+			return items, page, err
+		}
+		managerID = self
 	}
 	var status, afterKey *string
 	var afterID *uuid.UUID
@@ -214,7 +353,8 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
 		st := store.New(tx)
 		if q == "" {
-			rs, err := st.ListEmployeesByNo(ctx, store.ListEmployeesByNoParams{Status: status, AfterKey: afterKey, AfterID: afterID, Lim: lim})
+			rs, err := st.ListEmployeesByNo(ctx, store.ListEmployeesByNoParams{AsOf: s.today(), Status: status, ManagerID: managerID,
+				DepartmentID: deptID, AfterKey: afterKey, AfterID: afterID, Lim: lim})
 			if err != nil {
 				return err
 			}
@@ -222,11 +362,13 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 				if err := db.GuardTenant(ctx, "employees", r.TenantID); err != nil {
 					return err
 				}
-				items = append(items, ListItem{ID: r.ID, EmployeeNo: r.EmployeeNo, FullName: r.FullName, Status: r.Status, HireDate: r.HireDate.Format(dateLayout)})
+				items = append(items, ListItem{ID: r.ID, EmployeeNo: r.EmployeeNo, FullName: r.FullName, Status: r.Status, HireDate: r.HireDate.Format(dateLayout),
+					Department: refOrNil(r.DepartmentID, r.DepartmentName), Position: refOrNil(r.PositionID, r.PositionName)})
 			}
 			return nil
 		}
-		rs, err := st.ListEmployeesByName(ctx, store.ListEmployeesByNameParams{Prefix: likeEscape(q), Status: status, AfterKey: afterKey, AfterID: afterID, Lim: lim})
+		rs, err := st.ListEmployeesByName(ctx, store.ListEmployeesByNameParams{AsOf: s.today(), Prefix: likeEscape(q), Status: status,
+			ManagerID: managerID, DepartmentID: deptID, AfterKey: afterKey, AfterID: afterID, Lim: lim})
 		if err != nil {
 			return err
 		}
@@ -234,7 +376,8 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 			if err := db.GuardTenant(ctx, "employees", r.TenantID); err != nil {
 				return err
 			}
-			items = append(items, ListItem{ID: r.ID, EmployeeNo: r.EmployeeNo, FullName: r.FullName, Status: r.Status, HireDate: r.HireDate.Format(dateLayout)})
+			items = append(items, ListItem{ID: r.ID, EmployeeNo: r.EmployeeNo, FullName: r.FullName, Status: r.Status, HireDate: r.HireDate.Format(dateLayout),
+				Department: refOrNil(r.DepartmentID, r.DepartmentName), Position: refOrNil(r.PositionID, r.PositionName)})
 			sortKeys = append(sortKeys, r.SortKey)
 		}
 		return nil
@@ -268,15 +411,28 @@ type BankInput struct {
 	Holder        *string `json:"holder"`
 }
 
+// OrgInput: penempatan awal (W2) / baru (W7). manager_employee_id null = tanpa atasan.
+type OrgInput struct {
+	DepartmentID      uuid.UUID  `json:"department_id"`
+	PositionID        uuid.UUID  `json:"position_id"`
+	ManagerEmployeeID *uuid.UUID `json:"manager_employee_id"`
+}
+
+type SalaryInput struct {
+	BaseSalary string `json:"base_salary"`
+}
+
 type CreateInput struct {
-	EmployeeNo string     `json:"employee_no"`
-	FullName   string     `json:"full_name"`
-	WorkEmail  *string    `json:"work_email"`
-	HireDate   string     `json:"hire_date"`
-	PtkpStatus string     `json:"ptkp_status"`
-	NIK        *string    `json:"nik"`
-	NPWP       *string    `json:"npwp"`
-	Bank       *BankInput `json:"bank"`
+	Org        *OrgInput    `json:"org"`
+	Salary     *SalaryInput `json:"salary"`
+	EmployeeNo string       `json:"employee_no"`
+	FullName   string       `json:"full_name"`
+	WorkEmail  *string      `json:"work_email"`
+	HireDate   string       `json:"hire_date"`
+	PtkpStatus string       `json:"ptkp_status"`
+	NIK        *string      `json:"nik"`
+	NPWP       *string      `json:"npwp"`
+	Bank       *BankInput   `json:"bank"`
 }
 
 var (
@@ -445,6 +601,17 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in C
 	}
 	if err := q.CreateSpan(ctx, store.CreateSpanParams{TenantID: tid, ID: s.ids.New(), EmployeeID: id, HireDate: hire, Actor: &actor}); err != nil {
 		return Employee{}, db.MapError(err)
+	}
+	// W2: penempatan dan gaji awal berlaku mulai hire_date, di transaksi yang sama (16-api W2).
+	if in.Org != nil {
+		if err := s.placeTx(ctx, tx, tid, actor, id, *in.Org, hire); err != nil {
+			return Employee{}, err
+		}
+	}
+	if in.Salary != nil {
+		if err := s.salaries.CreateInitialSalaryTx(ctx, tx, actor, id, in.Salary.BaseSalary, hire, meta); err != nil {
+			return Employee{}, err
+		}
 	}
 	fields := append([]string{"employee_no", "full_name", "hire_date", "ptkp_status"}, f.names()...)
 	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "employee.created",
@@ -695,4 +862,115 @@ func (s *Service) SelfID(ctx context.Context, userID uuid.UUID) (*uuid.UUID, err
 		return err
 	})
 	return out, db.MapError(err)
+}
+
+func (s *Service) selfID(ctx context.Context, userID uuid.UUID) (*uuid.UUID, error) {
+	var out *uuid.UUID
+	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
+		id, err := store.New(tx).GetEmployeeIDByUser(ctx, &userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		out = &id
+		return err
+	})
+	return out, db.MapError(err)
+}
+
+// ---------------------------------------------------------------- W7 org assignment
+
+type OrgAssignment struct {
+	ID         uuid.UUID   `json:"id"`
+	ValidFrom  string      `json:"valid_from"`
+	ValidTo    *string     `json:"valid_to"`
+	Department Ref         `json:"department"`
+	Position   Ref         `json:"position"`
+	Manager    *ManagerRef `json:"manager"`
+}
+
+type OrgAssignmentInput struct {
+	ValidFrom string `json:"valid_from"`
+	OrgInput
+}
+
+// placeTx: tutup penempatan yang berlaku di from, sisipkan [from, ∞), set atasan saat ini.
+func (s *Service) placeTx(ctx context.Context, tx pgx.Tx, tid, actor, employeeID uuid.UUID, in OrgInput, from time.Time) error {
+	if err := s.orgUnits.CheckAssignableTx(ctx, tx, in.DepartmentID, in.PositionID); err != nil {
+		return err
+	}
+	q := store.New(tx)
+	if in.ManagerEmployeeID != nil {
+		if *in.ManagerEmployeeID == employeeID {
+			return apperr.Validation(apperr.FieldError{Field: "manager_employee_id", Code: "SELF", Message: "an employee cannot manage themselves"})
+		}
+		m, err := q.GetManagerStatus(ctx, *in.ManagerEmployeeID)
+		if err != nil {
+			return db.MapError(err) // tidak ada / tenant lain → 404
+		}
+		if err := db.GuardTenant(ctx, "employees", m.TenantID); err != nil {
+			return err
+		}
+		if m.Status != "ACTIVE" {
+			return apperr.Validation(apperr.FieldError{Field: "manager_employee_id", Code: "INACTIVE", Message: "manager is not an active employee"})
+		}
+	}
+	if _, err := q.CloseOrgAssignmentAt(ctx, store.CloseOrgAssignmentAtParams{ValidFrom: from, Actor: &actor, EmployeeID: employeeID}); err != nil {
+		return db.MapError(err)
+	}
+	if _, err := q.InsertOrgAssignment(ctx, store.InsertOrgAssignmentParams{TenantID: tid, ID: s.ids.New(), EmployeeID: employeeID,
+		DepartmentID: in.DepartmentID, PositionID: in.PositionID, ValidFrom: from, Actor: &actor}); err != nil {
+		return db.MapError(err)
+	}
+	if _, err := q.SetManager(ctx, store.SetManagerParams{ManagerID: in.ManagerEmployeeID, Actor: &actor, ID: employeeID}); err != nil {
+		return db.MapError(err) // siklus → P0005 → 422 MANAGER_CYCLE
+	}
+	return nil
+}
+
+// AssignOrgTx (W7) di transaksi idempotency: OWNER/HR_ADMIN; valid_from ≥ hire_date. Penempatan masa
+// depan yang sudah ada → EXCLUDE → 409 OVERLAPPING_PERIOD. Atasan berlaku segera (S14).
+func (s *Service) AssignOrgTx(ctx context.Context, tx pgx.Tx, p auth.Principal, employeeID uuid.UUID, in OrgAssignmentInput, meta reqmeta.Meta) (OrgAssignment, error) {
+	tid, _ := tenantctx.From(ctx)
+	hire, err := s.AccessTx(ctx, tx, p, employeeID, AccessWrite)
+	if err != nil {
+		return OrgAssignment{}, err
+	}
+	from, perr := time.Parse(dateLayout, in.ValidFrom)
+	switch {
+	case perr != nil:
+		return OrgAssignment{}, apperr.Validation(apperr.FieldError{Field: "valid_from", Code: "FORMAT", Message: "must be YYYY-MM-DD"})
+	case from.Before(hire):
+		return OrgAssignment{}, apperr.Validation(apperr.FieldError{Field: "valid_from", Code: "OUT_OF_RANGE", Message: "must not be before hire_date " + hire.Format(dateLayout)})
+	}
+	if err := s.placeTx(ctx, tx, tid, p.UserID, employeeID, in.OrgInput, from); err != nil {
+		return OrgAssignment{}, err
+	}
+	q := store.New(tx)
+	org, err := q.GetCurrentOrg(ctx, store.GetCurrentOrgParams{EmployeeID: employeeID, AsOf: from})
+	if err != nil {
+		return OrgAssignment{}, db.MapError(err)
+	}
+	out := OrgAssignment{ID: org.ID, ValidFrom: in.ValidFrom, Department: Ref{ID: org.DepartmentID, Name: org.DepartmentName},
+		Position: Ref{ID: org.PositionID, Name: org.PositionName}}
+	if m, err := q.GetManagerRef(ctx, employeeID); err == nil {
+		out.Manager = &ManagerRef{ID: m.ID, FullName: m.FullName}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return OrgAssignment{}, db.MapError(err)
+	}
+	diff := map[string]any{"valid_from": in.ValidFrom, "department_id": in.DepartmentID.String(), "position_id": in.PositionID.String()}
+	if in.ManagerEmployeeID != nil {
+		diff["manager_employee_id"] = in.ManagerEmployeeID.String()
+	}
+	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "employee.org_assigned",
+		TargetType: "employee", TargetID: employeeID, Diff: diff}, meta); err != nil {
+		return OrgAssignment{}, err
+	}
+	return out, nil
+}
+
+// CountAssignedTodayTx: dipakai modul org (G4) lewat interface: berapa penempatan yang berlaku hari ini
+// memakai departemen/posisi ini.
+func (s *Service) CountAssignedTodayTx(ctx context.Context, tx pgx.Tx, departmentID, positionID *uuid.UUID) (int64, error) {
+	n, err := store.New(tx).CountAssignedToday(ctx, store.CountAssignedTodayParams{AsOf: s.today(), DepartmentID: departmentID, PositionID: positionID})
+	return n, db.MapError(err)
 }

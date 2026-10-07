@@ -25,15 +25,18 @@ const (
 var allRoleNames = []string{roleO, roleH, roleP, roleM, roleE}
 
 type tenantFx struct {
-	id       uuid.UUID
-	slug     string
-	users    map[string]uuid.UUID // role → user
-	emails   map[string]string
-	tokens   map[string]string // role → access token (tid = tenant ini)
-	dept     uuid.UUID
-	pos      uuid.UUID
-	empSelf  uuid.UUID // tertaut ke user EMPLOYEE
-	empOther uuid.UUID
+	id         uuid.UUID
+	slug       string
+	users      map[string]uuid.UUID // role → user
+	emails     map[string]string
+	tokens     map[string]string // role → access token (tid = tenant ini)
+	dept       uuid.UUID
+	pos        uuid.UUID
+	empSelf    uuid.UUID // tertaut ke user EMPLOYEE; bawahan langsung empManager (S3)
+	empOther   uuid.UUID // bukan bawahan siapa pun
+	empManager uuid.UUID // tertaut ke user MANAGER
+	holiday    uuid.UUID
+	comp       uuid.UUID // komponen tenant (FIXED) yang bisa ditugaskan
 }
 
 func (e env) verifyUser(t *testing.T, id uuid.UUID) {
@@ -63,10 +66,22 @@ func (e env) newTenantFx(t *testing.T, slug string) *tenantFx {
 	f.pos = e.mustCreate(t, f.tokens[roleO], "/api/v1/positions", map[string]any{"code": "STAFF", "name": "Staf"})
 	f.empSelf = e.createEmployee(t, f.tokens[roleO], "EMP-0001", "Tono Saputra", "3174012304950001")
 	f.empOther = e.createEmployee(t, f.tokens[roleO], "EMP-0002", "Rina Wati", "3174012304950002")
+	f.empManager = e.createEmployee(t, f.tokens[roleO], "EMP-0090", "Manajer Satu", "3174012304950090")
 	e.inTenant(t, f.id, func(tx pgx.Tx) error {
-		_, err := tx.Exec(context.Background(), `UPDATE employees SET user_id = $1 WHERE id = $2`, f.users[roleE], f.empSelf)
+		ctx := context.Background()
+		if _, err := tx.Exec(ctx, `UPDATE employees SET user_id = $1 WHERE id = $2`, f.users[roleE], f.empSelf); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE employees SET user_id = $1 WHERE id = $2`, f.users[roleM], f.empManager); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `UPDATE employees SET manager_employee_id = $1 WHERE id = $2`, f.empManager, f.empSelf)
 		return err
 	})
+	f.holiday = e.mustCreate(t, f.tokens[roleO], "/api/v1/holidays", map[string]any{"date": "2026-03-19", "name": "Libur perusahaan"})
+	f.comp = e.mustCreate(t, f.tokens[roleO], "/api/v1/component-definitions", map[string]any{
+		"code": "TUNJ_JABATAN", "name": "Tunjangan jabatan", "category": "EARNING", "calc_type": "FIXED",
+		"default_amount": "500000.00", "taxable": true, "bpjs_base": true})
 	return f
 }
 

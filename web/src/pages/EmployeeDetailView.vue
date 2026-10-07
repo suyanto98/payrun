@@ -2,9 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError } from '../api'
-import { canListEmployees, formatDate, statusLabel } from '../access'
+import { canListEmployees, formatDate, formatMoney, statusLabel } from '../access'
 import { useAuth } from '../stores/auth'
-import type { Employee } from '../types'
+import type { Employee, SalaryHistory } from '../types'
 
 const route = useRoute()
 const auth = useAuth()
@@ -12,12 +12,17 @@ const emp = ref<Employee | null>(null)
 const error = ref('')
 const notFound = ref(false)
 
+const salary = ref<SalaryHistory | null>(null)
+
 async function load(id: string) {
+  salary.value = null
   emp.value = null
   error.value = ''
   notFound.value = false
   try {
     emp.value = await api<Employee>(`/employees/${id}`)
+    // W8: OWNER/HR/Payroll dan karyawan ybs; manager mendapat 404 (tidak melihat gaji bawahan) → disembunyikan.
+    salary.value = await api<SalaryHistory>(`/employees/${id}/salary-history`).catch(() => null)
   } catch (e) {
     // 404 juga untuk karyawan perusahaan lain atau di luar scope (tidak dibedakan, file 17 §1.3).
     if (e instanceof ApiError && e.status === 404) notFound.value = true
@@ -51,7 +56,33 @@ const isSelf = computed(() => emp.value !== null && emp.value.id === auth.employ
           <div><dt>Mulai kerja</dt><dd>{{ formatDate(emp.hire_date) }}</dd></div>
           <div v-if="emp.end_date"><dt>Hari kerja terakhir</dt><dd>{{ formatDate(emp.end_date) }}</dd></div>
           <div v-if="full"><dt>Status PTKP</dt><dd>{{ emp.ptkp_status }}</dd></div>
+          <div><dt>Departemen</dt><dd>{{ emp.current_org?.department?.name ?? '—' }}</dd></div>
+          <div><dt>Posisi</dt><dd>{{ emp.current_org?.position?.name ?? '—' }}</dd></div>
+          <div><dt>Atasan</dt><dd>
+            <RouterLink v-if="emp.current_org?.manager" :to="`/employees/${emp.current_org.manager.id}`">{{ emp.current_org.manager.full_name }}</RouterLink>
+            <span v-else>—</span>
+          </dd></div>
         </dl>
+      </section>
+      <section v-if="salary" class="card">
+        <h2>Gaji</h2>
+        <p class="muted">Riwayat berlaku per tanggal; tanggal akhir tidak termasuk.</p>
+        <p v-if="salary.salary.length === 0" class="muted">Belum ada data gaji.</p>
+        <dl v-else class="dl">
+          <div v-for="s in salary.salary" :key="s.id">
+            <dt>{{ formatDate(s.valid_from) }} – {{ s.valid_to ? formatDate(s.valid_to) : 'sekarang' }}<span v-if="s.change_reason"> · {{ s.change_reason }}</span></dt>
+            <dd class="num">{{ formatMoney(s.base_salary) }}</dd>
+          </div>
+        </dl>
+        <template v-if="salary.components.length">
+          <h2 class="sub-head">Komponen</h2>
+          <dl class="dl">
+            <div v-for="c in salary.components" :key="c.id">
+              <dt>{{ c.component.name }} · {{ formatDate(c.valid_from) }}{{ c.valid_to ? ' – ' + formatDate(c.valid_to) : '' }}</dt>
+              <dd class="num">{{ c.amount ? formatMoney(c.amount) : c.rate ?? 'nilai default' }}</dd>
+            </div>
+          </dl>
+        </template>
       </section>
       <section v-if="full" class="card">
         <h2>Data pribadi</h2>
@@ -68,3 +99,8 @@ const isSelf = computed(() => emp.value !== null && emp.value.id === auth.employ
     <p v-else class="muted">Memuat…</p>
   </div>
 </template>
+
+<style scoped>
+.sub-head { margin-top: 18px; }
+</style>
+

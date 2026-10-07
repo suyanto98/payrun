@@ -16,9 +16,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"payrun/db/migrations"
+	"payrun/internal/modules/compensation"
 	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
 	"payrun/internal/modules/org"
@@ -110,10 +112,16 @@ func APIRouter(d Deps) http.Handler {
 	})
 
 	idem := idempotency.NewService(d.Pool, d.IDs, d.Clock)
-	orgH := org.NewHandler(org.NewService(d.Pool, d.IDs))
+	orgSvc := org.NewService(d.Pool, d.IDs)
+	orgH := org.NewHandler(orgSvc)
 	employeeSvc := employee.NewService(d.Pool, employee.PII{Keyring: d.Keyring, BlindIndex: d.BlindIndex}, d.Clock, d.IDs)
 	employeeH := employee.NewHandler(employeeSvc, idem)
+	compSvc := compensation.NewService(d.Pool, employeeAccess{employeeSvc}, d.Clock, d.IDs)
+	compH := compensation.NewHandler(compSvc, idem)
+	// Ketergantungan lintas modul lewat interface (ADR-001): modul tidak saling meng-import.
 	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
+	employeeSvc.Wire(orgSvc, compSvc)     // W2/W7: departemen/posisi aktif; gaji awal
+	orgSvc.Wire(employeeSvc)              // G4: masih dipakai penempatan hari ini
 
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
 	r.Route("/api/v1", func(v1 chi.Router) {
@@ -125,9 +133,10 @@ func APIRouter(d Deps) http.Handler {
 		tenantWrite := authed.With(auth.RequireTenant, limiter.Middleware(tiers.Write, byUser))
 		iamH.Routes(v1, read, write)
 		iamH.TenantRoutes(tenantRead, tenantWrite)
-		tenancyH.Routes(v1.With(limiter.Middleware(tiers.AuthIP, ratelimit.ByIP)), tenantRead)
+		tenancyH.Routes(v1.With(limiter.Middleware(tiers.AuthIP, ratelimit.ByIP)), tenantRead, tenantWrite)
 		orgH.Routes(tenantRead, tenantWrite)
 		employeeH.Routes(tenantRead, tenantWrite)
+		compH.Routes(tenantRead, tenantWrite)
 	})
 	return r
 }
@@ -189,4 +198,15 @@ func sessionStarter(svc *iam.Service) func(ctx context.Context, userID, tenantID
 		return map[string]any{"access_token": r.AccessToken, "token_type": r.TokenType, "expires_in": r.ExpiresIn,
 			"user": r.User, "active_tenant": r.ActiveTenant}, sess.RefreshToken, sess.RefreshMaxAge, nil
 	}
+}
+
+// employeeAccess mengadaptasi employee.Service.AccessTx ke interface compensation.Employees.
+type employeeAccess struct{ svc *employee.Service }
+
+func (a employeeAccess) AccessTx(ctx context.Context, tx pgx.Tx, p auth.Principal, id uuid.UUID, write bool) (time.Time, error) {
+	mode := employee.AccessSalaryRead
+	if write {
+		mode = employee.AccessWrite
+	}
+	return a.svc.AccessTx(ctx, tx, p, id, mode)
 }

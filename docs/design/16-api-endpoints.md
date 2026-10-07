@@ -832,3 +832,23 @@ Kontrak yang berlaku: `api/openapi.yaml` (dicek `TestContract_S2ResponsesMatchSp
 | U3 tenant tidak aktif | — | Undangan ke tenant `SUSPENDED`/`PENDING_VERIFICATION` → `410 INVITATION_INVALID` | Review S2 |
 | SPA `/invite` | — | Rahasia di fragment dipindah ke memori oleh guard router dan dihapus dari URL; `?next=` tidak pernah memuat hash dan hanya menerima path internal | Review S2: rahasia sempat berpindah ke query string lewat redirect login |
 | Kode baru | — | `409 NPWP_TAKEN` (`uq_employees_npwp_bidx`), dimasukkan ke katalog lebih dulu | Pola `NIK_TAKEN` |
+
+## Catatan implementasi (Sprint 3)
+
+Kontrak: `api/openapi.yaml` (`TestContract_S3ResponsesMatchSpec`); otorisasi: `api/authz_matrix.yaml` (151 kasus peran × target, termasuk 👥 dan 👤).
+
+| Endpoint | Desain | Implementasi S3 | Alasan |
+|---|---|---|---|
+| W7 atasan | `manager_employee_id` effective-dated di `org_assignments` | Departemen/posisi effective-dated di `org_assignments`; atasan = **kolom saat ini** `employees.manager_employee_id` (berlaku segera, ter-audit `employee.org_assigned`), siklus ditolak trigger PI-19 (`422 MANAGER_CYCLE`, advisory lock per tenant) | Amandemen Step 12 S14 |
+| W2 | `org` + `salary` | Diterima; keduanya mulai `hire_date` di transaksi pembuatan employee. Departemen/posisi tenant lain → `404` (Demo A langkah 4) | — |
+| W1 | Filter `department_id` | Ada; `department`/`position` = penempatan yang berlaku hari ini (UTC; zona tenant masuk bersama kalender run S4) | — |
+| W3 `current_org` | `{department, position, manager, valid_from}` | Sama; `department`/`position`/`valid_from` null bila hanya atasan yang diset | Atasan tidak effective-dated (S14) |
+| W8 `M` | `404` | `404` juga untuk bawahan sendiri: manager tidak melihat gaji (file 17 §3.4) | — |
+| W9/W10/W7 | `409 PERIOD_LOCKED` | Belum dicek | `payroll_periods` dibuat di S4 |
+| W10 | `amount`/`rate` | Assignment tanpa `amount` memakai `default_amount` definisi saat kalkulasi; komponen sistem atau `INACTIVE` → `400` (`NOT_ASSIGNABLE`) | — |
+| C2/C3 | `422 COMPONENT_CYCLE` / `INVALID_COMPONENT_REFERENCE` | Divalidasi dengan `engine.ValidateGraph` (fungsi yang sama dipakai engine saat kalkulasi); referensi ke base virtual yang baru lengkap di stage lebih akhir (contoh `TAXABLE_GROSS` dari komponen EARNING) ditolak | §2.4 engine |
+| C3/C4 sistem | Hanya `name` | Sama; parameter lain → `403`; nonaktifkan → `403` (termasuk BPJS; mengaktifkan/menonaktifkan BPJS per tenant menyusul bila dibutuhkan) | — |
+| T4 | `?year` | Wajib; tanpa pagination | — |
+| Seed O6 | Komponen, jenis cuti, master | 9 komponen sistem lewat `seed_system_components()` saat signup + backfill migrasi `00006` untuk tenant lama. Jenis cuti di S6 | — |
+| Lembur | Amandemen S13: satu multiplier | **Tidak diterapkan**: engine tetap mendukung tier dari ruleset (ruleset bisa berisi satu tier). Satu multiplier akan mengubah angka acuan Tono 6.888.609 yang dipakai PRD, demo script, contoh API, dan DoD S3 | Konsistensi angka acuan |
+| Modul | ADR-001: modul hanya meng-query tabelnya | Penyimpangan disengaja: query baca employee JOIN `departments`/`positions` (nama untuk tampilan). Semua PENULISAN lintas modul lewat interface di composition root (`OrgUnits`, `Salaries`, `Assignments`, `Employees`) | Menghindari N+1 untuk tampilan |

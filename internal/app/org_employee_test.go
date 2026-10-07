@@ -177,8 +177,11 @@ func TestEmployee_ReadScopes(t *testing.T) {
 	if r, _ := e.do(t, http.MethodGet, "/api/v1/employees", f.tokens[roleE], nil); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("list for EMPLOYEE: want 403, got %d", r.StatusCode)
 	}
-	if r, b := e.do(t, http.MethodGet, "/api/v1/employees", f.tokens[roleM], nil); r.StatusCode != http.StatusOK || len(b["data"].([]any)) != 0 {
-		t.Fatalf("MANAGER without reports: want empty list, got %d %v", r.StatusCode, b)
+	// MANAGER: hanya bawahan langsung saat ini (empSelf), bukan empOther atau dirinya sendiri.
+	r, b := e.do(t, http.MethodGet, "/api/v1/employees", f.tokens[roleM], nil)
+	data, _ := b["data"].([]any)
+	if r.StatusCode != http.StatusOK || len(data) != 1 || data[0].(map[string]any)["id"] != f.empSelf.String() {
+		t.Fatalf("MANAGER sees direct reports only: got %d %v", r.StatusCode, b)
 	}
 }
 
@@ -207,8 +210,8 @@ func TestEmployee_ListPaginationAndSearch(t *testing.T) {
 		}
 		cursor = pg["next_cursor"].(string)
 	}
-	if len(seen) != 7 || seen[0] != "EMP-0001" || seen[6] != "EMP-0007" {
-		t.Fatalf("pagination must return all 7 in employee_no order exactly once: %v", seen)
+	if len(seen) != 8 || seen[0] != "EMP-0001" || seen[6] != "EMP-0007" || seen[7] != "EMP-0090" {
+		t.Fatalf("pagination must return all 8 in employee_no order exactly once: %v", seen)
 	}
 	_, b := e.do(t, http.MethodGet, "/api/v1/employees?q=bud", f.tokens[roleP], nil)
 	if data := b["data"].([]any); len(data) != 5 || data[0].(map[string]any)["full_name"] != "Budi 3" {

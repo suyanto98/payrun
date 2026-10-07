@@ -125,6 +125,11 @@ var (
 	ErrEmployeeNoTaken   = def(http.StatusConflict, "EMPLOYEE_NO_TAKEN", "Employee number is already in use")
 	ErrNIKTaken          = def(http.StatusConflict, "NIK_TAKEN", "NIK is already registered in this tenant")
 	ErrNPWPTaken         = def(http.StatusConflict, "NPWP_TAKEN", "NPWP is already registered in this tenant")
+	// Sprint 3: kompensasi, effective dating, org (katalog §3).
+	ErrOverlappingPeriod  = def(http.StatusConflict, "OVERLAPPING_PERIOD", "Overlaps an existing effective-dated record")
+	ErrManagerCycle       = def(http.StatusUnprocessableEntity, "MANAGER_CYCLE", "Manager assignment would create a cycle")
+	ErrComponentCycle     = def(http.StatusUnprocessableEntity, "COMPONENT_CYCLE", "Component references form a cycle")
+	ErrInvalidComponentRf = def(http.StatusUnprocessableEntity, "INVALID_COMPONENT_REFERENCE", "Invalid component reference")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

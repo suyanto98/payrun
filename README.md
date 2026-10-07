@@ -2,7 +2,7 @@
 
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
-**Status:** Sprint 2 (core domain, milestone M5). Tenant signup with email verification, login and tenant switching, member invitations, departments/positions, employees with encrypted PII, and a first SPA. Tenant isolation is proven by an authorization matrix test generated from [`api/authz_matrix.yaml`](api/authz_matrix.yaml), a cross-tenant suite over every `{id}` route, and Demo A as a test ([roadmap](docs/design/30-roadmap.md)).
+**Status:** Sprint 3 (compensation + payroll engine). On top of Sprint 2 (tenancy, IAM, invitations, employees with encrypted PII, authorization matrix): effective-dated salary and component assignments, department/position placements with a cycle-free manager chain, tenant holidays, versioned rulesets, and a pure payroll engine verified by 31 golden cases (worked example: Tono, March 2026 = Rp6.888.609), a 10,000-iteration property test, and snapshot recompute ([roadmap](docs/design/30-roadmap.md)).
 
 ## Quick start
 

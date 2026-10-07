@@ -29,3 +29,12 @@ export function formatDate(iso: string | null | undefined): string {
 export function rolesText(roles: Role[]): string {
   return roles.map((r) => roleLabel[r]).join(' · ')
 }
+
+/** "6600000.00" → "Rp6.600.000" (string dari API; tidak pernah lewat float untuk aritmetika). */
+export function formatMoney(v: string | null | undefined): string {
+  if (!v) return '—'
+  const [int, frac] = v.split('.')
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return 'Rp' + grouped + (frac && /[1-9]/.test(frac) ? ',' + frac : '')
+}
+

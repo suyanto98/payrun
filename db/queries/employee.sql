@@ -33,12 +33,24 @@ SELECT id FROM employees WHERE user_id = @user_id;
 
 -- name: ListEmployeesByNo :many
 -- Tanpa q: urut employee_no, id (keyset). Filter status opsional.
-SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date
+SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
+       -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
+       coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
+       coalesce(o.department_name, '')::text AS department_name,
+       coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
+       coalesce(o.position_name, '')::text AS position_name
 FROM employees e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
+LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id AS position_id, p.name AS position_name
+                   FROM org_assignments oa
+                   JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+                   JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date) o ON true
 WHERE (sqlc.narg(status)::text IS NULL OR e.status = sqlc.narg(status))
+  AND (sqlc.narg(manager_id)::uuid IS NULL OR e.manager_employee_id = sqlc.narg(manager_id))
+  AND (sqlc.narg(department_id)::uuid IS NULL OR o.department_id = sqlc.narg(department_id))
   AND (sqlc.narg(after_key)::text IS NULL OR (e.employee_no, e.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
 ORDER BY e.employee_no, e.id
 LIMIT @lim;
@@ -47,13 +59,24 @@ LIMIT @lim;
 -- Dengan q: prefix pada lower(full_name) atau employee_no (tanpa pg_trgm di V1), urut lower(full_name), id.
 -- prefix sudah di-escape aplikasi (%, _, \).
 SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
-       lower(e.full_name)::text AS sort_key
+       lower(e.full_name)::text AS sort_key, -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
+       coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
+       coalesce(o.department_name, '')::text AS department_name,
+       coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
+       coalesce(o.position_name, '')::text AS position_name
 FROM employees e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
+LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id AS position_id, p.name AS position_name
+                   FROM org_assignments oa
+                   JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+                   JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date) o ON true
 WHERE (lower(e.full_name) LIKE @prefix::text || '%' ESCAPE '\' OR lower(e.employee_no) LIKE @prefix::text || '%' ESCAPE '\')
   AND (sqlc.narg(status)::text IS NULL OR e.status = sqlc.narg(status))
+  AND (sqlc.narg(manager_id)::uuid IS NULL OR e.manager_employee_id = sqlc.narg(manager_id))
+  AND (sqlc.narg(department_id)::uuid IS NULL OR o.department_id = sqlc.narg(department_id))
   AND (sqlc.narg(after_key)::text IS NULL OR (lower(e.full_name), e.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
 ORDER BY lower(e.full_name), e.id
 LIMIT @lim;
@@ -101,3 +124,49 @@ SELECT tenant_id, user_id, status FROM employees WHERE id = @id FOR UPDATE;
 -- name: LinkEmployeeUser :execrows
 UPDATE employees SET user_id = @user_id, updated_by = @user_id, version = version + 1
 WHERE id = @id AND user_id IS NULL;
+
+-- name: GetEmployeeAccess :one
+-- Otorisasi lintas modul (AccessTx): atasan saat ini + tanggal mulai kerja (span pertama).
+SELECT e.tenant_id, e.id, e.manager_employee_id, e.status,
+       (SELECT min(lower(sp.span)) FROM employment_spans sp
+        WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id)::date AS hire_date
+FROM employees e WHERE e.id = @id;
+
+-- ---------------------------------------------------------------- org assignment & atasan (Sprint 3)
+-- Nama departemen/posisi dibaca lewat JOIN read-only ke tabel modul org (tampilan saja; penulisan
+-- tetap lewat modul org). Penyimpangan ADR-001 yang disengaja, dicatat di 16-api-endpoints S3.
+
+-- name: CloseOrgAssignmentAt :execrows
+UPDATE org_assignments
+SET valid_during = daterange(lower(valid_during), @valid_from::date, '[)'), updated_by = @actor, version = version + 1
+WHERE employee_id = @employee_id AND valid_during @> @valid_from::date AND lower(valid_during) < @valid_from::date;
+
+-- name: InsertOrgAssignment :one
+INSERT INTO org_assignments (tenant_id, id, employee_id, department_id, position_id, valid_during, created_by, updated_by)
+VALUES (@tenant_id, @id, @employee_id, @department_id, @position_id, daterange(@valid_from::date, NULL, '[)'), @actor, @actor)
+RETURNING id;
+
+-- name: SetManager :execrows
+-- Atasan saat ini (S14). Siklus → trigger PI-19 (P0005 → 422 MANAGER_CYCLE).
+UPDATE employees SET manager_employee_id = sqlc.narg(manager_id), updated_by = @actor, version = version + 1
+WHERE id = @id;
+
+-- name: GetCurrentOrg :one
+SELECT oa.id, lower(oa.valid_during)::date AS valid_from, d.id AS department_id, d.name AS department_name,
+       p.id AS position_id, p.name AS position_name
+FROM org_assignments oa
+JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+WHERE oa.employee_id = @employee_id AND oa.valid_during @> @as_of::date;
+
+-- name: GetManagerRef :one
+SELECT m.id, m.full_name FROM employees e JOIN employees m ON m.tenant_id = e.tenant_id AND m.id = e.manager_employee_id
+WHERE e.id = @id;
+
+-- name: GetManagerStatus :one
+SELECT tenant_id, status FROM employees WHERE id = @id;
+
+-- name: CountAssignedToday :one
+-- G4: departemen/posisi yang masih dipakai assignment yang berlaku hari ini tidak boleh dinonaktifkan.
+SELECT count(*) FROM org_assignments
+WHERE valid_during @> @as_of::date AND (department_id = sqlc.narg(department_id) OR position_id = sqlc.narg(position_id));

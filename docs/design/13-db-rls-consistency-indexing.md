@@ -341,3 +341,16 @@ Migrasi `00005`: `departments`, `positions`, `employees`, `employment_spans`, `i
 | `ix_invitations_employee` | — | Index penuh `(tenant_id, employee_id)` | Index FK harus mencakup semua baris (C4; partial ditolak `TestCatalog_EveryFKHasIndex`) |
 | `payrun_readonly` | — | Tanpa kolom `*_enc`/`*_bidx` employees dan `token_hash` undangan | Dump analis tidak membawa ciphertext/hash |
 | Tenant guard C-46 | Helper decode repository | `db.GuardTenant(ctx, table, row.tenant_id)` dipanggil setiap decode baris tenant di modul S2; mismatch → `500` + `payrun_tenant_isolation_violations_total{table}` + log error | `TestTenantGuard_DetectsForeignRow` |
+
+## Catatan implementasi (Sprint 3)
+
+Migrasi `00006`: `holidays`, `rulesets` (global, immutable, allowlist tanpa RLS, `SELECT` saja untuk app), `component_definitions`, `salary_assignments`, `employee_components`, `org_assignments`, kolom `employees.manager_employee_id`.
+
+| Aspek | Desain | Implementasi S3 | Alasan |
+|---|---|---|---|
+| Seed ruleset | Migrasi data | Payload `ID-SIMPLIFIED 2026.1` = fixture golden engine; `TestRuleset_SeedMatchesEngineFixture` memastikan keduanya identik dan `payload_sha256` konsisten; `ck_rulesets_payload_identity` mengikat `code`/`version` kolom ke payload | Golden hijau tetapi DB berbeda = angka run berbeda |
+| Backfill komponen sistem | — | Migrasi berjalan sebagai owner, dan `FORCE RLS` berlaku untuk owner: `NO FORCE` dilepas sementara pada `tenants` + `component_definitions` **di dalam transaksi migrasi**, lalu dipasang lagi sebelum commit | Satu-satunya cara owner membaca lintas tenant tanpa role BYPASSRLS |
+| `org_assignments` | Termasuk `manager_employee_id` + trigger siklus | Hanya departemen/posisi. Atasan di `employees.manager_employee_id` + `ck_employees_manager_not_self` + trigger `forbid_manager_cycle` (rantai atasan saat ini, advisory lock `org:<tenant>`) | Amandemen S14 |
+| `holidays` | Mutable [M][H] | Sama + grant `DELETE` (T6) | — |
+| PeriodGuard | Trigger di tabel input | Belum | S4–S6 bersama `payroll_periods` |
+| Numeric di Go | — | `pgtype.Numeric` ↔ `decimal` eksak (koefisien + eksponen); JSON string 2/6 desimal | ADR-P06: tanpa float |

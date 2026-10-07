@@ -197,6 +197,12 @@ var appGrantMatrix = map[string]string{
 	"employees":                 "INSERT,SELECT,UPDATE",
 	"employment_spans":          "INSERT,SELECT,UPDATE",
 	"invitations":               "INSERT,SELECT,UPDATE",
+	"holidays":                  "DELETE,INSERT,SELECT,UPDATE",
+	"rulesets":                  "SELECT",
+	"component_definitions":     "INSERT,SELECT,UPDATE",
+	"salary_assignments":        "INSERT,SELECT,UPDATE",
+	"employee_components":       "INSERT,SELECT,UPDATE",
+	"org_assignments":           "INSERT,SELECT,UPDATE",
 }
 
 func TestCatalog_AppGrantsMatchMatrix(t *testing.T) {

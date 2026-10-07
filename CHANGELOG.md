@@ -5,6 +5,10 @@
 Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, bukan dibagi sebagai module
 (docs/design/32-repository-structure.md). Setiap perubahan skeleton dicatat di sini dan harus di-port ke repo lain.
 
+### 0.0.5 — PayRun Sprint 3 (belum di-port ke LedgerPay)
+- `apperr`: `OVERLAPPING_PERIOD`, `MANAGER_CYCLE`, `COMPONENT_CYCLE`, `INVALID_COMPONENT_REFERENCE`.
+- `db.MapError`: `ex_*_no_overlap` (23P01) → `OVERLAPPING_PERIOD`; `P0005` → `MANAGER_CYCLE`.
+
 ### 0.0.4 — PayRun Sprint 2 (belum di-port ke LedgerPay)
 - `idempotency` (baru di PayRun, dari LedgerPay pola a): tenant-scoped (`tenant_id` + user sebagai client), key kedaluwarsa dianggap baru, `Outcome.Header` untuk ETag/Location.
 - `httpx`: `IfMatchVersion` (428/412), `SetETag`, `ParseID` (bukan UUID → 404), `KeyCursor` (keyset teks), `Limit`, `OnlyQuery` (filter tak dikenal → 400).

@@ -99,3 +99,35 @@ func TestContract_S2ResponsesMatchSpec(t *testing.T) {
 		t.Errorf("/me employee_id must be the linked employee in the active tenant: %v", me)
 	}
 }
+
+// TestContract_S3ResponsesMatchSpec: respons sukses endpoint Sprint 3 terhadap skemanya.
+func TestContract_S3ResponsesMatchSpec(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	o := f.tokens[roleO]
+	_, hols := e.do(t, http.MethodGet, "/api/v1/holidays?year=2026", o, nil)
+	assertMatchesSpec(t, "holidays", hols, &gen.HolidayList{})
+	_, hol := e.do(t, http.MethodPost, "/api/v1/holidays", o, map[string]any{"date": "2026-05-01", "name": "Hari buruh"})
+	assertMatchesSpec(t, "holiday", hol, &gen.Holiday{})
+	_, defs := e.do(t, http.MethodGet, "/api/v1/component-definitions", o, nil)
+	assertMatchesSpec(t, "component definitions", defs, &gen.ComponentDefinitionList{})
+	_, def := e.do(t, http.MethodPost, "/api/v1/component-definitions", o, map[string]any{"code": "TRANSPORT", "name": "Uang transport",
+		"category": "EARNING", "calc_type": "PER_DAY", "default_amount": "20000.00", "day_source": "PRESENT"})
+	assertMatchesSpec(t, "component definition", def, &gen.ComponentDefinition{})
+	emp := f.empOther.String()
+	_, oa := e.doH(t, http.MethodPost, "/api/v1/employees/"+emp+"/org-assignments", o, key(),
+		map[string]any{"valid_from": "2026-01-05", "department_id": f.dept, "position_id": f.pos, "manager_employee_id": f.empManager})
+	assertMatchesSpec(t, "org assignment", oa, &gen.OrgAssignment{})
+	_, sal := e.doH(t, http.MethodPost, "/api/v1/employees/"+emp+"/salary-changes", o, key(), map[string]any{"base_salary": "6000000.00", "valid_from": "2026-01-05"})
+	assertMatchesSpec(t, "salary assignment", sal, &gen.SalaryAssignment{})
+	_, ec := e.doH(t, http.MethodPost, "/api/v1/employees/"+emp+"/component-assignments", o, key(), map[string]any{"component_id": f.comp, "valid_from": "2026-01-05"})
+	assertMatchesSpec(t, "employee component", ec, &gen.EmployeeComponent{})
+	_, hist := e.do(t, http.MethodGet, "/api/v1/employees/"+emp+"/salary-history", o, nil)
+	assertMatchesSpec(t, "salary history", hist, &gen.SalaryHistory{})
+	_, full := e.do(t, http.MethodGet, "/api/v1/employees/"+emp, o, nil)
+	assertMatchesSpec(t, "employee with current_org", full, &gen.Employee{})
+	_, managerOnly := e.do(t, http.MethodGet, "/api/v1/employees/"+f.empSelf.String(), o, nil)
+	assertMatchesSpec(t, "employee with manager only", managerOnly, &gen.Employee{})
+	_, list := e.do(t, http.MethodGet, "/api/v1/employees", o, nil)
+	assertMatchesSpec(t, "employee list with org", list, &gen.EmployeeList{})
+}

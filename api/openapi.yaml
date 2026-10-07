@@ -353,14 +353,13 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - { name: year, in: query, required: true, schema: { type: integer, minimum: 2000, maximum: 2100 } }
       responses:
         '200':
           description: OK. Body model `HolidayList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/HolidayList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -377,13 +376,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/HolidayCreate' }
       responses:
         '201':
           description: Created. Body model `Holiday` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Holiday' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -786,6 +785,7 @@ paths:
       parameters:
         - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] } }
         - { name: q, in: query, required: false, schema: { type: string, minLength: 2, maxLength: 50 } }
+        - { name: department_id, in: query, required: false, schema: { type: string, format: uuid } }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -947,13 +947,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OrgAssignmentRequest' }
       responses:
         '201':
           description: Created. Body model `OrgAssignment` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgAssignment' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -973,12 +973,13 @@ paths:
       x-priority: P0
       parameters:
         - $ref: '#/components/parameters/ResourceId'
+        - { name: as_of, in: query, required: false, schema: { type: string, format: date } }
       responses:
         '200':
           description: OK. Body model `SalaryHistory` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/SalaryHistory' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1000,13 +1001,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/SalaryChangeRequest' }
       responses:
         '201':
           description: Created. Body model `SalaryAssignment` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/SalaryAssignment' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1031,13 +1032,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ComponentAssignmentRequest' }
       responses:
         '201':
           description: Created. Body model `EmployeeComponent` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/EmployeeComponent' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1056,14 +1057,14 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, INACTIVE] } }
+        - { name: category, in: query, required: false, schema: { type: string, enum: [EARNING, DEDUCTION] } }
       responses:
         '200':
           description: OK. Body model `ComponentDefinitionList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ComponentDefinitionList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1080,13 +1081,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ComponentDefinitionCreate' }
       responses:
         '201':
           description: Created. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ComponentDefinition' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1110,13 +1111,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ComponentDefinitionUpdate' }
       responses:
         '200':
           description: OK. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ComponentDefinition' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1137,16 +1138,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
           description: OK. Body model `ComponentDefinition` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ComponentDefinition' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2422,7 +2423,8 @@ components:
       description: |
         PII is always masked here (full view: GET /employees/{id}/pii, Sprint 4). MANAGER and EMPLOYEE
         receive the basic version without `ptkp_status`, `nik_masked`, `npwp_masked` and `bank`.
-        `current_org` is filled from Sprint 3 (org assignments).
+        `current_org` is the placement in force today (department/position effective-dated) plus the
+        current manager (not effective-dated, amendment S14); null when neither exists.
       required: [id, employee_no, full_name, work_email, status, hire_date, end_date, current_org, user_id, version]
       properties:
         id: { type: string, format: uuid }
@@ -2432,7 +2434,10 @@ components:
         status: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] }
         hire_date: { type: string, format: date }
         end_date: { type: [string, 'null'], format: date, description: Last working day (inclusive). }
-        current_org: { type: 'null' }
+        current_org:
+          oneOf:
+            - $ref: '#/components/schemas/CurrentOrg'
+            - type: 'null'
         user_id: { type: [string, 'null'], format: uuid }
         version: { type: integer, format: int32 }
         ptkp_status: { type: string, enum: [TK/0, TK/1, TK/2, TK/3, K/0, K/1, K/2, K/3] }
@@ -2450,8 +2455,14 @@ components:
         employee_no: { type: string }
         full_name: { type: string }
         status: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] }
-        department: { type: 'null', description: Filled from Sprint 3. }
-        position: { type: 'null', description: Filled from Sprint 3. }
+        department:
+          oneOf:
+            - $ref: '#/components/schemas/Ref'
+            - type: 'null'
+        position:
+          oneOf:
+            - $ref: '#/components/schemas/Ref'
+            - type: 'null'
         hire_date: { type: string, format: date }
     EmployeeList:
       type: object
@@ -2472,9 +2483,16 @@ components:
     EmployeeCreate:
       type: object
       additionalProperties: false
-      description: "`org` and `salary` (design W2) are added in Sprint 3 with their tables."
+      description: "`org` and `salary` start at hire_date, in the same transaction as the employee."
       required: [employee_no, full_name, hire_date]
       properties:
+        org: { $ref: '#/components/schemas/OrgInput' }
+        salary:
+          type: object
+          additionalProperties: false
+          required: [base_salary]
+          properties:
+            base_salary: { $ref: '#/components/schemas/Money' }
         employee_no: { type: string, pattern: '^[A-Za-z0-9-]{1,30}$' }
         full_name: { type: string, minLength: 1, maxLength: 120 }
         work_email: { type: string, format: email }
@@ -2572,6 +2590,213 @@ components:
               type: array
               items: { $ref: '#/components/schemas/Role' }
             status: { type: string, enum: [ACTIVE] }
+    Ref:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    ManagerRef:
+      type: object
+      required: [id, full_name]
+      properties:
+        id: { type: string, format: uuid }
+        full_name: { type: string }
+    CurrentOrg:
+      type: object
+      description: department/position/valid_from are null when only a manager is set (no placement yet).
+      required: [department, position, manager, valid_from]
+      properties:
+        department:
+          oneOf:
+            - $ref: '#/components/schemas/Ref'
+            - type: 'null'
+        position:
+          oneOf:
+            - $ref: '#/components/schemas/Ref'
+            - type: 'null'
+        manager:
+          oneOf:
+            - $ref: '#/components/schemas/ManagerRef'
+            - type: 'null'
+        valid_from: { type: [string, 'null'], format: date }
+    OrgInput:
+      type: object
+      additionalProperties: false
+      required: [department_id, position_id]
+      properties:
+        department_id: { type: string, format: uuid }
+        position_id: { type: string, format: uuid }
+        manager_employee_id: { type: [string, 'null'], format: uuid, description: Current manager (null = none). }
+    OrgAssignmentRequest:
+      type: object
+      additionalProperties: false
+      required: [valid_from, department_id, position_id]
+      properties:
+        valid_from: { type: string, format: date, description: Not before hire_date. }
+        department_id: { type: string, format: uuid }
+        position_id: { type: string, format: uuid }
+        manager_employee_id: { type: [string, 'null'], format: uuid }
+    OrgAssignment:
+      type: object
+      required: [id, valid_from, valid_to, department, position, manager]
+      properties:
+        id: { type: string, format: uuid }
+        valid_from: { type: string, format: date }
+        valid_to: { type: [string, 'null'], format: date }
+        department: { $ref: '#/components/schemas/Ref' }
+        position: { $ref: '#/components/schemas/Ref' }
+        manager:
+          oneOf:
+            - $ref: '#/components/schemas/ManagerRef'
+            - type: 'null'
+    Holiday:
+      type: object
+      required: [id, date, name, version]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        name: { type: string }
+        version: { type: integer, format: int32 }
+    HolidayList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 366
+          items: { $ref: '#/components/schemas/Holiday' }
+    HolidayCreate:
+      type: object
+      additionalProperties: false
+      required: [date, name]
+      properties:
+        date: { type: string, format: date }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    ComponentDefinition:
+      type: object
+      required: [id, code, name, category, stage, calc_type, default_amount, rate, ruleset_ref, base_ref, day_source,
+                 cap_min, cap_max, taxable, bpjs_base, rounding, is_system, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [EARNING, DEDUCTION] }
+        stage: { type: string, enum: [EARNING, OVERTIME, ABSENCE, STATUTORY, TAX, ADJUSTMENT] }
+        calc_type: { type: string, enum: [FIXED, PERCENT_OF, PER_DAY, PER_HOUR_MULTIPLIER] }
+        default_amount: { type: [string, 'null'] }
+        rate: { type: [string, 'null'] }
+        ruleset_ref: { type: [string, 'null'] }
+        base_ref: { type: [string, 'null'] }
+        day_source: { type: [string, 'null'], enum: [PRESENT, WORKING, null] }
+        cap_min: { type: [string, 'null'] }
+        cap_max: { type: [string, 'null'] }
+        taxable: { type: boolean }
+        bpjs_base: { type: boolean }
+        rounding: { type: string, enum: [HALF_UP, DOWN, UP] }
+        is_system: { type: boolean }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        version: { type: integer, format: int32 }
+    ComponentDefinitionList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/ComponentDefinition' }
+    ComponentDefinitionCreate:
+      type: object
+      additionalProperties: false
+      description: Tenant components are always stage EARNING; PER_HOUR_MULTIPLIER is system-only.
+      required: [code, name, category, calc_type]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,40}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        category: { type: string, enum: [EARNING, DEDUCTION] }
+        calc_type: { type: string, enum: [FIXED, PERCENT_OF, PER_DAY] }
+        default_amount: { $ref: '#/components/schemas/Money' }
+        rate: { type: string, description: '0..1, up to 6 fraction digits' }
+        base_ref: { type: string, description: 'BASE_SALARY, FIXED_ALLOWANCES, or the code of an earlier component' }
+        day_source: { type: string, enum: [PRESENT, WORKING] }
+        cap_min: { $ref: '#/components/schemas/Money' }
+        cap_max: { $ref: '#/components/schemas/Money' }
+        taxable: { type: boolean, default: true }
+        bpjs_base: { type: boolean, default: false }
+        rounding: { type: string, enum: [HALF_UP, DOWN, UP], default: HALF_UP }
+    ComponentDefinitionUpdate:
+      type: object
+      additionalProperties: false
+      description: "`code`, `category`, `calc_type` are immutable; on system components only `name` may change."
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        default_amount: { $ref: '#/components/schemas/Money' }
+        rate: { type: string }
+        base_ref: { type: string }
+        cap_min: { $ref: '#/components/schemas/Money' }
+        cap_max: { $ref: '#/components/schemas/Money' }
+        taxable: { type: boolean }
+        bpjs_base: { type: boolean }
+        rounding: { type: string, enum: [HALF_UP, DOWN, UP] }
+    SalaryAssignment:
+      type: object
+      required: [id, employee_id, base_salary, valid_from, valid_to, change_reason, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        base_salary: { $ref: '#/components/schemas/Money' }
+        valid_from: { type: string, format: date }
+        valid_to: { type: [string, 'null'], format: date, description: Exclusive (half-open). }
+        change_reason: { type: [string, 'null'] }
+        created_by: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+    SalaryChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [base_salary, valid_from]
+      properties:
+        base_salary: { $ref: '#/components/schemas/Money' }
+        valid_from: { type: string, format: date, description: 'Not before hire_date, at most 366 days ahead.' }
+        change_reason: { type: string, maxLength: 200 }
+    ComponentRef:
+      type: object
+      required: [id, code, name, calc_type]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        calc_type: { type: string }
+    EmployeeComponent:
+      type: object
+      required: [id, employee_id, component, amount, rate, valid_from, valid_to]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        component: { $ref: '#/components/schemas/ComponentRef' }
+        amount: { type: [string, 'null'] }
+        rate: { type: [string, 'null'] }
+        valid_from: { type: string, format: date }
+        valid_to: { type: [string, 'null'], format: date }
+    ComponentAssignmentRequest:
+      type: object
+      additionalProperties: false
+      required: [component_id, valid_from]
+      properties:
+        component_id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        rate: { type: string }
+        valid_from: { type: string, format: date }
+        valid_to: { type: string, format: date }
+    SalaryHistory:
+      type: object
+      required: [salary, components]
+      properties:
+        salary:
+          type: array
+          items: { $ref: '#/components/schemas/SalaryAssignment' }
+        components:
+          type: array
+          items: { $ref: '#/components/schemas/EmployeeComponent' }
     Problem:
       type: object
       description: RFC 9457 Problem Details with a stable machine-readable code.

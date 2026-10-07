@@ -13,7 +13,11 @@
 #                         department | position  → dibuat OWNER
 #                         employee_other         → employee tidak tertaut ke user mana pun
 #                         employee_self          → employee fixture yang tertaut ke user EMPLOYEE (baca saja)
-#           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik
+#                         employee_report        → employee yang sama: bawahan langsung user MANAGER (S3)
+#                         holiday | component    → libur / komponen tenant (FIXED) yang dibuat OWNER
+#           query     : query string (tanpa "?")
+#           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik,
+#                       {date} = tanggal unik, {dept}/{pos}/{comp} = departemen/posisi/komponen fixture
 #           if_match  : kirim If-Match: "1"
 #           idempotency: kirim Idempotency-Key acak
 #           expect    : status per role (O H P M E); role yang tidak disebut tidak diuji di case itu
@@ -39,6 +43,26 @@ routes:
     access: tenant
     cases:
       - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+
+  # ---------------------------------------------------------------- libur (S3)
+  - id: T4
+    route: "GET /holidays"
+    access: tenant
+    cases:
+      - {query: "year=2026", expect: {O: 200, H: 200, P: 200, M: 200, E: 200}}
+  - id: T5
+    route: "POST /holidays"
+    access: tenant
+    audit: holiday.created
+    cases:
+      - body: {date: "{date}", name: "Cuti bersama"}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+  - id: T6
+    route: "DELETE /holidays/{id}"
+    access: tenant
+    audit: holiday.deleted
+    cases:
+      - {target: holiday, expect: {O: 204, H: 204, P: 403, M: 403, E: 403}}
 
   # ---------------------------------------------------------------- members (S2; U4/U5 di S4)
   - id: U1
@@ -110,12 +134,12 @@ routes:
     cases:
       - {target: position, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
 
-  # ---------------------------------------------------------------- employees (W1–W5; W6–W10 di S3/S4)
+  # ---------------------------------------------------------------- employees (W1–W5; W6 di S4)
   - id: W1
     route: "GET /employees"
     access: tenant
     cases:
-      - expect: {O: 200, H: 200, P: 200, M: 200, E: 403}   # M: hanya bawahan (kosong sampai S3)
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 403}   # M: hanya bawahan langsung
   - id: W2
     route: "POST /employees"
     access: tenant
@@ -129,18 +153,91 @@ routes:
     access: tenant
     cases:
       - {target: employee_other, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
-      - {target: employee_self, expect: {E: 200, M: 404}}
+      - {target: employee_self, expect: {E: 200, M: 200}}   # bagi MANAGER: bawahan langsung (versi dasar)
   - id: W4
     route: "PATCH /employees/{id}"
     access: tenant
     audit: employee.updated
     cases:
       - {target: employee_other, if_match: true, body: {full_name: "Ganti"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
-      - {target: employee_self, if_match: true, body: {full_name: "Ganti"}, expect: {E: 403}}
+      - {target: employee_self, if_match: true, body: {full_name: "Ganti"}, expect: {E: 403, M: 403}}
   - id: W5
     route: "POST /employees/{id}/terminate"
     access: tenant
     audit: employee.terminated
     cases:
       - {target: employee_other, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
-      - {target: employee_self, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {E: 403}}
+      - {target: employee_self, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {E: 403, M: 403}}
+
+  # ---------------------------------------------------------------- org assignment, gaji, komponen (S3)
+  - id: W7
+    route: "POST /employees/{id}/org-assignments"
+    access: tenant
+    audit: employee.org_assigned
+    cases:
+      - target: employee_other
+        idempotency: true
+        body: {valid_from: "2026-02-01", department_id: "{dept}", position_id: "{pos}"}
+        expect: {O: 201, H: 201, P: 403, M: 404, E: 404}
+      - target: employee_report
+        idempotency: true
+        body: {valid_from: "2026-02-01", department_id: "{dept}", position_id: "{pos}"}
+        expect: {M: 403, E: 403}
+  - id: W8
+    route: "GET /employees/{id}/salary-history"
+    access: tenant
+    cases:
+      - {target: employee_other, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+      - {target: employee_self, expect: {E: 200, M: 404}}   # MANAGER tidak melihat gaji bawahan (file 17 §3.4)
+  - id: W9
+    route: "POST /employees/{id}/salary-changes"
+    access: tenant
+    audit: salary.changed
+    cases:
+      - target: employee_other
+        idempotency: true
+        body: {base_salary: "6000000.00", valid_from: "2026-02-01", change_reason: "Kenaikan"}
+        expect: {O: 201, H: 201, P: 403, M: 404, E: 404}   # PAYROLL_ADMIN tidak mengubah gaji (SoD, file 17 §3.1)
+      - target: employee_report
+        idempotency: true
+        body: {base_salary: "6000000.00", valid_from: "2026-02-01"}
+        expect: {M: 403, E: 403}
+  - id: W10
+    route: "POST /employees/{id}/component-assignments"
+    access: tenant
+    audit: component.assigned
+    cases:
+      - target: employee_other
+        idempotency: true
+        body: {component_id: "{comp}", amount: "750000.00", valid_from: "2026-02-01"}
+        expect: {O: 201, H: 201, P: 403, M: 404, E: 404}
+      - target: employee_report
+        idempotency: true
+        body: {component_id: "{comp}", valid_from: "2026-02-01"}
+        expect: {M: 403, E: 403}
+
+  # ---------------------------------------------------------------- komponen gaji (C1–C4, S3)
+  - id: C1
+    route: "GET /component-definitions"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 403, E: 403}
+  - id: C2
+    route: "POST /component-definitions"
+    access: tenant
+    audit: component.created
+    cases:
+      - body: {code: "K{n}", name: "Komponen", category: EARNING, calc_type: FIXED, default_amount: "100000.00"}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+  - id: C3
+    route: "PATCH /component-definitions/{id}"
+    access: tenant
+    audit: component.updated
+    cases:
+      - {target: component, if_match: true, body: {name: "Ganti"}, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+  - id: C4
+    route: "POST /component-definitions/{id}/deactivate"
+    access: tenant
+    audit: component.deactivated
+    cases:
+      - {target: component, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}

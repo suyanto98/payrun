@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ import (
 
 type matrixCase struct {
 	Target      string         `yaml:"target"`
+	Query       string         `yaml:"query"`
 	Body        map[string]any `yaml:"body"`
 	IfMatch     bool           `yaml:"if_match"`
 	Idempotency bool           `yaml:"idempotency"`
@@ -116,6 +118,10 @@ func (m *matrixRunner) fill(t *testing.T, v any) any {
 		x = strings.ReplaceAll(x, "{n}", fmt.Sprint(n))
 		x = strings.ReplaceAll(x, "{nik}", fmt.Sprintf("3174%012d", 500000+n))
 		x = strings.ReplaceAll(x, "{email}", fmt.Sprintf("invitee%d@%s.test", n, m.f.slug))
+		x = strings.ReplaceAll(x, "{date}", time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, int(n)).Format("2006-01-02"))
+		x = strings.ReplaceAll(x, "{dept}", m.f.dept.String())
+		x = strings.ReplaceAll(x, "{pos}", m.f.pos.String())
+		x = strings.ReplaceAll(x, "{comp}", m.f.comp.String())
 		return x
 	case map[string]any:
 		out := map[string]any{}
@@ -154,8 +160,19 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 		}
 		n := m.next()
 		return m.e.createEmployee(t, owner, fmt.Sprintf("TGT-%d", n), "Target", fmt.Sprintf("3175%012d", n))
-	case "employee_self":
+	case "employee_self", "employee_report": // empSelf = diri user EMPLOYEE = bawahan user MANAGER
 		return m.f.empSelf
+	case "holiday":
+		if !fresh {
+			return m.f.holiday
+		}
+		return m.e.mustCreate(t, owner, "/api/v1/holidays", map[string]any{"date": m.fill(t, "{date}"), "name": "Target"})
+	case "component":
+		if !fresh {
+			return m.f.comp
+		}
+		return m.e.mustCreate(t, owner, "/api/v1/component-definitions", map[string]any{
+			"code": fmt.Sprintf("T%d", m.next()), "name": "Target", "category": "EARNING", "calc_type": "FIXED", "default_amount": "1000.00"})
 	}
 	t.Fatalf("unknown target %q", kind)
 	return uuid.Nil
@@ -166,6 +183,9 @@ func (m *matrixRunner) call(t *testing.T, row matrixRoute, c matrixCase, token s
 	method, path, _ := strings.Cut(row.Route, " ")
 	if id != uuid.Nil {
 		path = strings.Replace(path, "{id}", id.String(), 1)
+	}
+	if c.Query != "" {
+		path += "?" + c.Query
 	}
 	headers := map[string]string{}
 	if c.IfMatch {
@@ -236,7 +256,8 @@ func TestCrossTenant(t *testing.T) {
 	alpha := e.newTenantFx(t, "alpha")
 	beta := e.newTenantFx(t, "beta")
 	m := &matrixRunner{e: e, f: beta}
-	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther}
+	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
+		"/holidays": alpha.holiday, "/component-definitions": alpha.comp}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {
@@ -275,10 +296,11 @@ func TestCrossTenant(t *testing.T) {
 	if tested == 0 {
 		t.Fatal("no cross-tenant case ran")
 	}
-	for _, path := range []string{"/departments", "/departments?status=INACTIVE", "/positions", "/employees", "/members", "/tenant"} {
+	for _, path := range []string{"/departments", "/departments?status=INACTIVE", "/positions", "/employees", "/members", "/tenant",
+		"/holidays?year=2026", "/component-definitions"} {
 		r, b := e.do(t, http.MethodGet, "/api/v1"+path, beta.tokens[roleO], nil)
 		raw, _ := json.Marshal(b)
-		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.users[roleO]} {
+		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO]} {
 			if strings.Contains(string(raw), id.String()) {
 				t.Errorf("LEAK: Beta GET %s (%d) contains Alpha id %s", path, r.StatusCode, id)
 			}

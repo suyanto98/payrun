@@ -40,6 +40,49 @@ func (q *Queries) CloseOpenSpan(ctx context.Context, arg CloseOpenSpanParams) (i
 	return result.RowsAffected(), nil
 }
 
+const closeOrgAssignmentAt = `-- name: CloseOrgAssignmentAt :execrows
+
+UPDATE org_assignments
+SET valid_during = daterange(lower(valid_during), $1::date, '[)'), updated_by = $2, version = version + 1
+WHERE employee_id = $3 AND valid_during @> $1::date AND lower(valid_during) < $1::date
+`
+
+type CloseOrgAssignmentAtParams struct {
+	ValidFrom  time.Time
+	Actor      *uuid.UUID
+	EmployeeID uuid.UUID
+}
+
+// ---------------------------------------------------------------- org assignment & atasan (Sprint 3)
+// Nama departemen/posisi dibaca lewat JOIN read-only ke tabel modul org (tampilan saja; penulisan
+// tetap lewat modul org). Penyimpangan ADR-001 yang disengaja, dicatat di 16-api-endpoints S3.
+func (q *Queries) CloseOrgAssignmentAt(ctx context.Context, arg CloseOrgAssignmentAtParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeOrgAssignmentAt, arg.ValidFrom, arg.Actor, arg.EmployeeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countAssignedToday = `-- name: CountAssignedToday :one
+SELECT count(*) FROM org_assignments
+WHERE valid_during @> $1::date AND (department_id = $2 OR position_id = $3)
+`
+
+type CountAssignedTodayParams struct {
+	AsOf         time.Time
+	DepartmentID *uuid.UUID
+	PositionID   *uuid.UUID
+}
+
+// G4: departemen/posisi yang masih dipakai assignment yang berlaku hari ini tidak boleh dinonaktifkan.
+func (q *Queries) CountAssignedToday(ctx context.Context, arg CountAssignedTodayParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countAssignedToday, arg.AsOf, arg.DepartmentID, arg.PositionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createEmployee = `-- name: CreateEmployee :exec
 
 INSERT INTO employees (tenant_id, id, employee_no, full_name, work_email, ptkp_status,
@@ -124,6 +167,43 @@ func (q *Queries) CreateSpan(ctx context.Context, arg CreateSpanParams) error {
 	return err
 }
 
+const getCurrentOrg = `-- name: GetCurrentOrg :one
+SELECT oa.id, lower(oa.valid_during)::date AS valid_from, d.id AS department_id, d.name AS department_name,
+       p.id AS position_id, p.name AS position_name
+FROM org_assignments oa
+JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+WHERE oa.employee_id = $1 AND oa.valid_during @> $2::date
+`
+
+type GetCurrentOrgParams struct {
+	EmployeeID uuid.UUID
+	AsOf       time.Time
+}
+
+type GetCurrentOrgRow struct {
+	ID             uuid.UUID
+	ValidFrom      time.Time
+	DepartmentID   uuid.UUID
+	DepartmentName string
+	PositionID     uuid.UUID
+	PositionName   string
+}
+
+func (q *Queries) GetCurrentOrg(ctx context.Context, arg GetCurrentOrgParams) (GetCurrentOrgRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentOrg, arg.EmployeeID, arg.AsOf)
+	var i GetCurrentOrgRow
+	err := row.Scan(
+		&i.ID,
+		&i.ValidFrom,
+		&i.DepartmentID,
+		&i.DepartmentName,
+		&i.PositionID,
+		&i.PositionName,
+	)
+	return i, err
+}
+
 const getEmployee = `-- name: GetEmployee :one
 SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.work_email, e.user_id, e.status, e.ptkp_status,
        e.nik_last4, e.npwp_last4, e.bank_name, e.bank_account_last4, e.bank_account_holder, e.version,
@@ -181,6 +261,35 @@ func (q *Queries) GetEmployee(ctx context.Context, id uuid.UUID) (GetEmployeeRow
 	return i, err
 }
 
+const getEmployeeAccess = `-- name: GetEmployeeAccess :one
+SELECT e.tenant_id, e.id, e.manager_employee_id, e.status,
+       (SELECT min(lower(sp.span)) FROM employment_spans sp
+        WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id)::date AS hire_date
+FROM employees e WHERE e.id = $1
+`
+
+type GetEmployeeAccessRow struct {
+	TenantID          uuid.UUID
+	ID                uuid.UUID
+	ManagerEmployeeID *uuid.UUID
+	Status            string
+	HireDate          time.Time
+}
+
+// Otorisasi lintas modul (AccessTx): atasan saat ini + tanggal mulai kerja (span pertama).
+func (q *Queries) GetEmployeeAccess(ctx context.Context, id uuid.UUID) (GetEmployeeAccessRow, error) {
+	row := q.db.QueryRow(ctx, getEmployeeAccess, id)
+	var i GetEmployeeAccessRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.ManagerEmployeeID,
+		&i.Status,
+		&i.HireDate,
+	)
+	return i, err
+}
+
 const getEmployeeIDByUser = `-- name: GetEmployeeIDByUser :one
 SELECT id FROM employees WHERE user_id = $1
 `
@@ -212,6 +321,70 @@ func (q *Queries) GetEmployeeLinkForUpdate(ctx context.Context, id uuid.UUID) (G
 	return i, err
 }
 
+const getManagerRef = `-- name: GetManagerRef :one
+SELECT m.id, m.full_name FROM employees e JOIN employees m ON m.tenant_id = e.tenant_id AND m.id = e.manager_employee_id
+WHERE e.id = $1
+`
+
+type GetManagerRefRow struct {
+	ID       uuid.UUID
+	FullName string
+}
+
+func (q *Queries) GetManagerRef(ctx context.Context, id uuid.UUID) (GetManagerRefRow, error) {
+	row := q.db.QueryRow(ctx, getManagerRef, id)
+	var i GetManagerRefRow
+	err := row.Scan(&i.ID, &i.FullName)
+	return i, err
+}
+
+const getManagerStatus = `-- name: GetManagerStatus :one
+SELECT tenant_id, status FROM employees WHERE id = $1
+`
+
+type GetManagerStatusRow struct {
+	TenantID uuid.UUID
+	Status   string
+}
+
+func (q *Queries) GetManagerStatus(ctx context.Context, id uuid.UUID) (GetManagerStatusRow, error) {
+	row := q.db.QueryRow(ctx, getManagerStatus, id)
+	var i GetManagerStatusRow
+	err := row.Scan(&i.TenantID, &i.Status)
+	return i, err
+}
+
+const insertOrgAssignment = `-- name: InsertOrgAssignment :one
+INSERT INTO org_assignments (tenant_id, id, employee_id, department_id, position_id, valid_during, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, daterange($6::date, NULL, '[)'), $7, $7)
+RETURNING id
+`
+
+type InsertOrgAssignmentParams struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	EmployeeID   uuid.UUID
+	DepartmentID uuid.UUID
+	PositionID   uuid.UUID
+	ValidFrom    time.Time
+	Actor        *uuid.UUID
+}
+
+func (q *Queries) InsertOrgAssignment(ctx context.Context, arg InsertOrgAssignmentParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, insertOrgAssignment,
+		arg.TenantID,
+		arg.ID,
+		arg.EmployeeID,
+		arg.DepartmentID,
+		arg.PositionID,
+		arg.ValidFrom,
+		arg.Actor,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const linkEmployeeUser = `-- name: LinkEmployeeUser :execrows
 UPDATE employees SET user_id = $1, updated_by = $1, version = version + 1
 WHERE id = $2 AND user_id IS NULL
@@ -232,42 +405,63 @@ func (q *Queries) LinkEmployeeUser(ctx context.Context, arg LinkEmployeeUserPara
 
 const listEmployeesByName = `-- name: ListEmployeesByName :many
 SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
-       lower(e.full_name)::text AS sort_key
+       lower(e.full_name)::text AS sort_key, -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
+       coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
+       coalesce(o.department_name, '')::text AS department_name,
+       coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
+       coalesce(o.position_name, '')::text AS position_name
 FROM employees e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
-WHERE (lower(e.full_name) LIKE $1::text || '%' ESCAPE '\' OR lower(e.employee_no) LIKE $1::text || '%' ESCAPE '\')
-  AND ($2::text IS NULL OR e.status = $2)
-  AND ($3::text IS NULL OR (lower(e.full_name), e.id) > ($3::text, $4::uuid))
+LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id AS position_id, p.name AS position_name
+                   FROM org_assignments oa
+                   JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+                   JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> $1::date) o ON true
+WHERE (lower(e.full_name) LIKE $2::text || '%' ESCAPE '\' OR lower(e.employee_no) LIKE $2::text || '%' ESCAPE '\')
+  AND ($3::text IS NULL OR e.status = $3)
+  AND ($4::uuid IS NULL OR e.manager_employee_id = $4)
+  AND ($5::uuid IS NULL OR o.department_id = $5)
+  AND ($6::text IS NULL OR (lower(e.full_name), e.id) > ($6::text, $7::uuid))
 ORDER BY lower(e.full_name), e.id
-LIMIT $5
+LIMIT $8
 `
 
 type ListEmployeesByNameParams struct {
-	Prefix   string
-	Status   *string
-	AfterKey *string
-	AfterID  *uuid.UUID
-	Lim      int32
+	AsOf         time.Time
+	Prefix       string
+	Status       *string
+	ManagerID    *uuid.UUID
+	DepartmentID *uuid.UUID
+	AfterKey     *string
+	AfterID      *uuid.UUID
+	Lim          int32
 }
 
 type ListEmployeesByNameRow struct {
-	TenantID   uuid.UUID
-	ID         uuid.UUID
-	EmployeeNo string
-	FullName   string
-	Status     string
-	HireDate   time.Time
-	SortKey    string
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	EmployeeNo     string
+	FullName       string
+	Status         string
+	HireDate       time.Time
+	SortKey        string
+	DepartmentID   uuid.UUID
+	DepartmentName string
+	PositionID     uuid.UUID
+	PositionName   string
 }
 
 // Dengan q: prefix pada lower(full_name) atau employee_no (tanpa pg_trgm di V1), urut lower(full_name), id.
 // prefix sudah di-escape aplikasi (%, _, \).
 func (q *Queries) ListEmployeesByName(ctx context.Context, arg ListEmployeesByNameParams) ([]ListEmployeesByNameRow, error) {
 	rows, err := q.db.Query(ctx, listEmployeesByName,
+		arg.AsOf,
 		arg.Prefix,
 		arg.Status,
+		arg.ManagerID,
+		arg.DepartmentID,
 		arg.AfterKey,
 		arg.AfterID,
 		arg.Lim,
@@ -287,6 +481,10 @@ func (q *Queries) ListEmployeesByName(ctx context.Context, arg ListEmployeesByNa
 			&i.Status,
 			&i.HireDate,
 			&i.SortKey,
+			&i.DepartmentID,
+			&i.DepartmentName,
+			&i.PositionID,
+			&i.PositionName,
 		); err != nil {
 			return nil, err
 		}
@@ -299,37 +497,59 @@ func (q *Queries) ListEmployeesByName(ctx context.Context, arg ListEmployeesByNa
 }
 
 const listEmployeesByNo = `-- name: ListEmployeesByNo :many
-SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date
+SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
+       -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
+       coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
+       coalesce(o.department_name, '')::text AS department_name,
+       coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
+       coalesce(o.position_name, '')::text AS position_name
 FROM employees e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
-WHERE ($1::text IS NULL OR e.status = $1)
-  AND ($2::text IS NULL OR (e.employee_no, e.id) > ($2::text, $3::uuid))
+LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id AS position_id, p.name AS position_name
+                   FROM org_assignments oa
+                   JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+                   JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> $1::date) o ON true
+WHERE ($2::text IS NULL OR e.status = $2)
+  AND ($3::uuid IS NULL OR e.manager_employee_id = $3)
+  AND ($4::uuid IS NULL OR o.department_id = $4)
+  AND ($5::text IS NULL OR (e.employee_no, e.id) > ($5::text, $6::uuid))
 ORDER BY e.employee_no, e.id
-LIMIT $4
+LIMIT $7
 `
 
 type ListEmployeesByNoParams struct {
-	Status   *string
-	AfterKey *string
-	AfterID  *uuid.UUID
-	Lim      int32
+	AsOf         time.Time
+	Status       *string
+	ManagerID    *uuid.UUID
+	DepartmentID *uuid.UUID
+	AfterKey     *string
+	AfterID      *uuid.UUID
+	Lim          int32
 }
 
 type ListEmployeesByNoRow struct {
-	TenantID   uuid.UUID
-	ID         uuid.UUID
-	EmployeeNo string
-	FullName   string
-	Status     string
-	HireDate   time.Time
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	EmployeeNo     string
+	FullName       string
+	Status         string
+	HireDate       time.Time
+	DepartmentID   uuid.UUID
+	DepartmentName string
+	PositionID     uuid.UUID
+	PositionName   string
 }
 
 // Tanpa q: urut employee_no, id (keyset). Filter status opsional.
 func (q *Queries) ListEmployeesByNo(ctx context.Context, arg ListEmployeesByNoParams) ([]ListEmployeesByNoRow, error) {
 	rows, err := q.db.Query(ctx, listEmployeesByNo,
+		arg.AsOf,
 		arg.Status,
+		arg.ManagerID,
+		arg.DepartmentID,
 		arg.AfterKey,
 		arg.AfterID,
 		arg.Lim,
@@ -348,6 +568,10 @@ func (q *Queries) ListEmployeesByNo(ctx context.Context, arg ListEmployeesByNoPa
 			&i.FullName,
 			&i.Status,
 			&i.HireDate,
+			&i.DepartmentID,
+			&i.DepartmentName,
+			&i.PositionID,
+			&i.PositionName,
 		); err != nil {
 			return nil, err
 		}
@@ -357,6 +581,26 @@ func (q *Queries) ListEmployeesByNo(ctx context.Context, arg ListEmployeesByNoPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const setManager = `-- name: SetManager :execrows
+UPDATE employees SET manager_employee_id = $1, updated_by = $2, version = version + 1
+WHERE id = $3
+`
+
+type SetManagerParams struct {
+	ManagerID *uuid.UUID
+	Actor     *uuid.UUID
+	ID        uuid.UUID
+}
+
+// Atasan saat ini (S14). Siklus → trigger PI-19 (P0005 → 422 MANAGER_CYCLE).
+func (q *Queries) SetManager(ctx context.Context, arg SetManagerParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setManager, arg.ManagerID, arg.Actor, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const terminateEmployee = `-- name: TerminateEmployee :one

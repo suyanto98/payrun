@@ -83,3 +83,12 @@ sql:
         out: internal/modules/employee/store
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries/compensation.sql
+    gen:
+      go:
+        package: store
+        out: internal/modules/compensation/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true

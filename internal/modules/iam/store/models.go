@@ -29,6 +29,33 @@ type AuditLog struct {
 	CreatedAt     time.Time
 }
 
+type ComponentDefinition struct {
+	TenantID      uuid.UUID
+	ID            uuid.UUID
+	Code          string
+	Name          string
+	Category      string
+	Stage         string
+	CalcType      string
+	DefaultAmount pgtype.Numeric
+	Rate          pgtype.Numeric
+	RulesetRef    *string
+	BaseRef       *string
+	DaySource     *string
+	CapMin        pgtype.Numeric
+	CapMax        pgtype.Numeric
+	Taxable       bool
+	BpjsBase      bool
+	Rounding      string
+	IsSystem      bool
+	Status        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	CreatedBy     *uuid.UUID
+	UpdatedBy     *uuid.UUID
+	Version       int32
+}
+
 type Department struct {
 	TenantID  uuid.UUID
 	ID        uuid.UUID
@@ -76,6 +103,22 @@ type Employee struct {
 	CreatedBy         *uuid.UUID
 	UpdatedBy         *uuid.UUID
 	Version           int32
+	ManagerEmployeeID *uuid.UUID
+}
+
+type EmployeeComponent struct {
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+	EmployeeID  uuid.UUID
+	ComponentID uuid.UUID
+	Amount      pgtype.Numeric
+	Rate        pgtype.Numeric
+	ValidDuring pgtype.Range[pgtype.Date]
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	CreatedBy   *uuid.UUID
+	UpdatedBy   *uuid.UUID
+	Version     int32
 }
 
 type EmploymentSpan struct {
@@ -89,6 +132,18 @@ type EmploymentSpan struct {
 	CreatedBy  *uuid.UUID
 	UpdatedBy  *uuid.UUID
 	Version    int32
+}
+
+type Holiday struct {
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+	HolidayDate time.Time
+	Name        string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	CreatedBy   *uuid.UUID
+	UpdatedBy   *uuid.UUID
+	Version     int32
 }
 
 type IdempotencyKey struct {
@@ -158,6 +213,20 @@ type Membership struct {
 	Version      int32
 }
 
+type OrgAssignment struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	EmployeeID   uuid.UUID
+	DepartmentID uuid.UUID
+	PositionID   uuid.UUID
+	ValidDuring  pgtype.Range[pgtype.Date]
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	CreatedBy    *uuid.UUID
+	UpdatedBy    *uuid.UUID
+	Version      int32
+}
+
 type PlatformIdempotencyKey struct {
 	ID             uuid.UUID
 	Endpoint       string
@@ -197,6 +266,31 @@ type RefreshToken struct {
 	RevokeReason    *string
 	UserAgent       *string
 	Ip              *netip.Addr
+}
+
+type Ruleset struct {
+	ID            uuid.UUID
+	Code          string
+	Version       string
+	ValidDuring   pgtype.Range[pgtype.Date]
+	Label         string
+	Payload       []byte
+	PayloadSha256 []byte
+	CreatedAt     time.Time
+}
+
+type SalaryAssignment struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	EmployeeID   uuid.UUID
+	BaseSalary   pgtype.Numeric
+	ValidDuring  pgtype.Range[pgtype.Date]
+	ChangeReason *string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	CreatedBy    *uuid.UUID
+	UpdatedBy    *uuid.UUID
+	Version      int32
 }
 
 type Tenant struct {

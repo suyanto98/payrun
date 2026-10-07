@@ -73,16 +73,18 @@ const pillClass: Record<string, string> = { ACTIVE: 'ok', RESIGNED: 'warn', TERM
             <tr>
               <th scope="col">Nomor</th>
               <th scope="col">Nama</th>
+              <th scope="col">Departemen</th>
               <th scope="col">Mulai kerja</th>
               <th scope="col">Status</th>
               <th scope="col"><span class="sr-only">Buka</span></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="!loading && items.length === 0"><td colspan="5" class="empty">Tidak ada karyawan yang cocok.</td></tr>
+            <tr v-if="!loading && items.length === 0"><td colspan="6" class="empty">Tidak ada karyawan yang cocok.</td></tr>
             <tr v-for="e in items" :key="e.id">
               <td class="mono">{{ e.employee_no }}</td>
               <td><RouterLink :to="`/employees/${e.id}`">{{ e.full_name }}</RouterLink></td>
+              <td>{{ e.department?.name ?? '—' }}</td>
               <td>{{ formatDate(e.hire_date) }}</td>
               <td><span class="pill" :class="pillClass[e.status]">{{ statusLabel[e.status] ?? e.status }}</span></td>
               <td class="right"><RouterLink :to="`/employees/${e.id}`" class="icon-btn bare" :aria-label="`Buka ${e.full_name}`"><AppIcon name="chevron" /></RouterLink></td>
@@ -102,7 +104,8 @@ const pillClass: Record<string, string> = { ACTIVE: 'ok', RESIGNED: 'warn', TERM
 /* Mobile: baris ringkas (nomor + nama + status), tanpa scroll horizontal. */
 @media (max-width: 768px) {
   .emp-table { min-width: 0; }
-  .emp-table th:nth-child(3), .emp-table td:nth-child(3), .emp-table th:nth-child(5), .emp-table td:nth-child(5) { display: none; }
+  .emp-table th:nth-child(3), .emp-table td:nth-child(3), .emp-table th:nth-child(4), .emp-table td:nth-child(4),
+  .emp-table th:nth-child(6), .emp-table td:nth-child(6) { display: none; }
   .emp-table td, .emp-table th { padding: 12px 10px; }
 }
 </style>

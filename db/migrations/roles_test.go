@@ -3,6 +3,7 @@ package migrations_test
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -180,5 +181,28 @@ func TestMigrations_BtreeGistExcludeForEffectiveDating(t *testing.T) {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "23P01" || pgErr.ConstraintName != "ex_salary_probe_no_overlap" {
 		t.Fatalf("overlapping range: want 23P01 on ex_salary_probe_no_overlap, got %v", err)
+	}
+}
+
+// TestRuleset_SeedMatchesEngineFixture: payload ruleset di DB = fixture yang dipakai golden test
+// engine. Kalau keduanya menyimpang, golden test hijau tetapi run sungguhan menghitung angka lain.
+func TestRuleset_SeedMatchesEngineFixture(t *testing.T) {
+	dbtest.SkipIfShort(t)
+	fixture, err := os.ReadFile("../../internal/modules/payroll/engine/testdata/ruleset_ID-SIMPLIFIED_2026.1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tdb := dbtest.New(t)
+	var equal, shaOK bool
+	if err := tdb.App.QueryRow(context.Background(), `
+		SELECT payload = $1::jsonb, payload_sha256 = sha256(convert_to(payload::text, 'UTF8'))
+		FROM rulesets WHERE code = 'ID-SIMPLIFIED' AND version = '2026.1'`, string(fixture)).Scan(&equal, &shaOK); err != nil {
+		t.Fatal(err)
+	}
+	if !equal || !shaOK {
+		t.Fatalf("seeded ruleset payload equal to engine fixture: %v, sha256 consistent: %v", equal, shaOK)
+	}
+	if _, err := tdb.Owner(t).Exec(context.Background(), `UPDATE rulesets SET label = 'x'`); err == nil {
+		t.Fatal("rulesets must be immutable even for the owner (PI-12)")
 	}
 }

@@ -87,6 +87,10 @@ func TestSignup_NewUserTenantPendingUntilEmailVerified(t *testing.T) {
 		settings["overtime_max_hours_per_day"] != "4.0" {
 		t.Fatalf("GET /tenant: %d %v (etag %q)", r.StatusCode, tn, r.Header.Get("ETag"))
 	}
+	_, comps := e.do(t, http.MethodGet, "/api/v1/component-definitions", sw["access_token"].(string), nil)
+	if n := len(comps["data"].([]any)); n != 9 {
+		t.Fatalf("signup must seed the 9 system components (O6), got %d", n)
+	}
 	if _, me := e.do(t, http.MethodGet, "/api/v1/me", token, nil); me["email_verified"] != true {
 		t.Fatalf("/me after verification: %v", me)
 	}

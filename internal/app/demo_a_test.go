@@ -40,8 +40,13 @@ func TestTenantIsolation_DemoA(t *testing.T) {
 		t.Fatalf("step 3: forged tid: want 401, got %d %v", r.StatusCode, b)
 	}
 
-	// 4. Referensi ke resource Beta di body → 404 (composite FK 23503 / RLS). Di S2 jalurnya undangan
-	//    dengan employee_id; org.department_id pada POST /employees menyusul di S3.
+	// 4. POST /employees dengan org.department_id milik Beta → 404 (composite FK 23503 / RLS), sama
+	//    dengan id yang tidak ada. Undangan dengan employee_id Beta juga 404.
+	withBetaDept := employeeBody("EMP-0400", "Lintas Tenant", "3174012304950400")
+	withBetaDept["org"] = map[string]any{"department_id": beta.dept, "position_id": alpha.pos}
+	if r, b := e.doH(t, http.MethodPost, "/api/v1/employees", dewi, map[string]string{"Idempotency-Key": newID().String()}, withBetaDept); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("step 4: Beta department_id: want 404, got %d %v", r.StatusCode, b)
+	}
 	if r, b := e.do(t, http.MethodPost, "/api/v1/invitations", dewi, map[string]any{"email": "n@alpha.test", "roles": []string{"EMPLOYEE"}, "employee_id": beta.empOther}); r.StatusCode != http.StatusNotFound {
 		t.Fatalf("step 4: Beta employee_id: want 404, got %d %v", r.StatusCode, b)
 	}
@@ -60,7 +65,7 @@ func TestTenantIsolation_DemoA(t *testing.T) {
 		return tx.QueryRow(context.Background(),
 			`SELECT count(*), count(*) FILTER (WHERE tenant_id <> $1) FROM employees`, alpha.id).Scan(&total, &foreign)
 	})
-	if total != 2 || foreign != 0 {
-		t.Fatalf("step 6: unfiltered query under Alpha: total=%d foreign=%d, want 2/0", total, foreign)
+	if total != 3 || foreign != 0 {
+		t.Fatalf("step 6: unfiltered query under Alpha: total=%d foreign=%d, want 3/0", total, foreign)
 	}
 }

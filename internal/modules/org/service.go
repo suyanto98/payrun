@@ -6,6 +6,7 @@ package org
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -102,9 +103,48 @@ var Positions = Kind{
 	},
 }
 
+// Assignments: penempatan employee (tabel milik modul employee), dipasang composition root (ADR-001).
+type Assignments interface {
+	CountAssignedTodayTx(ctx context.Context, tx pgx.Tx, departmentID, positionID *uuid.UUID) (int64, error)
+}
+
 type Service struct {
-	pool *pgxpool.Pool
-	ids  idgen.Generator
+	pool        *pgxpool.Pool
+	ids         idgen.Generator
+	assignments Assignments
+}
+
+// Wire memasang dependensi lintas modul.
+func (s *Service) Wire(a Assignments) { s.assignments = a }
+
+// CheckAssignableTx (dipakai modul employee, W2/W7): departemen dan posisi ada di tenant transaksi
+// (404) dan ACTIVE (400 per field).
+func (s *Service) CheckAssignableTx(ctx context.Context, tx pgx.Tx, departmentID, positionID uuid.UUID) error {
+	q := store.New(tx)
+	d, err := q.GetDepartment(ctx, departmentID)
+	if err != nil {
+		return db.MapError(err)
+	}
+	p, err := q.GetPosition(ctx, positionID)
+	if err != nil {
+		return db.MapError(err)
+	}
+	for _, r := range []row{d, row(p)} {
+		if err := db.GuardTenant(ctx, "org", r.TenantID); err != nil {
+			return err
+		}
+	}
+	var fe []apperr.FieldError
+	if d.Status != "ACTIVE" {
+		fe = append(fe, apperr.FieldError{Field: "department_id", Code: "INACTIVE"})
+	}
+	if p.Status != "ACTIVE" {
+		fe = append(fe, apperr.FieldError{Field: "position_id", Code: "INACTIVE"})
+	}
+	if len(fe) > 0 {
+		return apperr.Validation(fe...)
+	}
+	return nil
 }
 
 func NewService(pool *pgxpool.Pool, ids idgen.Generator) *Service {
@@ -208,11 +248,22 @@ func (s *Service) Update(ctx context.Context, k Kind, actor, id uuid.UUID, versi
 }
 
 // Deactivate: ACTIVE → INACTIVE; yang sudah INACTIVE dikembalikan apa adanya (natural idempotent).
-// Cek "masih dipakai org_assignments hari ini" (409) masuk S3 bersama tabelnya.
 func (s *Service) Deactivate(ctx context.Context, k Kind, actor, id uuid.UUID, meta reqmeta.Meta) (Unit, error) {
 	var u Unit
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		// G4: masih dipakai penempatan yang berlaku hari ini → 409 (detail menyebut jumlahnya).
+		var dept, pos *uuid.UUID
+		if k.table == "departments" {
+			dept = &id
+		} else {
+			pos = &id
+		}
+		if n, err := s.assignments.CountAssignedTodayTx(ctx, tx, dept, pos); err != nil {
+			return err
+		} else if n > 0 {
+			return apperr.ErrInvalidState.WithDetail(fmt.Sprintf("Still assigned to %d employee(s) today", n))
+		}
 		r, err := k.deactivate(q, ctx, id, actor)
 		if errors.Is(err, pgx.ErrNoRows) {
 			cur, gerr := k.get(q, ctx, id)

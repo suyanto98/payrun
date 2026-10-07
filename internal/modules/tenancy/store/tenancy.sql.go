@@ -76,6 +76,48 @@ func (q *Queries) CompletePlatformIdempotencyKey(ctx context.Context, arg Comple
 	return err
 }
 
+const createHoliday = `-- name: CreateHoliday :one
+INSERT INTO holidays (tenant_id, id, holiday_date, name, created_by, updated_by)
+VALUES ($1, $2, $3, $4, $5, $5)
+RETURNING tenant_id, id, holiday_date, name, version
+`
+
+type CreateHolidayParams struct {
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+	HolidayDate time.Time
+	Name        string
+	Actor       *uuid.UUID
+}
+
+type CreateHolidayRow struct {
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+	HolidayDate time.Time
+	Name        string
+	Version     int32
+}
+
+// [tenant] T5. Tanggal duplikat → uq_holidays_date → 409 DUPLICATE_CODE (field date).
+func (q *Queries) CreateHoliday(ctx context.Context, arg CreateHolidayParams) (CreateHolidayRow, error) {
+	row := q.db.QueryRow(ctx, createHoliday,
+		arg.TenantID,
+		arg.ID,
+		arg.HolidayDate,
+		arg.Name,
+		arg.Actor,
+	)
+	var i CreateHolidayRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.HolidayDate,
+		&i.Name,
+		&i.Version,
+	)
+	return i, err
+}
+
 const createTenant = `-- name: CreateTenant :exec
 
 INSERT INTO tenants (id, slug, name, status)
@@ -117,6 +159,18 @@ type CreateTenantSettingsParams struct {
 func (q *Queries) CreateTenantSettings(ctx context.Context, arg CreateTenantSettingsParams) error {
 	_, err := q.db.Exec(ctx, createTenantSettings, arg.TenantID, arg.Timezone, arg.CreatedBy)
 	return err
+}
+
+const deleteHoliday = `-- name: DeleteHoliday :one
+DELETE FROM holidays WHERE id = $1 RETURNING holiday_date
+`
+
+// [tenant] T6. Tidak ada / tenant lain → 0 baris → 404.
+func (q *Queries) DeleteHoliday(ctx context.Context, id uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, deleteHoliday, id)
+	var holiday_date time.Time
+	err := row.Scan(&holiday_date)
+	return holiday_date, err
 }
 
 const deletePlatformIdempotencyKey = `-- name: DeletePlatformIdempotencyKey :exec
@@ -251,6 +305,52 @@ func (q *Queries) InsertTenantAudit(ctx context.Context, arg InsertTenantAuditPa
 	return err
 }
 
+const listHolidays = `-- name: ListHolidays :many
+SELECT tenant_id, id, holiday_date, name, version FROM holidays
+WHERE holiday_date >= $1 AND holiday_date < $2
+ORDER BY holiday_date
+`
+
+type ListHolidaysParams struct {
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+type ListHolidaysRow struct {
+	TenantID    uuid.UUID
+	ID          uuid.UUID
+	HolidayDate time.Time
+	Name        string
+	Version     int32
+}
+
+// [tenant] T4: libur satu tahun (maksimal 366 baris, tanpa pagination).
+func (q *Queries) ListHolidays(ctx context.Context, arg ListHolidaysParams) ([]ListHolidaysRow, error) {
+	rows, err := q.db.Query(ctx, listHolidays, arg.FromDate, arg.ToDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListHolidaysRow
+	for rows.Next() {
+		var i ListHolidaysRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.HolidayDate,
+			&i.Name,
+			&i.Version,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPendingOwnedTenants = `-- name: ListPendingOwnedTenants :many
 SELECT t.id
 FROM tenants t
@@ -278,4 +378,19 @@ func (q *Queries) ListPendingOwnedTenants(ctx context.Context, userID uuid.UUID)
 		return nil, err
 	}
 	return items, nil
+}
+
+const seedSystemComponents = `-- name: SeedSystemComponents :exec
+SELECT seed_system_components($1::uuid, $2::uuid)
+`
+
+type SeedSystemComponentsParams struct {
+	TenantID uuid.UUID
+	Actor    uuid.UUID
+}
+
+// [tenant] Seed O6: komponen sistem (BASE_SALARY, OVERTIME, ABSENCE_*, BPJS_*, PPH21, ADJUSTMENT).
+func (q *Queries) SeedSystemComponents(ctx context.Context, arg SeedSystemComponentsParams) error {
+	_, err := q.db.Exec(ctx, seedSystemComponents, arg.TenantID, arg.Actor)
+	return err
 }
