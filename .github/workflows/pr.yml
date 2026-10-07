@@ -121,3 +121,23 @@ jobs:
           node-version: '22'
       - name: Redocly lint
         run: npx --yes @redocly/cli@1 lint api/openapi.yaml
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: web/yarn.lock
+      - run: yarn install --frozen-lockfile
+      - name: Typecheck, unit test, build
+        run: |
+          yarn typecheck
+          yarn test:unit
+          yarn build

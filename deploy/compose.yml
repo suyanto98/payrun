@@ -46,8 +46,9 @@ services:
       JWT_SIGNING_KEYS: '{"dev1":"cGF5cnVuLWRldi1vbmx5LWp3dC1zaWduaW5nLWtleSE="}'
       JWT_ACTIVE_KID: dev1
       COOKIE_SECURE: "false"       # dev lokal lewat http://localhost
-      ALLOWED_ORIGINS: http://localhost:5174
-      PUBLIC_BASE_URL: http://localhost:5174
+      # Origin SPA dev (web/, `yarn dev`): PR_WEB_PORT harus sama di sini dan saat menjalankan Vite.
+      ALLOWED_ORIGINS: http://localhost:${PR_WEB_PORT:-5174}
+      PUBLIC_BASE_URL: http://localhost:${PR_WEB_PORT:-5174}
       PII_KEYRING: '{"v1":"cGF5cnVuLWRldi1vbmx5LXBpaS1rZXktMzItYnl0ZXM="}'   # dev saja (32 byte)
       PII_ACTIVE_KEY_VERSION: v1
       PII_BLIND_INDEX_KEY: cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=   # dev saja (32 byte)

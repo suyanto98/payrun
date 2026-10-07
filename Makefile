@@ -10,7 +10,7 @@ REDOCLY := npx --yes @redocly/cli@1
 TRIVY_FS := docker run --rm -v "$$PWD:/src:ro" aquasec/trivy:0.65.0 fs --no-progress --scanners vuln,misconfig \
 	--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --skip-dirs docs /src
 
-.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover
+.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
 
 help: ## Tampilkan daftar target
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -94,3 +94,11 @@ gen-sql: ## Generate kode dari SQL (sqlc) → internal/modules/*/store
 gen-check: gen ## Pastikan kode hasil generate (oapi-codegen + sqlc) sudah di-commit (dipakai CI)
 	@# git diff saja tidak melihat file BARU yang belum di-commit; status --porcelain melihat keduanya.
 	@test -z "$$(git status --porcelain -- api/gen internal/)" || { git status --porcelain -- api/gen internal/; git diff -- api/gen internal/; echo "kode generate tidak sinkron: jalankan make gen-api dan commit"; exit 1; }
+
+# ------------------------------------------------------------------ web (SPA, web/)
+web-dev: ## SPA dev server (proxy /api ke API lokal); PR_WEB_PORT harus sama dengan saat `make up`
+	cd web && yarn install --frozen-lockfile && yarn dev
+
+web-check: ## Typecheck + unit test + build SPA (sama dengan job CI frontend)
+	cd web && yarn install --frozen-lockfile && yarn typecheck && yarn test:unit && yarn build
+
