@@ -87,3 +87,21 @@ INSERT INTO employee_components (tenant_id, id, employee_id, component_id, amoun
 VALUES (@tenant_id, @id, @employee_id, @component_id, sqlc.narg(amount)::numeric, sqlc.narg(rate)::numeric,
         daterange(@valid_from::date, sqlc.narg(to_date)::date, '[)'), @actor, @actor)
 RETURNING id;
+
+-- name: ListAllComponentDefs :many
+-- Validasi graf: SEMUA definisi (tanpa LIMIT tampilan C1; review S3).
+SELECT tenant_id, id, code, name, category, stage, calc_type, default_amount, rate, ruleset_ref, base_ref, day_source,
+       cap_min, cap_max, taxable, bpjs_base, rounding, is_system, status, version
+FROM component_definitions ORDER BY code;
+
+-- name: LockComponentGraph :exec
+-- Perubahan dependensi diserialkan per tenant: dua PATCH paralel (A→B dan B→A) tidak bisa sama-sama
+-- lolos validasi siklus di Read Committed (Step 7 `22` §1, review S3).
+SELECT pg_advisory_xact_lock(hashtextextended('comp:' || @tenant_id::text, 0));
+
+-- name: GetEmployeeComponentAt :one
+-- Record komponen yang berlaku pada @valid_from (untuk mempertahankan ekornya saat override sementara).
+SELECT id, amount, rate, upper_inf(valid_during)::bool AS open_ended, coalesce(upper(valid_during), lower(valid_during))::date AS to_date
+FROM employee_components
+WHERE employee_id = @employee_id AND component_id = @component_id AND valid_during @> @valid_from::date
+  AND lower(valid_during) < @valid_from::date;

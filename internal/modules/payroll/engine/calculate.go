@@ -212,7 +212,10 @@ func Calculate(in Input, rs Ruleset) Result {
 		statutory[r.Code] = r
 	}
 	for _, d := range defs {
-		if d.RulesetRef != "" {
+		// Hanya stage STATUTORY yang mengambil rate dari rs.Statutory. Komponen sistem lain (PPH21 →
+		// tax_brackets, BASE_SALARY, OVERTIME, ABSENCE_*, ADJUSTMENT) dihitung pipeline sendiri dan
+		// diabaikan bila ikut di input (review S3: seed PPH21 ruleset_ref TAX_BRACKETS).
+		if d.Stage == StageStatutory && d.RulesetRef != "" {
 			if _, ok := statutory[d.RulesetRef]; !ok {
 				return c.fail(ErrComponentRef, d.Code+": ruleset_ref "+d.RulesetRef+" not in ruleset "+rs.Version)
 			}
@@ -291,7 +294,7 @@ func Calculate(in Input, rs Ruleset) Result {
 			if a.Def.CalcType == Fixed && l.Category == Earning {
 				fixedEarnings = fixedEarnings.Add(l.Amount)
 			}
-			c.addLine(l, a.Def.BPJSBase)
+			c.addLine(l, a.Def.BPJSBase && l.Category == Earning) // potongan tidak menambah upah BPJS
 		}
 	}
 
@@ -308,10 +311,12 @@ func Calculate(in Input, rs Ruleset) Result {
 			bpjsWage = bpjsWage.Add(l.Amount)
 		}
 	}
+	seenStatutory := map[string]bool{}
 	for _, a := range comps {
-		if a.Def.Stage != StageStatutory {
-			continue
+		if a.Def.Stage != StageStatutory || seenStatutory[a.Def.Code] {
+			continue // satu potongan per kode statutory, walaupun input memuatnya dua kali
 		}
+		seenStatutory[a.Def.Code] = true
 		rule := statutory[a.Def.RulesetRef]
 		base := c.baseFor(a.Def.BaseRef, bpjsWage, fixedEarnings)
 		capped := base
@@ -524,9 +529,29 @@ func (c *calc) earningLine(a ComponentAssignment, fixedEarnings decimal.Decimal)
 			return Line{}, false
 		}
 		base := applyCaps(c.baseFor(d.BaseRef, zero, fixedEarnings), d)
-		l.Amount = round(rate.Mul(base), d.Rounding)
+		// Assignment yang hanya menutup sebagian hari aktif (contoh rate berubah di tengah periode = dua
+		// record) mendapat porsi hari yang ditutupnya; tanpa ini setiap segmen membayar penuh (review S3).
+		// Base-nya sendiri sudah prorata terhadap hari aktif, jadi faktornya relatif ke hari aktif.
+		covered, active := 0, 0
+		for _, r := range eff {
+			covered += c.basisDays(r)
+		}
+		for _, r := range c.active {
+			active += c.basisDays(r)
+		}
+		if covered == 0 || active == 0 {
+			return Line{}, false
+		}
+		exact := rate.Mul(base)
 		l.Basis = map[string]string{"rate": rate.String(), "base_ref": d.BaseRef, "base": base.String()}
 		l.Explanation = fmt.Sprintf("%s × %s %s", percent(*rate), strings.ToLower(strings.ReplaceAll(d.BaseRef, "_", " ")), rupiah(base, 0))
+		if covered < active {
+			cd, ad := decimal.NewFromInt(int64(covered)), decimal.NewFromInt(int64(active))
+			exact = div(exact.Mul(cd), ad)
+			l.Basis["days"], l.Basis["active_days"] = cd.String(), ad.String()
+			l.Explanation += fmt.Sprintf(" × %s/%s %s", cd, ad, c.basisName())
+		}
+		l.Amount = round(exact, d.Rounding)
 	default:
 		return Line{}, false
 	}
@@ -562,7 +587,7 @@ func weightedHours(hours decimal.Decimal, tiers []Tier) (decimal.Decimal, []stri
 
 func (c *calc) overtime(comps []ComponentAssignment) {
 	entries := append([]OvertimeEntry(nil), c.in.Overtime...)
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Date.Before(entries[j].Date) })
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].Date.Before(entries[j].Date) })
 	exact, hoursTotal, weightedTotal := zero, zero, zero
 	var days []string
 	bases := map[string]bool{}
@@ -652,8 +677,8 @@ func (c *calc) absence() {
 		code, name string
 		a          *acc
 	}{{"ABSENCE_UNPAID_LEAVE", "Cuti tidak dibayar", unpaid}, {"ABSENCE_UNEXCUSED", "Absen tanpa keterangan", unexcused}} {
-		if len(x.a.days) == 0 {
-			continue
+		if len(x.a.days) == 0 || round(x.a.exact, HalfUp).IsZero() {
+			continue // hari tanpa gaji: tidak ada baris 0 di slip
 		}
 		c.addLine(Line{Code: x.code, Name: x.name, Category: Deduction, Stage: StageAbsence, Amount: round(x.a.exact, HalfUp),
 			Rounding: HalfUp, Basis: map[string]string{"days": fmt.Sprint(len(x.a.days)), "period_working_days": c.periodWork.String()},

@@ -234,3 +234,89 @@ func TestOrg_DeactivateInUseAndHolidays(t *testing.T) {
 		t.Fatalf("delete again: want 404, got %d", r.StatusCode)
 	}
 }
+
+// Review S3 (High): Idempotency-Key + body yang sama untuk resource LAIN (gaji employee B) bukan replay
+// respons employee A, melainkan 422 IDEMPOTENCY_KEY_REUSED. Gaji B tidak boleh "sukses" tanpa berubah.
+func TestIdempotency_KeyScopedToConcretePath(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	k := key()
+	body := map[string]any{"base_salary": "6000000.00", "valid_from": "2026-02-01"}
+	if r, b := e.doH(t, http.MethodPost, "/api/v1/employees/"+f.empOther.String()+"/salary-changes", f.tokens[roleH], k, body); r.StatusCode != http.StatusCreated {
+		t.Fatalf("employee A: %d %v", r.StatusCode, b)
+	}
+	r, b := e.doH(t, http.MethodPost, "/api/v1/employees/"+f.empSelf.String()+"/salary-changes", f.tokens[roleH], k, body)
+	if r.StatusCode != http.StatusUnprocessableEntity || b["code"] != "IDEMPOTENCY_KEY_REUSED" || r.Header.Get("Idempotent-Replayed") != "" {
+		t.Fatalf("same key + body for employee B: want 422 (not a replay of A), got %d %v %v", r.StatusCode, b, r.Header)
+	}
+}
+
+// Review S3 (Medium): override sementara [Mar, Apr) di tengah record [Jan, ∞) mempertahankan ekornya
+// [Apr, ∞) dengan nilai lama, bukan menghapus semua sesudah Maret.
+func TestComponentAssignment_TemporaryOverrideKeepsTail(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	path := "/api/v1/employees/" + f.empOther.String() + "/component-assignments"
+	if r, b := e.doH(t, http.MethodPost, path, f.tokens[roleH], key(), map[string]any{"component_id": f.comp, "amount": "500000.00", "valid_from": "2026-01-05"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("base assignment: %d %v", r.StatusCode, b)
+	}
+	if r, b := e.doH(t, http.MethodPost, path, f.tokens[roleH], key(), map[string]any{"component_id": f.comp, "amount": "700000.00", "valid_from": "2026-03-01", "valid_to": "2026-04-01"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("override: %d %v", r.StatusCode, b)
+	}
+	_, hist := e.do(t, http.MethodGet, "/api/v1/employees/"+f.empOther.String()+"/salary-history", f.tokens[roleH], nil)
+	comps := hist["components"].([]any)
+	type rec struct{ from, to, amount any }
+	var got []rec
+	for _, c := range comps {
+		m := c.(map[string]any)
+		got = append(got, rec{m["valid_from"], m["valid_to"], m["amount"]})
+	}
+	want := []rec{{"2026-01-05", "2026-03-01", "500000.00"}, {"2026-03-01", "2026-04-01", "700000.00"}, {"2026-04-01", nil, "500000.00"}}
+	if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("records: got %v, want %v", got, want)
+	}
+}
+
+// Review S3 (Medium): validasi graf diserialkan per tenant. Dua PATCH paralel yang masing-masing sah
+// (A → B dan B → A) tidak boleh sama-sama lolos dan membentuk siklus.
+func TestComponents_ParallelCycleRejected(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	tok := f.tokens[roleO]
+	for round := range 5 {
+		ids := make([]string, 2)
+		for i, code := range []string{"PAR_A", "PAR_B"} {
+			_, b := e.do(t, http.MethodPost, "/api/v1/component-definitions", tok, map[string]any{"code": code + string(rune('0'+round)),
+				"name": code, "category": "EARNING", "calc_type": "PERCENT_OF", "rate": "0.1", "base_ref": "TUNJ_JABATAN"})
+			ids[i] = b["id"].(string)
+		}
+		codes := []string{"PAR_A" + string(rune('0'+round)), "PAR_B" + string(rune('0'+round))}
+		var wg sync.WaitGroup
+		status := make([]int, 2)
+		for i := range 2 {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				r, _ := e.doH(t, http.MethodPatch, "/api/v1/component-definitions/"+ids[i], tok, map[string]string{"If-Match": `"1"`},
+					map[string]any{"base_ref": codes[1-i]})
+				status[i] = r.StatusCode
+			}(i)
+		}
+		wg.Wait()
+		ok := (status[0] == http.StatusOK && status[1] == http.StatusUnprocessableEntity) || (status[1] == http.StatusOK && status[0] == http.StatusUnprocessableEntity)
+		if !ok {
+			t.Fatalf("round %d: parallel A→B / B→A: want one 200 and one 422, got %v", round, status)
+		}
+	}
+	for name, body := range map[string]map[string]any{
+		"reserved code":          {"code": "BPJS_WAGE", "name": "X", "category": "EARNING", "calc_type": "FIXED", "default_amount": "1.00"},
+		"deduction in BPJS wage": {"code": "POT_X", "name": "X", "category": "DEDUCTION", "calc_type": "FIXED", "default_amount": "1.00", "bpjs_base": true},
+	} {
+		if r, b := e.do(t, http.MethodPost, "/api/v1/component-definitions", tok, body); r.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s: want 400, got %d %v", name, r.StatusCode, b)
+		}
+	}
+	if r, b := e.doH(t, http.MethodPatch, "/api/v1/component-definitions/"+f.comp.String(), tok, map[string]string{"If-Match": `"1"`}, map[string]any{"base_ref": ""}); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("empty base_ref on FIXED: want 400 (not 500), got %d %v", r.StatusCode, b)
+	}
+}

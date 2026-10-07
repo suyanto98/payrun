@@ -289,11 +289,51 @@ func goldenCases() []goldenCase {
 			return in
 		}, expect{net: "2400000", lines: map[string]string{"BASE_SALARY": "2500000", "BPJS_JHT_EE": "50000"}}},
 
+		{"percent_of_split_mid_period", func() Input { // rate 10% lalu 20% mulai 16 Mar: 10/22 + 12/22 hari kerja
+			in := march()
+			in.Components = append(in.Components,
+				earning("TUNJ_JABATAN", "Tunjangan jabatan", Fixed, func(c *ComponentDef) { c.DefaultAmount = dp("1000000"); c.BPJSBase = true }),
+				ComponentAssignment{Def: kinerja(), Rate: dp("0.1"), Range: rng("2025-01-01", "2026-03-16")},
+				ComponentAssignment{Def: kinerja(), Rate: dp("0.2"), Range: rng("2026-03-16", "")})
+			return in
+		}, expect{net: "5853001", // 45.455 + 109.091 (bukan 100.000 + 200.000); PPh 1% × 6.154.546 = 61.545
+			lines: map[string]string{"TUNJ_KINERJA": "154546", "PPH21": "61545", "BPJS_JHT_EE": "120000"}}},
+
+		{"seeded_system_components", func() Input { // komponen sistem PERSIS seperti seed migrasi 00006 ikut di input
+			in := tono()
+			in.Components = append(in.Components, seededSystem()...)
+			return in
+		}, expect{net: "6888609", lines: map[string]string{"BPJS_JHT_EE": "136000", "PPH21": "109044"}}},
+
 		{"not_eligible_error", func() Input { // keluar sebelum periode: tidak masuk run (plan), engine menolak defensif
 			in := march()
 			in.Employment = []DateRange{rng("2025-01-01", "2026-03-01")}
 			return in
 		}, expect{net: "0", status: StatusError, errors: []string{ErrNotEligible}, lines: map[string]string{}}},
+	}
+}
+
+func kinerja() ComponentDef {
+	return ComponentDef{Code: "TUNJ_KINERJA", Name: "Tunjangan kinerja", Category: Earning, Stage: StageEarning,
+		CalcType: PercentOf, BaseRef: "TUNJ_JABATAN", Taxable: true, Rounding: HalfUp, Active: true}
+}
+
+// seededSystem: 9 komponen sistem dengan atribut yang sama dengan seed_system_components() (00006).
+func seededSystem() []ComponentAssignment {
+	sys := func(code string, cat Category, stage Stage, ct CalcType, rulesetRef, baseRef string, rounding Rounding) ComponentAssignment {
+		return ComponentAssignment{Range: rng("2026-01-01", ""), Def: ComponentDef{Code: code, Name: code, Category: cat, Stage: stage,
+			CalcType: ct, RulesetRef: rulesetRef, BaseRef: baseRef, Rounding: rounding, Active: true}}
+	}
+	return []ComponentAssignment{
+		sys("BASE_SALARY", Earning, StageEarning, Fixed, "", "", HalfUp),
+		sys("OVERTIME", Earning, StageOvertime, PerHourMultiplier, "", "", HalfUp),
+		sys("ABSENCE_UNPAID_LEAVE", Deduction, StageAbsence, Fixed, "", "", HalfUp),
+		sys("ABSENCE_UNEXCUSED", Deduction, StageAbsence, Fixed, "", "", HalfUp),
+		sys("BPJS_JHT_EE", Deduction, StageStatutory, PercentOf, "BPJS_JHT_EE", BPJSWageRef, HalfUp),
+		sys("BPJS_JP_EE", Deduction, StageStatutory, PercentOf, "BPJS_JP_EE", BPJSWageRef, HalfUp),
+		sys("BPJS_KES_EE", Deduction, StageStatutory, PercentOf, "BPJS_KES_EE", BPJSWageRef, HalfUp),
+		sys("PPH21", Deduction, StageTax, PercentOf, "TAX_BRACKETS", TaxableGrossRef, Down),
+		sys("ADJUSTMENT", Earning, StageAdjustment, Fixed, "", "", HalfUp),
 	}
 }
 

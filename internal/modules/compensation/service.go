@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -76,6 +77,14 @@ func fixed(d *decimal.Decimal, places int32) *string {
 	}
 	s := d.StringFixed(places)
 	return &s
+}
+
+// reservedCodes: nama base virtual engine dan kode komponen sistem. Komponen tenant dengan nama ini
+// akan membayangi base virtual di validasi graf (review S3).
+var reservedCodes = map[string]bool{
+	engine.BaseSalaryRef: true, engine.FixedAllowancesRef: true, engine.BPJSWageRef: true, engine.TaxableGrossRef: true,
+	"TAX_BRACKETS": true, "OVERTIME": true, "ABSENCE_UNPAID_LEAVE": true, "ABSENCE_UNEXCUSED": true,
+	"BPJS_JHT_EE": true, "BPJS_JP_EE": true, "BPJS_KES_EE": true, "PPH21": true, "ADJUSTMENT": true,
 }
 
 var (
@@ -200,7 +209,11 @@ func (s *Service) ListDefinitions(ctx context.Context, status, category string) 
 // checkGraph memuat semua definisi, menerapkan perubahan (override, nil = tidak ada), lalu menjalankan
 // engine.ValidateGraph. Masalah → 422 COMPONENT_CYCLE / INVALID_COMPONENT_REFERENCE.
 func checkGraph(ctx context.Context, q *store.Queries, override *engine.ComponentDef) error {
-	rs, err := q.ListComponentDefs(ctx, store.ListComponentDefsParams{})
+	tid, _ := tenantctx.From(ctx)
+	if err := q.LockComponentGraph(ctx, tid.String()); err != nil {
+		return err
+	}
+	rs, err := q.ListAllComponentDefs(ctx)
 	if err != nil {
 		return err
 	}
@@ -281,6 +294,11 @@ func (s *Service) CreateDefinition(ctx context.Context, actor uuid.UUID, in Defi
 	var fe []apperr.FieldError
 	if !codePattern.MatchString(in.Code) {
 		fe = append(fe, apperr.FieldError{Field: "code", Code: "FORMAT", Message: "must match ^[A-Z][A-Z0-9_]{1,40}$"})
+	} else if reservedCodes[in.Code] {
+		fe = append(fe, apperr.FieldError{Field: "code", Code: "RESERVED", Message: "reserved for system components and engine bases"})
+	}
+	if in.Category == "DEDUCTION" && in.BPJSBase != nil && *in.BPJSBase {
+		fe = append(fe, apperr.FieldError{Field: "bpjs_base", Code: "INVALID", Message: "a deduction cannot be part of the BPJS wage"})
 	}
 	if !validText(in.Name, 100) {
 		fe = append(fe, apperr.FieldError{Field: "name", Code: "LENGTH", Message: "must be 1..100 characters"})
@@ -367,6 +385,9 @@ func (s *Service) UpdateDefinition(ctx context.Context, actor, id uuid.UUID, ver
 	if in.Rounding != nil && *in.Rounding != "HALF_UP" && *in.Rounding != "DOWN" && *in.Rounding != "UP" {
 		fe = append(fe, apperr.FieldError{Field: "rounding", Code: "INVALID_ENUM"})
 	}
+	if in.BaseRef != nil && strings.TrimSpace(*in.BaseRef) == "" {
+		fe = append(fe, apperr.FieldError{Field: "base_ref", Code: "REQUIRED", Message: "must not be empty"})
+	}
 	amount, rt := parseMoney("default_amount", in.DefaultAmount, &fe), parseRate("rate", in.Rate, &fe)
 	capMin, capMax := parseMoney("cap_min", in.CapMin, &fe), parseMoney("cap_max", in.CapMax, &fe)
 	if len(fe) > 0 {
@@ -395,6 +416,12 @@ func (s *Service) UpdateDefinition(ctx context.Context, actor, id uuid.UUID, ver
 			merged.BaseRef = *in.BaseRef
 		}
 		var pe []apperr.FieldError
+		if in.BaseRef != nil && cur.CalcType != "PERCENT_OF" {
+			pe = append(pe, apperr.FieldError{Field: "base_ref", Code: "INVALID_FOR_CALC_TYPE", Message: "base_ref applies to PERCENT_OF only"})
+		}
+		if cur.Category == "DEDUCTION" && in.BPJSBase != nil && *in.BPJSBase {
+			pe = append(pe, apperr.FieldError{Field: "bpjs_base", Code: "INVALID", Message: "a deduction cannot be part of the BPJS wage"})
+		}
 		if !cur.IsSystem {
 			mAmount, mRate, mCapMin, mCapMax := toDec(cur.DefaultAmount), toDec(cur.Rate), toDec(cur.CapMin), toDec(cur.CapMax)
 			if amount != nil {
@@ -449,6 +476,7 @@ func changedFields(u DefinitionUpdate) []string {
 			out = append(out, name)
 		}
 	}
+	sort.Strings(out) // urutan diff audit deterministik
 	return out
 }
 
@@ -709,8 +737,25 @@ func (s *Service) AssignComponentTx(ctx context.Context, tx pgx.Tx, p auth.Princ
 	if len(fe) > 0 {
 		return EmployeeComponent{}, apperr.Validation(fe...)
 	}
+	// Override sementara [from, to) di tengah record yang berlaku: ekor record lama [to, akhir lama)
+	// dipertahankan dengan nilai lama, tidak ikut hilang (review S3).
+	prev, perr2 := q.GetEmployeeComponentAt(ctx, store.GetEmployeeComponentAtParams{EmployeeID: employeeID, ComponentID: in.ComponentID, ValidFrom: from})
+	hasPrev := perr2 == nil
+	if perr2 != nil && !errors.Is(perr2, pgx.ErrNoRows) {
+		return EmployeeComponent{}, db.MapError(perr2)
+	}
 	if _, err := q.CloseEmployeeComponentAt(ctx, store.CloseEmployeeComponentAtParams{ValidFrom: from, Actor: &p.UserID, EmployeeID: employeeID, ComponentID: in.ComponentID}); err != nil {
 		return EmployeeComponent{}, db.MapError(err)
+	}
+	if hasPrev && to != nil && (prev.OpenEnded || to.Before(prev.ToDate)) {
+		var tailTo *time.Time
+		if !prev.OpenEnded {
+			tailTo = &prev.ToDate
+		}
+		if _, err := q.InsertEmployeeComponent(ctx, store.InsertEmployeeComponentParams{TenantID: tid, ID: s.ids.New(), EmployeeID: employeeID,
+			ComponentID: in.ComponentID, Amount: prev.Amount, Rate: prev.Rate, ValidFrom: *to, ToDate: tailTo, Actor: &p.UserID}); err != nil {
+			return EmployeeComponent{}, db.MapError(err)
+		}
 	}
 	id, err := q.InsertEmployeeComponent(ctx, store.InsertEmployeeComponentParams{TenantID: tid, ID: s.ids.New(), EmployeeID: employeeID,
 		ComponentID: in.ComponentID, Amount: toNum(amount), Rate: toNum(rt), ValidFrom: from, ToDate: to, Actor: &p.UserID})
@@ -719,7 +764,8 @@ func (s *Service) AssignComponentTx(ctx context.Context, tx pgx.Tx, p auth.Princ
 	}
 	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "component.assigned",
 		TargetType: "employee_component", TargetID: id,
-		Diff: map[string]any{"employee_id": employeeID.String(), "component": def.Code, "valid_from": in.ValidFrom}}, meta); err != nil {
+		Diff: map[string]any{"employee_id": employeeID.String(), "component": def.Code, "valid_from": in.ValidFrom,
+			"valid_to": in.ValidTo, "closed_previous": hasPrev}}, meta); err != nil {
 		return EmployeeComponent{}, err
 	}
 	var toStr *string

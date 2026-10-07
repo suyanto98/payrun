@@ -1,0 +1,169 @@
+{
+  "status": "OK",
+  "ruleset": "ID-SIMPLIFIED-2026.1",
+  "lines": [
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "3000000",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "10",
+        "from": "2026-03-01",
+        "period_days": "20",
+        "salary": "6000000",
+        "to": "2026-03-15"
+      },
+      "explanation": "Gaji pokok Rp6.000.000 × 10/20 hari kerja (1 Mar–14 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BASE_SALARY",
+      "name": "Gaji pokok",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "3300000",
+      "basis": {
+        "basis": "WORKING_DAYS",
+        "days": "10",
+        "from": "2026-03-15",
+        "period_days": "20",
+        "salary": "6600000",
+        "to": "2026-04-01"
+      },
+      "explanation": "Gaji pokok Rp6.600.000 × 10/20 hari kerja (15 Mar–31 Mar)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "TUNJ_JABATAN",
+      "name": "Tunjangan jabatan",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "500000",
+      "basis": {
+        "amount": "500000",
+        "days": "20",
+        "period_days": "20"
+      },
+      "explanation": "Tunjangan jabatan Rp500.000 (aktif penuh)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "TRANSPORT",
+      "name": "Uang transport",
+      "category": "EARNING",
+      "stage": "EARNING",
+      "amount": "380000",
+      "basis": {
+        "day_source": "PRESENT",
+        "days": "19",
+        "rate": "20000"
+      },
+      "explanation": "Uang transport Rp20.000 × 19 hari hadir",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "OVERTIME",
+      "name": "Lembur",
+      "category": "EARNING",
+      "stage": "OVERTIME",
+      "amount": "419653",
+      "basis": {
+        "divisor": "173",
+        "hours": "6",
+        "weighted_hours": "11"
+      },
+      "explanation": "Lembur 6 jam (23 Mar 4j: 1×1,5 + 3×2; 26 Mar 2j: 1×1,5 + 1×2) = 11 jam berbobot × Rp38.150,29/jam (Rp6.600.000 / 173)",
+      "taxable": true,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "ABSENCE_UNPAID_LEAVE",
+      "name": "Cuti tidak dibayar",
+      "category": "DEDUCTION",
+      "stage": "ABSENCE",
+      "amount": "330000",
+      "basis": {
+        "days": "1",
+        "period_working_days": "20"
+      },
+      "explanation": "Cuti tidak dibayar 1 hari × gaji harian (gaji / 20 hari kerja): 25 Mar Rp330.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JHT_EE",
+      "name": "BPJS JHT (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "136000",
+      "basis": {
+        "base": "6800000",
+        "capped_base": "6800000",
+        "rate": "0.02",
+        "ruleset_ref": "BPJS_JHT_EE"
+      },
+      "explanation": "2% × upah BPJS Rp6.800.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_JP_EE",
+      "name": "BPJS JP (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "68000",
+      "basis": {
+        "base": "6800000",
+        "capped_base": "6800000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_JP_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.800.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "BPJS_KES_EE",
+      "name": "BPJS Kesehatan (karyawan)",
+      "category": "DEDUCTION",
+      "stage": "STATUTORY",
+      "amount": "68000",
+      "basis": {
+        "base": "6800000",
+        "capped_base": "6800000",
+        "rate": "0.01",
+        "ruleset_ref": "BPJS_KES_EE"
+      },
+      "explanation": "1% × upah BPJS Rp6.800.000",
+      "taxable": false,
+      "rounding": "HALF_UP"
+    },
+    {
+      "code": "PPH21",
+      "name": "PPh 21 (simplified)",
+      "category": "DEDUCTION",
+      "stage": "TAX",
+      "amount": "109044",
+      "basis": {
+        "category": "A",
+        "rate": "0.015",
+        "taxable_gross": "7269653"
+      },
+      "explanation": "Kategori A: penghasilan kena pajak Rp7.269.653 × 1,5% (bracket Rp7.000.000–Rp7.500.000)",
+      "taxable": false,
+      "rounding": "DOWN"
+    }
+  ],
+  "gross": "7599653",
+  "deductions": "711044",
+  "net": "6888609",
+  "errors": [],
+  "warnings": []
+}

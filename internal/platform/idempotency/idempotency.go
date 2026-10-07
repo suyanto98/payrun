@@ -123,7 +123,10 @@ func FromHTTP(r *http.Request, clientID uuid.UUID, endpoint string) (Request, er
 	if err != nil {
 		return Request{}, err
 	}
-	h, err := Hash(r.Method, endpoint, body)
+	// Hash memakai path KONKRET (dengan {id}), bukan template endpoint: key yang sama dipakai untuk
+	// resource lain (contoh gaji employee B) adalah request berbeda → 422 IDEMPOTENCY_KEY_REUSED, bukan
+	// replay respons employee A (review S3). Scope key tetap (tenant, user, template, key).
+	h, err := Hash(r.Method, r.URL.Path, body)
 	if err != nil {
 		return Request{}, err
 	}

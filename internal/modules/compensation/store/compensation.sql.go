@@ -190,6 +190,41 @@ func (q *Queries) GetComponentDef(ctx context.Context, id uuid.UUID) (GetCompone
 	return i, err
 }
 
+const getEmployeeComponentAt = `-- name: GetEmployeeComponentAt :one
+SELECT id, amount, rate, upper_inf(valid_during)::bool AS open_ended, coalesce(upper(valid_during), lower(valid_during))::date AS to_date
+FROM employee_components
+WHERE employee_id = $1 AND component_id = $2 AND valid_during @> $3::date
+  AND lower(valid_during) < $3::date
+`
+
+type GetEmployeeComponentAtParams struct {
+	EmployeeID  uuid.UUID
+	ComponentID uuid.UUID
+	ValidFrom   time.Time
+}
+
+type GetEmployeeComponentAtRow struct {
+	ID        uuid.UUID
+	Amount    pgtype.Numeric
+	Rate      pgtype.Numeric
+	OpenEnded bool
+	ToDate    time.Time
+}
+
+// Record komponen yang berlaku pada @valid_from (untuk mempertahankan ekornya saat override sementara).
+func (q *Queries) GetEmployeeComponentAt(ctx context.Context, arg GetEmployeeComponentAtParams) (GetEmployeeComponentAtRow, error) {
+	row := q.db.QueryRow(ctx, getEmployeeComponentAt, arg.EmployeeID, arg.ComponentID, arg.ValidFrom)
+	var i GetEmployeeComponentAtRow
+	err := row.Scan(
+		&i.ID,
+		&i.Amount,
+		&i.Rate,
+		&i.OpenEnded,
+		&i.ToDate,
+	)
+	return i, err
+}
+
 const insertEmployeeComponent = `-- name: InsertEmployeeComponent :one
 INSERT INTO employee_components (tenant_id, id, employee_id, component_id, amount, rate, valid_during, created_by, updated_by)
 VALUES ($1, $2, $3, $4, $5::numeric, $6::numeric,
@@ -255,6 +290,77 @@ func (q *Queries) InsertSalary(ctx context.Context, arg InsertSalaryParams) (uui
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listAllComponentDefs = `-- name: ListAllComponentDefs :many
+SELECT tenant_id, id, code, name, category, stage, calc_type, default_amount, rate, ruleset_ref, base_ref, day_source,
+       cap_min, cap_max, taxable, bpjs_base, rounding, is_system, status, version
+FROM component_definitions ORDER BY code
+`
+
+type ListAllComponentDefsRow struct {
+	TenantID      uuid.UUID
+	ID            uuid.UUID
+	Code          string
+	Name          string
+	Category      string
+	Stage         string
+	CalcType      string
+	DefaultAmount pgtype.Numeric
+	Rate          pgtype.Numeric
+	RulesetRef    *string
+	BaseRef       *string
+	DaySource     *string
+	CapMin        pgtype.Numeric
+	CapMax        pgtype.Numeric
+	Taxable       bool
+	BpjsBase      bool
+	Rounding      string
+	IsSystem      bool
+	Status        string
+	Version       int32
+}
+
+// Validasi graf: SEMUA definisi (tanpa LIMIT tampilan C1; review S3).
+func (q *Queries) ListAllComponentDefs(ctx context.Context) ([]ListAllComponentDefsRow, error) {
+	rows, err := q.db.Query(ctx, listAllComponentDefs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllComponentDefsRow
+	for rows.Next() {
+		var i ListAllComponentDefsRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Category,
+			&i.Stage,
+			&i.CalcType,
+			&i.DefaultAmount,
+			&i.Rate,
+			&i.RulesetRef,
+			&i.BaseRef,
+			&i.DaySource,
+			&i.CapMin,
+			&i.CapMax,
+			&i.Taxable,
+			&i.BpjsBase,
+			&i.Rounding,
+			&i.IsSystem,
+			&i.Status,
+			&i.Version,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listComponentDefs = `-- name: ListComponentDefs :many
@@ -461,6 +567,17 @@ func (q *Queries) ListSalary(ctx context.Context, arg ListSalaryParams) ([]ListS
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockComponentGraph = `-- name: LockComponentGraph :exec
+SELECT pg_advisory_xact_lock(hashtextextended('comp:' || $1::text, 0))
+`
+
+// Perubahan dependensi diserialkan per tenant: dua PATCH paralel (A→B dan B→A) tidak bisa sama-sama
+// lolos validasi siklus di Read Committed (Step 7 `22` §1, review S3).
+func (q *Queries) LockComponentGraph(ctx context.Context, tenantID string) error {
+	_, err := q.db.Exec(ctx, lockComponentGraph, tenantID)
+	return err
 }
 
 const updateComponentDef = `-- name: UpdateComponentDef :one

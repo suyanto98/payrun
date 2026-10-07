@@ -54,8 +54,8 @@ func (s *Service) CreateHoliday(ctx context.Context, actor uuid.UUID, date, name
 	name = strings.TrimSpace(name)
 	var fe []apperr.FieldError
 	d, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		fe = append(fe, apperr.FieldError{Field: "date", Code: "FORMAT", Message: "must be YYYY-MM-DD"})
+	if err != nil || d.Year() < 2000 || d.Year() > 2100 {
+		fe = append(fe, apperr.FieldError{Field: "date", Code: "FORMAT", Message: "must be YYYY-MM-DD in 2000..2100"})
 	}
 	if n := utf8.RuneCountInString(name); n < 1 || n > 100 || strings.IndexFunc(name, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		fe = append(fe, apperr.FieldError{Field: "name", Code: "LENGTH", Message: "must be 1..100 characters"})
