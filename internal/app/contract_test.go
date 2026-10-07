@@ -48,7 +48,7 @@ func TestContract_S1ResponsesMatchSpec(t *testing.T) {
 	_, replay := e.signup(t, newID().String(), signupBody("beta", "budi@beta.test"))
 	assertMatchesSpec(t, "signup (other tenant)", replay, &gen.SignupResult{})
 
-	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test")})
+	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test"), "password": password})
 	resp, login := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": "dewi@alpha.test", "password": password})
 	assertMatchesSpec(t, "login", login, &gen.Session{})
 	token := login["access_token"].(string)

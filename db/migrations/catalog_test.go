@@ -18,7 +18,7 @@ import (
 // Tanpa itu, query katalog yang salah tulis selalu lolos dan memberi rasa aman palsu.
 
 // Allowlist §2.2: tabel tanpa RLS yang disengaja, masing-masing dengan penjaga pengganti.
-var tablesWithoutRLS = []string{"jobs", "rulesets", "refresh_tokens", "platform_idempotency_keys", "email_verifications", "goose_db_version"}
+var tablesWithoutRLS = []string{"rulesets", "refresh_tokens", "platform_idempotency_keys", "email_verifications", "goose_db_version"}
 
 func strings1(t *testing.T, pool *pgxpool.Pool, sql string) []string {
 	t.Helper()

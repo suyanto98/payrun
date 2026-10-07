@@ -145,6 +145,27 @@ func TestLogin_ProgressiveLockout(t *testing.T) {
 	}
 }
 
+// Review S1: power(2, n - threshold) dulu overflow float8 setelah ± 1000 gagal di atas threshold
+// (dicapai penyerang sabar: satu percobaan per lock 15 menit), sehingga setiap password salah menjadi
+// 500 dan lockout berhenti bekerja. Eksponen dibatasi: counter besar tetap mengunci maksimal 15 menit.
+func TestLogin_LockoutSurvivesHugeFailureCount(t *testing.T) {
+	e := newEnv(t)
+	e.createTenant(t, "alpha", e.createUser(t, "dewi@alpha.test"))
+	if _, err := e.tdb.Super(t).Exec(context.Background(),
+		`UPDATE payrun.users SET failed_login_count = 5000 WHERE email = 'dewi@alpha.test'`); err != nil {
+		t.Fatal(err)
+	}
+	r, body := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": "dewi@alpha.test", "password": "wrong password"})
+	if r.StatusCode != http.StatusUnauthorized || body["code"] != "INVALID_CREDENTIALS" {
+		t.Fatalf("wrong password with a huge counter: want 401 INVALID_CREDENTIALS, got %d %v", r.StatusCode, body)
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM auth_lookup_user('dewi@alpha.test')
+		WHERE failed_login_count = 5001 AND abs(extract(epoch FROM locked_until - $1::timestamptz)) < 1`, e.clk.Now().Add(15*time.Minute)).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("counter must increase and lock for the 15 minute maximum (n=%d, err=%v)", n, err)
+	}
+}
+
 // ---------------------------------------------------------------- refresh token (C-05)
 
 func TestRefresh_RotatesToken(t *testing.T) {

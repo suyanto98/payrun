@@ -69,10 +69,10 @@ func TestSignup_NewUserTenantPendingUntilEmailVerified(t *testing.T) {
 	}
 
 	link := e.mailer.lastToken(t, "dewi@alpha.test")
-	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": link}); r.StatusCode != http.StatusNoContent {
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": link, "password": password}); r.StatusCode != http.StatusNoContent {
 		t.Fatalf("verify: %d %v", r.StatusCode, b)
 	}
-	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": link}); r.StatusCode != http.StatusGone || b["code"] != "EMAIL_VERIFICATION_INVALID" {
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": link, "password": password}); r.StatusCode != http.StatusGone || b["code"] != "EMAIL_VERIFICATION_INVALID" {
 		t.Fatalf("link reuse: want 410 EMAIL_VERIFICATION_INVALID, got %d %v", r.StatusCode, b)
 	}
 
@@ -171,7 +171,7 @@ func TestSignup_DuplicateSlug(t *testing.T) {
 func TestSignup_ExistingVerifiedUserAddsTenant(t *testing.T) {
 	e := newEnv(t)
 	e.signup(t, newID().String(), signupBody("alpha", "dewi@alpha.test"))
-	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test")})
+	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test"), "password": password})
 
 	wrong := signupBody("beta", "dewi@alpha.test")
 	wrong["owner"].(map[string]string)["password"] = "wrong password!"
@@ -189,6 +189,65 @@ func TestSignup_ExistingVerifiedUserAddsTenant(t *testing.T) {
 	}
 }
 
+// Review S1 (pre-hijacking): penyerang mendaftar lebih dulu dengan email korban. Signup korban (password
+// lain) tidak ditolak 401, melainkan mengganti kredensial akun yang belum terverifikasi: sesi dan link
+// penyerang mati, password penyerang tidak berlaku lagi. Setelah email terverifikasi, reclaim berhenti.
+func TestSignup_UnverifiedEmailCanBeReclaimed(t *testing.T) {
+	e := newEnv(t)
+	attacker := signupBody("evil", "victim@corp.test")
+	attacker["owner"].(map[string]string)["password"] = "attacker password!"
+	ra, ba := e.signup(t, newID().String(), attacker)
+	if ra.StatusCode != http.StatusCreated {
+		t.Fatalf("attacker signup: %d %v", ra.StatusCode, ba)
+	}
+	attackerCookie, attackerLink := cookieValue(ra), e.mailer.lastToken(t, "victim@corp.test")
+
+	rv, bv := e.signup(t, newID().String(), signupBody("victim", "victim@corp.test"))
+	if _, st := tenantOf(bv); rv.StatusCode != http.StatusCreated || st != "PENDING_VERIFICATION" {
+		t.Fatalf("victim signup over an unverified account: want 201 pending, got %d %v", rv.StatusCode, bv)
+	}
+	if r, _ := e.cookiePost(t, "/api/v1/auth/refresh", attackerCookie, nil); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("attacker session must be revoked, refresh got %d", r.StatusCode)
+	}
+	if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": "victim@corp.test", "password": "attacker password!"}); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("attacker password must stop working, login got %d", r.StatusCode)
+	}
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": attackerLink, "password": password}); r.StatusCode != http.StatusGone {
+		t.Fatalf("link issued before the reclaim must be dead: %d %v", r.StatusCode, b)
+	}
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "victim@corp.test"), "password": password}); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("victim verifies: %d %v", r.StatusCode, b)
+	}
+	if r, b := e.signup(t, newID().String(), attacker); r.StatusCode != http.StatusUnauthorized || b["code"] != "INVALID_CREDENTIALS" {
+		t.Fatalf("verified account cannot be reclaimed: want 401, got %d %v", r.StatusCode, b)
+	}
+	var n int
+	if err := e.tdb.Super(t).QueryRow(context.Background(),
+		`SELECT count(*) FROM payrun.audit_log WHERE action = 'auth.unverified_account_reclaimed'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("reclaim must be audited once (n=%d, err=%v)", n, err)
+	}
+}
+
+// Review S1: link verifikasi wajib password akun saat ini. Pemilik inbox yang mengklik link dari signup
+// orang lain (password tidak diketahui) tidak bisa mengaktifkan akun itu; link tidak terpakai oleh
+// percobaan yang gagal.
+func TestVerifyEmail_RequiresCurrentPassword(t *testing.T) {
+	e := newEnv(t)
+	e.signup(t, newID().String(), signupBody("alpha", "dewi@alpha.test"))
+	link := e.mailer.lastToken(t, "dewi@alpha.test")
+	for name, body := range map[string]map[string]string{
+		"wrong password":   {"token": link, "password": "not the password"},
+		"missing password": {"token": link},
+	} {
+		if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", body); r.StatusCode != http.StatusUnauthorized || b["code"] != "INVALID_CREDENTIALS" {
+			t.Fatalf("%s: want 401 INVALID_CREDENTIALS, got %d %v", name, r.StatusCode, b)
+		}
+	}
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": link, "password": password}); r.StatusCode != http.StatusNoContent {
+		t.Fatalf("failed attempts must not consume the link: %d %v", r.StatusCode, b)
+	}
+}
+
 // Akun belum terverifikasi dengan dua tenant pending: satu verifikasi mengaktifkan keduanya.
 func TestVerifyEmail_ActivatesAllPendingOwnedTenants(t *testing.T) {
 	e := newEnv(t)
@@ -197,7 +256,7 @@ func TestVerifyEmail_ActivatesAllPendingOwnedTenants(t *testing.T) {
 	if _, st := tenantOf(b); st != "PENDING_VERIFICATION" {
 		t.Fatalf("unverified user's second tenant must be pending: %v", b)
 	}
-	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test")})
+	e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, "dewi@alpha.test"), "password": password})
 	token, _, _ := e.login(t, "dewi@alpha.test")
 	_, ms := e.do(t, http.MethodGet, "/api/v1/me/memberships", token, nil)
 	if data, _ := ms["data"].([]any); len(data) != 2 {
@@ -224,7 +283,7 @@ func TestVerifyEmail_ExpiryResendAndMailFailure(t *testing.T) {
 	}
 	first := e.mailer.lastToken(t, "dewi@alpha.test")
 	e.clk.Advance(25 * time.Hour)
-	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": first}); r.StatusCode != http.StatusGone {
+	if r, b := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": first, "password": password}); r.StatusCode != http.StatusGone {
 		t.Fatalf("expired link: want 410, got %d %v", r.StatusCode, b)
 	}
 	_, _, lb := e.login(t, "dewi@alpha.test")
@@ -232,14 +291,14 @@ func TestVerifyEmail_ExpiryResendAndMailFailure(t *testing.T) {
 	second := e.mailer.lastToken(t, "dewi@alpha.test")
 	e.do(t, http.MethodPost, "/api/v1/auth/resend-verification", lb["access_token"].(string), nil)
 	third := e.mailer.lastToken(t, "dewi@alpha.test")
-	if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": second}); r.StatusCode != http.StatusGone {
+	if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": second, "password": password}); r.StatusCode != http.StatusGone {
 		t.Fatalf("superseded link must be dead, got %d", r.StatusCode)
 	}
-	if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": third}); r.StatusCode != http.StatusNoContent {
+	if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": third, "password": password}); r.StatusCode != http.StatusNoContent {
 		t.Fatalf("latest link must work, got %d", r.StatusCode)
 	}
 	for _, bad := range []string{"", "nonsense", uuid.NewString()} {
-		if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": bad}); r.StatusCode != http.StatusGone {
+		if r, _ := e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": bad, "password": password}); r.StatusCode != http.StatusGone {
 			t.Errorf("token %q: want 410, got %d", bad, r.StatusCode)
 		}
 	}
@@ -277,7 +336,7 @@ func TestTenant_IsolationThroughAPI(t *testing.T) {
 	tokens := map[string]string{}
 	for _, c := range []struct{ slug, email string }{{"alpha", "dewi@alpha.test"}, {"beta", "budi@beta.test"}} {
 		_, b := e.signup(t, newID().String(), signupBody(c.slug, c.email))
-		e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, c.email)})
+		e.do(t, http.MethodPost, "/api/v1/auth/verify-email", "", map[string]string{"token": e.mailer.lastToken(t, c.email), "password": password})
 		tok, _, _ := e.login(t, c.email)
 		tid, _ := tenantOf(b)
 		tokens[c.slug] = tok

@@ -142,6 +142,11 @@ paths:
       tags: [auth]
       operationId: verifyEmail
       summary: Verify the email with the one-time link token; activates the user's pending tenants
+      description: |
+        Requires the account's current password next to the token, so whoever owns the inbox
+        cannot activate an account registered by someone else with a password they do not know.
+        A wrong password answers `401 INVALID_CREDENTIALS`, counts toward the login lockout, and
+        does not consume the link.
       x-endpoint: A7
       x-feature: PF-02
       x-roles: "public"
@@ -157,6 +162,7 @@ paths:
         '204':
           description: Verified. Tenants in PENDING_VERIFICATION owned by the user are now ACTIVE.
         '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
         '410': { $ref: '#/components/responses/Gone' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /auth/resend-verification:
@@ -254,6 +260,9 @@ paths:
       description: |
         A new email gets a PENDING_VERIFICATION tenant and a verification email (R2-8); an existing,
         verified account (password must match) gets an ACTIVE tenant selected as `active_tenant`.
+        An existing account whose email is NOT verified yet is reclaimed when the password differs:
+        its password and display name are replaced, its sessions and verification links are revoked,
+        and a new link is sent (prevents pre-registration of someone else's email).
         A retry with the same `Idempotency-Key` and payload replays `SignupReplay` (no tokens) with
         `Idempotent-Replayed: true`. The password is not part of the request hash.
       x-endpoint: T1
@@ -2296,9 +2305,10 @@ components:
     VerifyEmailRequest:
       type: object
       additionalProperties: false
-      required: [token]
+      required: [token, password]
       properties:
         token: { type: string, maxLength: 128 }
+        password: { type: string, minLength: 1, maxLength: 128 }
     SignupRequest:
       type: object
       additionalProperties: false

@@ -40,6 +40,7 @@ type env struct {
 	pool   *pgxpool.Pool
 	clk    *clock.Fake
 	mailer *fakeMailer
+	tdb    dbtest.TestDB // akses superuser untuk menyiapkan state yang tidak bisa dicapai lewat API
 }
 
 // fakeMailer merekam email alih-alih mengirim; fail = simulasi SMTP mati.
@@ -120,7 +121,7 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 	if err := deps.ValidateAPI(); err != nil { // env test harus lengkap seperti produksi
 		t.Fatal(err)
 	}
-	e := env{srv: httptest.NewServer(app.APIRouter(deps)), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer)}
+	e := env{srv: httptest.NewServer(app.APIRouter(deps)), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb}
 	t.Cleanup(e.srv.Close)
 	return e
 }

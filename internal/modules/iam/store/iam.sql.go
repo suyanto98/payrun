@@ -151,6 +151,18 @@ func (q *Queries) GetActiveMembership(ctx context.Context, arg GetActiveMembersh
 	return i, err
 }
 
+const getEmailVerification = `-- name: GetEmailVerification :one
+SELECT user_id FROM email_verifications WHERE token_hash = $1
+`
+
+// [none] Tanpa lock: dipakai sebelum memeriksa password (argon2 tidak dijalankan sambil memegang lock).
+func (q *Queries) GetEmailVerification(ctx context.Context, tokenHash []byte) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getEmailVerification, tokenHash)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const getEmailVerificationForUpdate = `-- name: GetEmailVerificationForUpdate :one
 SELECT id, user_id, expires_at, used_at
 FROM email_verifications
@@ -400,12 +412,35 @@ func (q *Queries) MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshToken
 	return err
 }
 
+const reclaimUnverifiedUser = `-- name: ReclaimUnverifiedUser :execrows
+UPDATE users
+SET password_hash = $1, display_name = $2, failed_login_count = 0, locked_until = NULL
+WHERE id = $3 AND email_verified_at IS NULL AND status = 'ACTIVE'
+`
+
+type ReclaimUnverifiedUserParams struct {
+	PasswordHash string
+	DisplayName  string
+	ID           uuid.UUID
+}
+
+// [platform] Signup ulang dengan email yang BELUM terverifikasi dan password berbeda (review S1: cegah
+// pre-hijacking): kredensial pendaftar sebelumnya diganti. Guard email_verified_at IS NULL di WHERE:
+// verifikasi paralel yang menang lebih dulu membuat 0 baris (pemanggil menolak signup).
+func (q *Queries) ReclaimUnverifiedUser(ctx context.Context, arg ReclaimUnverifiedUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reclaimUnverifiedUser, arg.PasswordHash, arg.DisplayName, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const recordLoginFailure = `-- name: RecordLoginFailure :one
 UPDATE users
 SET failed_login_count = failed_login_count + 1,
     locked_until = CASE
       WHEN failed_login_count + 1 >= $1::int
-      THEN $2::timestamptz + make_interval(secs => least($3::float8 * power(2, failed_login_count + 1 - $1::int), $4::float8))
+      THEN $2::timestamptz + make_interval(secs => least($3::float8 * power(2, least(failed_login_count + 1 - $1::int, 30)), $4::float8))
       ELSE locked_until
     END
 WHERE id = $5
@@ -426,7 +461,8 @@ type RecordLoginFailureRow struct {
 }
 
 // [platform] Lockout bertahap (C-03): increment atomik di SQL. Mulai gagal ke-threshold: kunci
-// base_secs * 2^(n - threshold), maksimal max_secs.
+// base_secs * 2^(n - threshold), maksimal max_secs. Eksponen dibatasi 30 SEBELUM power(): least() di luar
+// tidak mencegah overflow float8 (± 1000 gagal di atas threshold), yang membuat lockout berhenti bekerja.
 func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (RecordLoginFailureRow, error) {
 	row := q.db.QueryRow(ctx, recordLoginFailure,
 		arg.Threshold,
@@ -485,4 +521,21 @@ func (q *Queries) RevokeFamily(ctx context.Context, arg RevokeFamilyParams) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
+UPDATE refresh_tokens SET revoked_at = $1, revoke_reason = $2
+WHERE user_id = $3 AND revoked_at IS NULL
+`
+
+type RevokeUserRefreshTokensParams struct {
+	Now    *time.Time
+	Reason *string
+	UserID uuid.UUID
+}
+
+// [none] Semua sesi user dicabut (kredensial berganti).
+func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) error {
+	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.Now, arg.Reason, arg.UserID)
+	return err
 }

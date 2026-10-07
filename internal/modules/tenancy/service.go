@@ -30,9 +30,10 @@ import (
 
 // Accounts adalah bagian iam yang dibutuhkan signup. Implementasi: *iam.Service (composition root).
 type Accounts interface {
-	SignupIdentity(ctx context.Context, email, password string, meta reqmeta.Meta) (userID uuid.UUID, exists, verified bool, err error)
+	SignupIdentity(ctx context.Context, email, password string, meta reqmeta.Meta) (userID uuid.UUID, exists, verified, reclaim bool, err error)
 	HashPassword(ctx context.Context, password string) (string, error)
 	CreateUserTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, email, passwordHash, displayName string) error
+	ReclaimUserTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, passwordHash, displayName string, meta reqmeta.Meta) error
 	AddOwnerTx(ctx context.Context, tx pgx.Tx, tenantID, userID uuid.UUID) error
 	SendVerification(ctx context.Context, userID uuid.UUID) error
 }
@@ -149,15 +150,17 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 		return res, err
 	}
 
-	userID, exists, verified, err := s.accounts.SignupIdentity(ctx, in.Owner.Email, in.Owner.Password, meta)
+	userID, exists, verified, reclaim, err := s.accounts.SignupIdentity(ctx, in.Owner.Email, in.Owner.Password, meta)
 	if err != nil {
 		return SignupResult{}, err
 	}
 	var pwHash string
-	if !exists {
+	if !exists || reclaim {
 		if pwHash, err = s.accounts.HashPassword(ctx, in.Owner.Password); err != nil { // di luar transaksi: ± 100 ms
 			return SignupResult{}, err
 		}
+	}
+	if !exists {
 		userID = s.ids.New()
 	}
 
@@ -187,8 +190,13 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 		if err != nil {
 			return err
 		}
-		if !exists { // fase platform: user baru (app.user_id = user baru)
+		switch { // fase platform (app.user_id = pendaftar)
+		case !exists:
 			if err := s.accounts.CreateUserTx(ctx, tx, userID, in.Owner.Email, pwHash, in.Owner.DisplayName); err != nil {
+				return err
+			}
+		case reclaim: // email belum terverifikasi, password lain: kredensial diganti (review S1)
+			if err := s.accounts.ReclaimUserTx(ctx, tx, userID, pwHash, in.Owner.DisplayName, meta); err != nil {
 				return err
 			}
 		}

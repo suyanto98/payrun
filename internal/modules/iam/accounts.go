@@ -20,24 +20,68 @@ import (
 // Bagian iam yang dipakai signup (modul tenancy) lewat interface di composition root, dan alur
 // verifikasi email (Step 12 R2-8; keputusan S1: tenant PENDING_VERIFICATION sampai email diverifikasi).
 
-// SignupIdentity menentukan pendaftar: email baru (exists=false, password belum diperiksa), atau
-// akun yang sudah ada dengan password yang cocok (kredensial salah → 401 INVALID_CREDENTIALS dengan
-// aturan lockout yang sama seperti login). verified = email akun sudah terverifikasi.
-func (s *Service) SignupIdentity(ctx context.Context, email, password string, meta reqmeta.Meta) (userID uuid.UUID, exists, verified bool, err error) {
+// SignupIdentity menentukan pendaftar:
+//   - email baru → exists=false (password belum diperiksa);
+//   - akun terverifikasi → password harus cocok (salah → 401 INVALID_CREDENTIALS dengan aturan lockout
+//     yang sama seperti login);
+//   - akun BELUM terverifikasi → password cocok: pendaftar yang sama; tidak cocok: reclaim=true, signup
+//     mengganti kredensial akun itu (ReclaimUserTx) alih-alih menolak dengan 401. Siapa pun
+//     yang lebih dulu mendaftar dengan email orang lain tidak bisa mengunci pemilik inbox keluar, dan
+//     verifikasi email mewajibkan password terkini (VerifyEmail), sehingga klik link oleh pemilik inbox
+//     tidak pernah mengaktifkan akun dengan password orang lain.
+//
+// Akun non-ACTIVE (DISABLED/LOCKED oleh admin) tidak pernah di-reclaim.
+func (s *Service) SignupIdentity(ctx context.Context, email, password string, meta reqmeta.Meta) (userID uuid.UUID, exists, verified, reclaim bool, err error) {
 	row, found, err := authLookup(ctx, s.pool, email)
 	if err != nil || !found {
-		return uuid.Nil, false, false, err
+		return uuid.Nil, false, false, false, err
 	}
-	cred, err := s.VerifyCredentials(ctx, email, password, meta)
-	if err != nil {
-		return uuid.Nil, true, false, err
-	}
-	err = db.WithPlatformTx(ctx, s.pool, cred.UserID, func(tx pgx.Tx) error {
+	err = db.WithPlatformTx(ctx, s.pool, row.ID, func(tx pgx.Tx) error {
 		u, err := store.New(tx).GetUser(ctx, row.ID)
 		verified = u.EmailVerifiedAt != nil
 		return err
 	})
-	return cred.UserID, true, verified, db.MapError(err)
+	if err != nil {
+		return uuid.Nil, true, false, false, db.MapError(err)
+	}
+	if !verified && row.Status == "ACTIVE" {
+		ok, err := s.hasher.Verify(ctx, password, row.PasswordHash)
+		if err != nil {
+			return uuid.Nil, true, false, false, err
+		}
+		return row.ID, true, false, !ok, nil
+	}
+	cred, err := s.VerifyCredentials(ctx, email, password, meta)
+	if err != nil {
+		return uuid.Nil, true, false, false, err
+	}
+	return cred.UserID, true, verified, false, nil
+}
+
+// ReclaimUserTx mengganti kredensial akun yang emailnya belum terverifikasi (signup transaksi yang
+// sama): password + nama baru, semua sesi dan link verifikasi lama dicabut, audit platform. Email
+// ternyata sudah diverifikasi secara paralel → 401 INVALID_CREDENTIALS (sama seperti password salah).
+func (s *Service) ReclaimUserTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, passwordHash, displayName string, meta reqmeta.Meta) error {
+	if err := db.SetPlatformUser(ctx, tx, id); err != nil {
+		return err
+	}
+	q := store.New(tx)
+	n, err := q.ReclaimUnverifiedUser(ctx, store.ReclaimUnverifiedUserParams{PasswordHash: passwordHash, DisplayName: displayName, ID: id})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return apperr.ErrInvalidCredentials
+	}
+	now := s.clock.Now()
+	if err := q.RevokeUserRefreshTokens(ctx, store.RevokeUserRefreshTokensParams{Now: &now, Reason: ptr("PASSWORD_CHANGED"), UserID: id}); err != nil {
+		return err
+	}
+	if err := q.InvalidatePendingVerifications(ctx, store.InvalidatePendingVerificationsParams{Now: &now, UserID: id}); err != nil {
+		return err
+	}
+	observability.Logger(ctx).Warn("auth.unverified_account_reclaimed", "user_id", id.String())
+	return s.audit(ctx, q, nil, id, "auth.unverified_account_reclaimed", "", meta)
 }
 
 // HashPassword lewat semaphore argon2 yang sama dengan login (C-45: batas berlaku untuk semua jalur).
@@ -119,14 +163,40 @@ func (s *Service) ResendVerification(ctx context.Context, userID uuid.UUID) erro
 	return nil
 }
 
-// VerifyEmail (POST /auth/verify-email, tanpa auth: link di email). Satu transaksi: token dikunci,
-// email user ditandai terverifikasi, token dipakai, tenant PENDING_VERIFICATION milik user diaktifkan
-// (hook tenancy), audit. Token tidak dikenal, kedaluwarsa, atau sudah dipakai → 410 satu code.
-func (s *Service) VerifyEmail(ctx context.Context, rawToken string, meta reqmeta.Meta) error {
+// VerifyEmail (POST /auth/verify-email, tanpa auth: link di email). Body memuat token DAN password
+// akun saat ini (review S1): pemilik inbox yang mengklik link dari signup orang lain tidak bisa
+// mengaktifkan akun dengan password orang itu. Urutan: token dicari tanpa lock → password diperiksa
+// (VerifyCredentials: argon2, lockout, 401 yang sama dengan login; token TIDAK terpakai) → satu
+// transaksi: token dikunci, email user ditandai terverifikasi, token dipakai, tenant
+// PENDING_VERIFICATION milik user diaktifkan (hook tenancy), audit. Token tidak dikenal, kedaluwarsa,
+// atau sudah dipakai → 410 satu code.
+func (s *Service) VerifyEmail(ctx context.Context, rawToken, password string, meta reqmeta.Meta) error {
 	if rawToken == "" || len(rawToken) > 128 {
 		return apperr.ErrEmailVerificationInvalid
 	}
 	sum := sha256.Sum256([]byte(rawToken))
+	tokenUser, err := store.New(s.pool).GetEmailVerification(ctx, sum[:])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apperr.ErrEmailVerificationInvalid
+	}
+	if err != nil {
+		return db.MapError(err)
+	}
+	var email string
+	if err := db.WithPlatformTx(ctx, s.pool, tokenUser, func(tx pgx.Tx) error {
+		u, err := store.New(tx).GetUser(ctx, tokenUser)
+		email = u.Email
+		return err
+	}); err != nil {
+		return db.MapError(err)
+	}
+	cred, err := s.VerifyCredentials(ctx, email, password, meta)
+	if err != nil {
+		return err
+	}
+	if cred.UserID != tokenUser {
+		return apperr.ErrEmailVerificationInvalid
+	}
 	now := s.clock.Now()
 	return db.MapError(db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		q := store.New(tx)
@@ -137,7 +207,7 @@ func (s *Service) VerifyEmail(ctx context.Context, rawToken string, meta reqmeta
 		if err != nil {
 			return err
 		}
-		if v.UsedAt != nil || !now.Before(v.ExpiresAt) {
+		if v.UsedAt != nil || !now.Before(v.ExpiresAt) || v.UserID != tokenUser {
 			return apperr.ErrEmailVerificationInvalid
 		}
 		if err := q.MarkEmailVerificationUsed(ctx, store.MarkEmailVerificationUsedParams{Now: &now, ID: v.ID}); err != nil {

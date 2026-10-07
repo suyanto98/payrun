@@ -14,12 +14,13 @@ WHERE id = @id;
 
 -- name: RecordLoginFailure :one
 -- [platform] Lockout bertahap (C-03): increment atomik di SQL. Mulai gagal ke-threshold: kunci
--- base_secs * 2^(n - threshold), maksimal max_secs.
+-- base_secs * 2^(n - threshold), maksimal max_secs. Eksponen dibatasi 30 SEBELUM power(): least() di luar
+-- tidak mencegah overflow float8 (± 1000 gagal di atas threshold), yang membuat lockout berhenti bekerja.
 UPDATE users
 SET failed_login_count = failed_login_count + 1,
     locked_until = CASE
       WHEN failed_login_count + 1 >= sqlc.arg(threshold)::int
-      THEN sqlc.arg(now)::timestamptz + make_interval(secs => least(sqlc.arg(base_secs)::float8 * power(2, failed_login_count + 1 - sqlc.arg(threshold)::int), sqlc.arg(max_secs)::float8))
+      THEN sqlc.arg(now)::timestamptz + make_interval(secs => least(sqlc.arg(base_secs)::float8 * power(2, least(failed_login_count + 1 - sqlc.arg(threshold)::int, 30)), sqlc.arg(max_secs)::float8))
       ELSE locked_until
     END
 WHERE id = sqlc.arg(id)
@@ -44,6 +45,23 @@ VALUES (@tenant_id, @id, @user_id, ARRAY['OWNER'], 'ACTIVE', @now, @user_id);
 -- name: MarkEmailVerified :execrows
 -- [platform]
 UPDATE users SET email_verified_at = @now WHERE id = @id AND email_verified_at IS NULL;
+
+-- name: ReclaimUnverifiedUser :execrows
+-- [platform] Signup ulang dengan email yang BELUM terverifikasi dan password berbeda (review S1: cegah
+-- pre-hijacking): kredensial pendaftar sebelumnya diganti. Guard email_verified_at IS NULL di WHERE:
+-- verifikasi paralel yang menang lebih dulu membuat 0 baris (pemanggil menolak signup).
+UPDATE users
+SET password_hash = @password_hash, display_name = @display_name, failed_login_count = 0, locked_until = NULL
+WHERE id = @id AND email_verified_at IS NULL AND status = 'ACTIVE';
+
+-- name: RevokeUserRefreshTokens :exec
+-- [none] Semua sesi user dicabut (kredensial berganti).
+UPDATE refresh_tokens SET revoked_at = @now, revoke_reason = @reason
+WHERE user_id = @user_id AND revoked_at IS NULL;
+
+-- name: GetEmailVerification :one
+-- [none] Tanpa lock: dipakai sebelum memeriksa password (argon2 tidak dijalankan sambil memegang lock).
+SELECT user_id FROM email_verifications WHERE token_hash = @token_hash;
 
 -- name: CreateEmailVerification :exec
 -- [none]

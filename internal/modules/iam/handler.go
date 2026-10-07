@@ -215,11 +215,13 @@ func (h *Handler) switchTenant(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, NewSessionResponse(sess, false))
 }
 
-// verifyEmail: tanpa auth (link di email). auth-strict per IP membatasi tebakan token (yang toh
-// 256 bit) dan spam ke endpoint.
+// verifyEmail: tanpa auth (link di email), tetapi wajib password akun saat ini (lihat
+// Service.VerifyEmail). auth-strict per IP membatasi tebakan token (yang toh 256 bit) dan spam ke
+// endpoint; password salah ikut menaikkan counter lockout akun.
 func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Token string `json:"token"`
+		Token    string `json:"token"`
+		Password string `json:"password"`
 	}
 	if err := httpx.Decode(r, &in); err != nil {
 		httpx.WriteError(w, r, err)
@@ -228,7 +230,7 @@ func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
 	if !h.Strict(w, r, "verify-email") {
 		return
 	}
-	if err := h.svc.VerifyEmail(r.Context(), in.Token, reqmeta.From(r)); err != nil {
+	if err := h.svc.VerifyEmail(r.Context(), in.Token, in.Password, reqmeta.From(r)); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}

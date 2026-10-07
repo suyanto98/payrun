@@ -72,7 +72,7 @@ CREATE POLICY tenant_isolation ON payrun.<t>
 | Tabel | Kenapa tanpa RLS | Penjaga pengganti |
 |---|---|---|
 | `rulesets` | Data global, bukan milik tenant | Grant `SELECT` saja + trigger immutable |
-| `jobs` | Diklaim worker lintas tenant | Trigger `jobs_enforce_tenant` saat INSERT; handler hanya membuka `WithTenantTxFor(jobs.tenant_id)` (`01-shared-tables.md` §4.1) |
+| ~~`jobs`~~ | ~~Diklaim worker lintas tenant~~ | Sejak migrasi `00004` (review S1) `jobs` memakai RLS + FORCE; lihat catatan implementasi Sprint 1 di bawah |
 | `refresh_tokens` | Tidak berisi data tenant; dicari berdasarkan hash token | Akses hanya modul `iam` (depguard) |
 | `platform_idempotency_keys` | Signup terjadi sebelum tenant ada | Akses hanya modul `tenancy` (depguard); payload tanpa PII |
 
@@ -322,6 +322,7 @@ Migrasi `db/migrations/00002_tenancy_iam.sql`. Deviasi dari desain di atas, masi
 | `jobs_enforce_tenant` | `nullif(current_setting(...), '')::uuid` | `payrun.current_tenant()` | Satu definisi helper (C3) |
 | Batas penulisan jalur platform | depguard (`tenancy`/`iam` saja) | forbidigo `db.(WithPlatformTx\|SetPlatformUser\|SetTenant)` di luar `internal/modules/(iam\|tenancy)` | depguard membatasi import package, bukan pemakaian fungsi |
 | Verifikasi email (R2-8, migrasi `00003`) | Tidak dirinci | `users.email_verified_at`; status tenant `PENDING_VERIFICATION`; tabel `email_verifications` (hash token + `user_id`, TTL 24 jam) **tanpa RLS**, masuk allowlist §2.2 | Pola `refresh_tokens`: endpoint verifikasi tidak terautentikasi (link di email), lookup berdasarkan hash 256-bit, tabel tanpa data tenant dan tanpa PII. Hanya modul `iam` |
-| `payrun_readonly` | Tidak dirinci | `SELECT` pada `tenants`, `tenant_settings`, `memberships`, `audit_log`, `jobs`, dan kolom `users` tanpa `password_hash` | Investigasi tetap di bawah RLS; hash password dan token tidak terbaca |
+| `payrun_readonly` | Tidak dirinci | `SELECT` pada `tenants`, `tenant_settings`, `memberships`, `audit_log`, kolom `jobs` tanpa `payload`/`last_error` (migrasi `00004`), dan kolom `users` tanpa `password_hash` | Investigasi tetap di bawah RLS; hash password dan token tidak terbaca |
+| `jobs` (review keamanan S1, migrasi `00004`) | Tanpa RLS; dijaga trigger `jobs_enforce_tenant` saat INSERT | **RLS + FORCE** policy `jobs_tenant`: `current_tenant() IS NULL OR tenant_id = current_tenant()`; trigger `jobs_forbid_tenant_change` (`ck_jobs_tenant_immutable`) menolak UPDATE `tenant_id` di mode apa pun; `jobs` keluar dari allowlist §2.2 | Trigger INSERT saja tidak mencegah transaksi tenant A membaca payload job tenant B, atau memindahkan job ke tenant lain lewat UPDATE (worker lalu menjalankannya di `WithTenantTxFor(jobs.tenant_id)` = tenant korban). Tanpa tenant context (claim worker lintas tenant) semua baris tetap terlihat |
 
-Test katalog §2.5 (a)–(f) dan matriks grant §1.2 ada di `db/migrations/catalog_test.go`, masing-masing dengan test negatif. Test perilaku (tanpa context = 0 baris, query tanpa filter, `WITH CHECK`, kebocoran pool setelah COMMIT/ROLLBACK, mode eksklusif C2, `password_hash`, `jobs_enforce_tenant`, PI-16, audit platform) ada di `internal/platform/db/rls_test.go` dan berjalan sebagai `payrun_app`.
+Test katalog §2.5 (a)–(f) dan matriks grant §1.2 ada di `db/migrations/catalog_test.go`, masing-masing dengan test negatif. Test perilaku (tanpa context = 0 baris, query tanpa filter, `WITH CHECK`, kebocoran pool setelah COMMIT/ROLLBACK, mode eksklusif C2, `password_hash`, `jobs_enforce_tenant`, isolasi `jobs` setelah INSERT, PI-16, audit platform) ada di `internal/platform/db/rls_test.go` dan berjalan sebagai `payrun_app`.

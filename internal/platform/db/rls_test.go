@@ -324,6 +324,62 @@ func TestJobs_EnforceTenantMatchesContext(t *testing.T) {
 	}
 }
 
+// Review S1: trigger INSERT saja tidak cukup. Transaksi tenant tidak boleh membaca, mengubah, menghapus,
+// atau memindahkan job tenant lain; tenant_id immutable di mode apa pun (worker menjalankan job di
+// tenant jobs.tenant_id); payrun_readonly tidak membaca payload.
+func TestJobs_TenantIsolationAfterInsert(t *testing.T) {
+	dbtest.SkipIfShort(t)
+	ctx := context.Background()
+	tdb := dbtest.New(t)
+	f := seed(t, tdb.App)
+	alphaJob, betaJob := newID(), newID()
+	for tenant, id := range map[uuid.UUID]uuid.UUID{f.alpha: alphaJob, f.beta: betaJob} {
+		if err := db.WithTenantTxFor(ctx, tdb.App, tenant, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `INSERT INTO jobs (id, kind, tenant_id, payload) VALUES ($1, 'test.probe', $2, '{"secret":1}')`, id, tenant)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := db.WithTenantTxFor(ctx, tdb.App, f.alpha, func(tx pgx.Tx) error {
+		if n := count(t, tx, `SELECT count(*) FROM jobs`); n != 1 {
+			t.Errorf("Alpha sees %d jobs, want 1", n)
+		}
+		for name, sql := range map[string]string{
+			"update payload": `UPDATE jobs SET payload = '{}' WHERE id = $1`,
+			"delete":         `DELETE FROM jobs WHERE id = $1`,
+		} {
+			tag, err := tx.Exec(ctx, sql, betaJob)
+			if err != nil || tag.RowsAffected() != 0 {
+				t.Errorf("Alpha %s Beta job: rows=%d err=%v, want 0 rows", name, tag.RowsAffected(), err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Memindahkan job sendiri ke tenant lain: ditolak trigger immutability.
+	err = db.WithTenantTxFor(ctx, tdb.App, f.alpha, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE jobs SET tenant_id = $1 WHERE id = $2`, f.beta, alphaJob)
+		return err
+	})
+	wantPgCode(t, err, "23514", "Alpha moves own job to Beta")
+	// Tanpa context (jalur worker) semua job terlihat, tetapi tenant_id tetap immutable.
+	var pgErr *pgconn.PgError
+	_, err = tdb.App.Exec(ctx, `UPDATE jobs SET tenant_id = $1 WHERE id = $2`, f.alpha, betaJob)
+	if !errors.As(err, &pgErr) || pgErr.ConstraintName != "ck_jobs_tenant_immutable" {
+		t.Fatalf("worker path: want ck_jobs_tenant_immutable, got %v", err)
+	}
+	ro := tdb.As(t, "payrun_readonly")
+	if _, err := ro.Exec(ctx, `SELECT payload FROM jobs`); err == nil {
+		t.Fatal("payrun_readonly must not read jobs.payload")
+	}
+	if _, err := ro.Exec(ctx, `SELECT id, kind, status FROM jobs`); err != nil {
+		t.Fatalf("payrun_readonly metadata: %v", err)
+	}
+}
+
 // PI-16: owner terakhir tidak bisa dicabut (deferred → gagal saat COMMIT, kode P0004), tetapi transfer
 // kepemilikan di satu transaksi (tambah owner baru, cabut yang lama) lolos.
 func TestMemberships_LastOwnerGuard(t *testing.T) {

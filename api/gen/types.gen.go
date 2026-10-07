@@ -407,7 +407,8 @@ type User struct {
 
 // VerifyEmailRequest defines model for VerifyEmailRequest.
 type VerifyEmailRequest struct {
-	Token string `json:"token"`
+	Password string `json:"password"`
+	Token    string `json:"token"`
 }
 
 // Cursor defines model for Cursor.

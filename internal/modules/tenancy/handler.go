@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -43,7 +44,8 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	if !h.cfg.Strict(w, r, "signup|"+in.Owner.Email) {
+	// Kunci rate limit dari email yang sudah dinormalisasi: spasi tambahan tidak boleh membuka bucket baru.
+	if !h.cfg.Strict(w, r, "signup|"+strings.TrimSpace(in.Owner.Email)) {
 		return
 	}
 	meta := reqmeta.From(r)
