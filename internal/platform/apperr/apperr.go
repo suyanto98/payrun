@@ -102,6 +102,8 @@ var (
 	ErrRateLimited        = def(http.StatusTooManyRequests, "RATE_LIMITED", "Too many requests")
 	ErrRefreshReused      = def(http.StatusUnauthorized, "REFRESH_TOKEN_REUSED", "Session revoked, please log in again")
 	ErrInvalidState       = def(http.StatusConflict, "INVALID_STATE_TRANSITION", "Action not allowed in the current state")
+	ErrVersionConflict    = def(http.StatusPreconditionFailed, "VERSION_CONFLICT", "Resource was modified by someone else")
+	ErrPreconditionReq    = def(http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match header is required")
 )
 
 // Idempotency (katalog §1, ADR-L02).
@@ -117,6 +119,12 @@ var (
 var (
 	ErrDuplicateCode            = def(http.StatusConflict, "DUPLICATE_CODE", "Code is already in use")
 	ErrEmailVerificationInvalid = def(http.StatusGone, "EMAIL_VERIFICATION_INVALID", "Verification link is invalid or expired")
+	// Sprint 2: undangan, employee (katalog §3).
+	ErrMembershipExists  = def(http.StatusConflict, "MEMBERSHIP_EXISTS", "User is already a member of this tenant")
+	ErrInvitationInvalid = def(http.StatusGone, "INVITATION_INVALID", "Invitation is invalid or expired")
+	ErrEmployeeNoTaken   = def(http.StatusConflict, "EMPLOYEE_NO_TAKEN", "Employee number is already in use")
+	ErrNIKTaken          = def(http.StatusConflict, "NIK_TAKEN", "NIK is already registered in this tenant")
+	ErrNPWPTaken         = def(http.StatusConflict, "NPWP_TAKEN", "NPWP is already registered in this tenant")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

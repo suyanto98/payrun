@@ -76,6 +76,7 @@
 | 409 | `MEMBERSHIP_EXISTS` | User sudah anggota tenant ini | Tidak | — | `uq_memberships_user` |
 | 409 | `EMPLOYEE_NO_TAKEN` | Nomor karyawan sudah dipakai di tenant | Tidak | — | `uq_employees_employee_no` |
 | 409 | `NIK_TAKEN` | NIK sudah terdaftar di tenant (blind index). Pesan tidak menampilkan siapa pemiliknya | Tidak | — | `uq_employees_nik_bidx` |
+| 409 | `NPWP_TAKEN` | *(Sprint 2)* NPWP sudah terdaftar di tenant (blind index), pola `NIK_TAKEN` | Tidak | — | `uq_employees_npwp_bidx` |
 | 409 | `OVERLAPPING_PERIOD` | Record effective-dated beririsan | Tidak | — | `ex_*_no_overlap` (EXCLUDE) |
 | 409 | `OVERLAPPING_LEAVE` | Cuti beririsan dengan cuti `PENDING`/`APPROVED` lain | Tidak | — | `ex_leave_requests_no_overlap` |
 | 422 | `RUN_HAS_ERRORS` | Submit run yang masih punya item `ERROR` (belum di-exclude) | Tidak | `error_count` | APP |

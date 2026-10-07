@@ -50,6 +50,7 @@ services:
       PUBLIC_BASE_URL: http://localhost:5174
       PII_KEYRING: '{"v1":"cGF5cnVuLWRldi1vbmx5LXBpaS1rZXktMzItYnl0ZXM="}'   # dev saja (32 byte)
       PII_ACTIVE_KEY_VERSION: v1
+      PII_BLIND_INDEX_KEY: cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=   # dev saja (32 byte)
       S3_ENDPOINT: http://storage:8333
       S3_BUCKET: payrun-private
       S3_ACCESS_KEY: payrun-dev-access

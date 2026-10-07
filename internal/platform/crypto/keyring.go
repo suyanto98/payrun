@@ -58,6 +58,10 @@ func ParseKeyring(raw, active string) (*Keyring, error) {
 	return k, nil
 }
 
+// ActiveVersion adalah versi kunci untuk enkripsi baru (disimpan di kolom *_key_version supaya job
+// rotasi bisa memilih baris lama tanpa mendekripsi semuanya).
+func (k *Keyring) ActiveVersion() string { return k.active }
+
 // Encrypt mengenkripsi dengan kunci aktif. Nonce acak 96 bit per pesan (aman untuk volume ini).
 func (k *Keyring) Encrypt(plain, aad []byte) ([]byte, error) {
 	aead := k.aeads[k.active]

@@ -58,6 +58,44 @@ func RequireTenant(next http.Handler) http.Handler {
 	})
 }
 
+// HasAnyRole: union role (hak efektif = gabungan semua role membership; file 17 §1.1).
+func (p Principal) HasAnyRole(roles ...string) bool {
+	for _, r := range roles {
+		if p.HasRole(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// Role membership (file 17 §1.1).
+const (
+	RoleOwner    = "OWNER"
+	RoleHRAdmin  = "HR_ADMIN"
+	RolePayroll  = "PAYROLL_ADMIN"
+	RoleManager  = "MANAGER"
+	RoleEmployee = "EMPLOYEE"
+)
+
+// RequireAnyRole: koleksi/aksi tingkat tenant yang tidak boleh untuk role pemanggil → 403 (file 17
+// §1.3). Resource tunggal yang tidak terlihat bagi role tetap urusan service (404).
+func RequireAnyRole(roles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ok := PrincipalFrom(r.Context())
+			if !ok {
+				httpx.WriteError(w, r, apperr.ErrUnauthenticated)
+				return
+			}
+			if !p.HasAnyRole(roles...) {
+				httpx.WriteError(w, r, apperr.ErrForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireRole dipasang SETELAH RequireTenant. User tanpa role → 403 (ADR-010). Resource milik
 // tenant lain tetap 404, bukan 403: itu urusan RLS + query, bukan middleware ini.
 func RequireRole(role string) func(http.Handler) http.Handler {

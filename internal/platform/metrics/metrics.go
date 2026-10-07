@@ -75,7 +75,15 @@ var (
 
 // ---------------------------------------------------------------- PayRun (payrun_)
 // Metrik domain ditambahkan per sprint bersama fiturnya (Step 8 `01` §3), contoh
-// payrun_tenant_isolation_violations_total (INVARIANT, S2) dan payrun_payroll_runs_total (S4).
+// payrun_payroll_runs_total (S4).
+var (
+	// INVARIANT (C-46): baris tenant lain lolos ke decode repository. Normalnya selalu 0; > 0 berarti
+	// RLS gagal dengan cara yang tidak terduga → alert critical.
+	TenantIsolationViolations = counter("payrun_tenant_isolation_violations_total",
+		"Rows of another tenant seen by a tenant-scoped repository (must stay 0).", "table")
+	// Setiap pembacaan PII penuh (W6, S4) dan undangan dibuat/diterima (S2).
+	InvitationsTotal = counter("payrun_invitations_total", "Invitation lifecycle events.", "event")
+)
 
 func init() {
 	Registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))

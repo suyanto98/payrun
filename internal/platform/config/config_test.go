@@ -19,6 +19,7 @@ func validDev() Config {
 		PublicBaseURL:      "http://localhost:5173",
 		PIIKeyringJSON:     `{"v1":"cGF5cnVuLWRldi1vbmx5LXBpaS1rZXktMzItYnl0ZXM="}`,
 		PIIActiveVersion:   "v1",
+		PIIBlindIndexKey:   "cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=",
 		SMTPAddr:           "localhost:1025",
 		MailFrom:           "PayRun <no-reply@payrun.local>",
 	}

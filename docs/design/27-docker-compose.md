@@ -462,7 +462,7 @@ Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di 
 |---|---|---|---|
 | `PII_KEYRING` | ya | **S** | `{"v1":"base64-32B","v2":"…"}` (ADR-P08) |
 | `PII_ACTIVE_KEY_VERSION` | ya | C | Versi untuk enkripsi baru |
-| `BLIND_INDEX_KEY` | ya | **S** | Kunci HMAC terpisah dari keyring |
+| `PII_BLIND_INDEX_KEY` | ya | **S** | Kunci HMAC blind index (base64 32 byte), terpisah dari keyring |
 | `S3_ENDPOINT` / `S3_PUBLIC_ENDPOINT` | ya | C | `http://minio:9000` / `https://files.<domain>` (host presigned) |
 | `S3_BUCKET` / `S3_REGION` | ya | C | `payrun-private` / `us-east-1` |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | ya | **S** | User MinIO dengan policy terbatas (§5) |

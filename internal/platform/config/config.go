@@ -66,6 +66,8 @@ type Config struct {
 	// Enkripsi PII at-rest (ADR-P08): {"v1":"base64-32B"}; versi aktif untuk enkripsi baru.
 	PIIKeyringJSON   string `env:"PII_KEYRING"`
 	PIIActiveVersion string `env:"PII_ACTIVE_KEY_VERSION"`
+	// Kunci blind index HMAC (base64 32 byte), TERPISAH dari keyring (ADR-P08). Rotasi = rebuild index.
+	PIIBlindIndexKey string `env:"PII_BLIND_INDEX_KEY"`
 
 	// SMTP untuk email transaksional (verifikasi email, undangan). Dev/demo: Mailpit (Step 12 R2-8).
 	SMTPAddr     string        `env:"SMTP_ADDR"`
@@ -86,9 +88,10 @@ type Config struct {
 	OTLPEndpoint string `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
 
 	// Diisi dari JWTSigningKeysJSON / TrustedProxiesRaw / dst. setelah validasi.
-	JWTKeys        map[string][]byte `env:"-"`
-	TrustedProxies []netip.Prefix    `env:"-"`
-	Keyring        *crypto.Keyring   `env:"-"`
+	JWTKeys        map[string][]byte  `env:"-"`
+	TrustedProxies []netip.Prefix     `env:"-"`
+	Keyring        *crypto.Keyring    `env:"-"`
+	BlindIndex     *crypto.BlindIndex `env:"-"`
 }
 
 // Dev melaporkan apakah environment adalah dev/test (pagar untuk fitur yang tidak aman di produksi).
@@ -102,6 +105,11 @@ func (c *Config) validateShared() []error {
 		errs = append(errs, fmt.Errorf("PII_KEYRING / PII_ACTIVE_KEY_VERSION: %w", err))
 	}
 	c.Keyring = kr
+	bi, err := crypto.ParseBlindIndexKey(c.PIIBlindIndexKey)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("PII_BLIND_INDEX_KEY: %w", err))
+	}
+	c.BlindIndex = bi
 	if c.DemoMode && len(c.DemoToken) < 24 {
 		errs = append(errs, errors.New("DEMO_MODE=true membutuhkan DEMO_TOKEN minimal 24 karakter"))
 	}
