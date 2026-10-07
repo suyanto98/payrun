@@ -115,6 +115,7 @@ func runAPI() error {
 		IAM: iam.Config{Argon2: auth.DefaultArgon2, RefreshTTL: cfg.RefreshTTL, RefreshFamilyTTL: cfg.RefreshFamilyTTL},
 		Mailer: mail.SMTP{Addr: cfg.SMTPAddr, From: cfg.MailFrom, Username: cfg.SMTPUsername,
 			Password: cfg.SMTPPassword, Timeout: cfg.MailTimeout},
+		Keyring: cfg.Keyring, BlindIndex: cfg.BlindIndex,
 	}
 	if err := deps.ValidateAPI(); err != nil {
 		return err

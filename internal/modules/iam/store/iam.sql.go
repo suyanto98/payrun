@@ -13,6 +13,48 @@ import (
 	"github.com/google/uuid"
 )
 
+const acceptMembership = `-- name: AcceptMembership :one
+UPDATE memberships
+SET status = 'ACTIVE', user_id = $1, accepted_at = $2, updated_by = $1, version = version + 1
+WHERE id = $3 AND status = 'INVITED'
+RETURNING tenant_id, roles, status
+`
+
+type AcceptMembershipParams struct {
+	UserID *uuid.UUID
+	Now    *time.Time
+	ID     uuid.UUID
+}
+
+type AcceptMembershipRow struct {
+	TenantID uuid.UUID
+	Roles    []string
+	Status   string
+}
+
+// [tenant] Guard status INVITED; user sudah punya membership di tenant ini → uq_memberships_user.
+func (q *Queries) AcceptMembership(ctx context.Context, arg AcceptMembershipParams) (AcceptMembershipRow, error) {
+	row := q.db.QueryRow(ctx, acceptMembership, arg.UserID, arg.Now, arg.ID)
+	var i AcceptMembershipRow
+	err := row.Scan(&i.TenantID, &i.Roles, &i.Status)
+	return i, err
+}
+
+const activeMemberEmailExists = `-- name: ActiveMemberEmailExists :one
+
+SELECT EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.status = 'ACTIVE' AND lower(u.email) = lower($1))
+`
+
+// ---------------------------------------------------------------- members & invitations (Sprint 2)
+// [tenant] Email sudah anggota ACTIVE tenant ini? users terlihat lewat users_tenant_member_read.
+func (q *Queries) ActiveMemberEmailExists(ctx context.Context, email string) (bool, error) {
+	row := q.db.QueryRow(ctx, activeMemberEmailExists, email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const addOwnerMembership = `-- name: AddOwnerMembership :exec
 INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by)
 VALUES ($1, $2, $3, ARRAY['OWNER'], 'ACTIVE', $4, $3)
@@ -57,6 +99,64 @@ func (q *Queries) CreateEmailVerification(ctx context.Context, arg CreateEmailVe
 		arg.TokenHash,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+	)
+	return err
+}
+
+const createInvitation = `-- name: CreateInvitation :exec
+INSERT INTO invitations (tenant_id, id, membership_id, employee_id, token_hash, email, expires_at, created_at, created_by)
+VALUES ($1, $2, $3, $4, $5, lower($6), $7, $8, $9)
+`
+
+type CreateInvitationParams struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	MembershipID uuid.UUID
+	EmployeeID   *uuid.UUID
+	TokenHash    []byte
+	Email        string
+	ExpiresAt    time.Time
+	CreatedAt    time.Time
+	Actor        *uuid.UUID
+}
+
+// [tenant]
+func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationParams) error {
+	_, err := q.db.Exec(ctx, createInvitation,
+		arg.TenantID,
+		arg.ID,
+		arg.MembershipID,
+		arg.EmployeeID,
+		arg.TokenHash,
+		arg.Email,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+		arg.Actor,
+	)
+	return err
+}
+
+const createInvitedMembership = `-- name: CreateInvitedMembership :exec
+INSERT INTO memberships (tenant_id, id, invited_email, roles, status, created_by, updated_by)
+VALUES ($1, $2, lower($3), $4, 'INVITED', $5, $5)
+`
+
+type CreateInvitedMembershipParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	Email    string
+	Roles    []string
+	Actor    *uuid.UUID
+}
+
+// [tenant] Duplikat undangan INVITED untuk email yang sama → uq_memberships_invited_email.
+func (q *Queries) CreateInvitedMembership(ctx context.Context, arg CreateInvitedMembershipParams) error {
+	_, err := q.db.Exec(ctx, createInvitedMembership,
+		arg.TenantID,
+		arg.ID,
+		arg.Email,
+		arg.Roles,
+		arg.Actor,
 	)
 	return err
 }
@@ -204,6 +304,40 @@ func (q *Queries) GetFamilyByTokenHash(ctx context.Context, tokenHash []byte) (G
 	row := q.db.QueryRow(ctx, getFamilyByTokenHash, tokenHash)
 	var i GetFamilyByTokenHashRow
 	err := row.Scan(&i.FamilyID, &i.UserID)
+	return i, err
+}
+
+const getInvitationForUpdate = `-- name: GetInvitationForUpdate :one
+SELECT tenant_id, id, membership_id, employee_id, email, expires_at, accepted_at, revoked_at
+FROM invitations WHERE token_hash = $1
+FOR UPDATE
+`
+
+type GetInvitationForUpdateRow struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	MembershipID uuid.UUID
+	EmployeeID   *uuid.UUID
+	Email        string
+	ExpiresAt    time.Time
+	AcceptedAt   *time.Time
+	RevokedAt    *time.Time
+}
+
+// [tenant] (WithTenantTxFor tenant dari token) FOR UPDATE: dua accept paralel diserialkan.
+func (q *Queries) GetInvitationForUpdate(ctx context.Context, tokenHash []byte) (GetInvitationForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getInvitationForUpdate, tokenHash)
+	var i GetInvitationForUpdateRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.MembershipID,
+		&i.EmployeeID,
+		&i.Email,
+		&i.ExpiresAt,
+		&i.AcceptedAt,
+		&i.RevokedAt,
+	)
 	return i, err
 }
 
@@ -363,6 +497,81 @@ func (q *Queries) ListActiveMemberships(ctx context.Context, userID uuid.UUID) (
 	return items, nil
 }
 
+const listMembers = `-- name: ListMembers :many
+SELECT m.tenant_id, m.id, m.user_id, u.email AS user_email, u.display_name AS user_display_name,
+       m.invited_email, m.roles, m.status, m.accepted_at, m.version, m.created_at
+FROM memberships m
+LEFT JOIN users u ON u.id = m.user_id
+WHERE ($1::text IS NULL OR m.status = $1)
+  AND ($2::text IS NULL OR $2::text = ANY (m.roles))
+  AND ($3::timestamptz IS NULL
+       OR (m.created_at, m.id) < ($3::timestamptz, $4::uuid))
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT $5
+`
+
+type ListMembersParams struct {
+	Status  *string
+	Role    *string
+	AfterAt *time.Time
+	AfterID *uuid.UUID
+	Lim     int32
+}
+
+type ListMembersRow struct {
+	TenantID        uuid.UUID
+	ID              uuid.UUID
+	UserID          *uuid.UUID
+	UserEmail       *string
+	UserDisplayName *string
+	InvitedEmail    *string
+	Roles           []string
+	Status          string
+	AcceptedAt      *time.Time
+	Version         int32
+	CreatedAt       time.Time
+}
+
+// [tenant] Urut created_at DESC, id DESC (keyset). user hanya terlihat untuk anggota ACTIVE
+// (users_tenant_member_read); undangan INVITED dan member REVOKED → user null.
+func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]ListMembersRow, error) {
+	rows, err := q.db.Query(ctx, listMembers,
+		arg.Status,
+		arg.Role,
+		arg.AfterAt,
+		arg.AfterID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMembersRow
+	for rows.Next() {
+		var i ListMembersRow
+		if err := rows.Scan(
+			&i.TenantID,
+			&i.ID,
+			&i.UserID,
+			&i.UserEmail,
+			&i.UserDisplayName,
+			&i.InvitedEmail,
+			&i.Roles,
+			&i.Status,
+			&i.AcceptedAt,
+			&i.Version,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markEmailVerificationUsed = `-- name: MarkEmailVerificationUsed :exec
 UPDATE email_verifications SET used_at = $1 WHERE id = $2
 `
@@ -394,6 +603,21 @@ func (q *Queries) MarkEmailVerified(ctx context.Context, arg MarkEmailVerifiedPa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const markInvitationAccepted = `-- name: MarkInvitationAccepted :exec
+UPDATE invitations SET accepted_at = $1 WHERE id = $2 AND accepted_at IS NULL
+`
+
+type MarkInvitationAcceptedParams struct {
+	Now *time.Time
+	ID  uuid.UUID
+}
+
+// [tenant]
+func (q *Queries) MarkInvitationAccepted(ctx context.Context, arg MarkInvitationAcceptedParams) error {
+	_, err := q.db.Exec(ctx, markInvitationAccepted, arg.Now, arg.ID)
+	return err
 }
 
 const markRefreshTokenUsed = `-- name: MarkRefreshTokenUsed :exec

@@ -1,0 +1,146 @@
+# Matriks otorisasi PayRun sebagai DATA (docs/design/17-api-authorization-matrix.md §2, §4).
+# Dokumen dan test berasal dari sumber yang sama: internal/app/authz_matrix_test.go membaca file ini.
+#
+# Aturan CI (file 17 §4.4):
+#   1. setiap rute di router (chi.Walk) wajib punya baris di sini, dan sebaliknya;
+#   2. setiap baris `access: tenant` wajib punya minimal satu case.
+#
+# Kolom:
+#   access  public | cookie | user (Bearer tanpa `tid`) | tenant (Bearer dengan `tid`)
+#   audit   action audit_log yang wajib bertambah tepat 1 untuk setiap respons 2xx
+#   cases   target    : resource untuk {id}. Endpoint yang mengubah data mendapat resource BARU per
+#                       aktor (supaya If-Match "1" dan state awal selalu sama):
+#                         department | position  → dibuat OWNER
+#                         employee_other         → employee tidak tertaut ke user mana pun
+#                         employee_self          → employee fixture yang tertaut ke user EMPLOYEE (baca saja)
+#           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik
+#           if_match  : kirim If-Match: "1"
+#           idempotency: kirim Idempotency-Key acak
+#           expect    : status per role (O H P M E); role yang tidak disebut tidak diuji di case itu
+#
+# Lintas tenant (file 17 §4.3) dibangkitkan otomatis dari baris tenant ber-{id}: aktor Beta memanggil
+# id milik Alpha. Role yang diizinkan endpoint wajib mendapat 404; role yang ditolak endpoint boleh
+# 403 (penolakan tingkat aksi, tidak bergantung pada id, jadi tidak membocorkan keberadaan) atau 404.
+
+routes:
+  # ---------------------------------------------------------------- auth & session (S1)
+  - {id: A1, route: "POST /auth/login", access: public}
+  - {id: A2, route: "POST /auth/refresh", access: cookie}
+  - {id: A3, route: "POST /auth/logout", access: cookie}
+  - {id: A4, route: "GET /me", access: user}
+  - {id: A5, route: "GET /me/memberships", access: user}
+  - {id: A6, route: "POST /session/switch-tenant", access: user}
+  - {id: A7, route: "POST /auth/verify-email", access: public}
+  - {id: A8, route: "POST /auth/resend-verification", access: user}
+  - {id: T1, route: "POST /tenants/signup", access: public}
+
+  - id: T2
+    route: "GET /tenant"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+
+  # ---------------------------------------------------------------- members (S2; U4/U5 di S4)
+  - id: U1
+    route: "GET /members"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 403, M: 403, E: 403}
+
+  - id: U2
+    route: "POST /invitations"
+    access: tenant
+    audit: membership.invited
+    cases:
+      - body: {email: "{email}", roles: [EMPLOYEE]}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+      - body: {email: "{email}", roles: [PAYROLL_ADMIN]}
+        expect: {O: 201, H: 403}
+
+  - {id: U3, route: "POST /invitations/accept", access: user}
+
+  # ---------------------------------------------------------------- organisasi (G1–G4)
+  - id: G1a
+    route: "GET /departments"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+  - id: G2a
+    route: "POST /departments"
+    access: tenant
+    audit: department.created
+    cases:
+      - body: {code: "D{n}", name: "Baru"}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+  - id: G3a
+    route: "PATCH /departments/{id}"
+    access: tenant
+    audit: department.updated
+    cases:
+      - {target: department, if_match: true, body: {name: "Ganti"}, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+  - id: G4a
+    route: "POST /departments/{id}/deactivate"
+    access: tenant
+    audit: department.deactivated
+    cases:
+      - {target: department, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+
+  - id: G1b
+    route: "GET /positions"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+  - id: G2b
+    route: "POST /positions"
+    access: tenant
+    audit: position.created
+    cases:
+      - body: {code: "P{n}", name: "Baru"}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+  - id: G3b
+    route: "PATCH /positions/{id}"
+    access: tenant
+    audit: position.updated
+    cases:
+      - {target: position, if_match: true, body: {name: "Ganti"}, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+  - id: G4b
+    route: "POST /positions/{id}/deactivate"
+    access: tenant
+    audit: position.deactivated
+    cases:
+      - {target: position, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+
+  # ---------------------------------------------------------------- employees (W1–W5; W6–W10 di S3/S4)
+  - id: W1
+    route: "GET /employees"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 403}   # M: hanya bawahan (kosong sampai S3)
+  - id: W2
+    route: "POST /employees"
+    access: tenant
+    audit: employee.created
+    cases:
+      - idempotency: true
+        body: {employee_no: "EMP-9{n}", full_name: "Baru", hire_date: "2026-01-05", nik: "{nik}"}
+        expect: {O: 201, H: 201, P: 403, M: 403, E: 403}
+  - id: W3
+    route: "GET /employees/{id}"
+    access: tenant
+    cases:
+      - {target: employee_other, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+      - {target: employee_self, expect: {E: 200, M: 404}}
+  - id: W4
+    route: "PATCH /employees/{id}"
+    access: tenant
+    audit: employee.updated
+    cases:
+      - {target: employee_other, if_match: true, body: {full_name: "Ganti"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
+      - {target: employee_self, if_match: true, body: {full_name: "Ganti"}, expect: {E: 403}}
+  - id: W5
+    route: "POST /employees/{id}/terminate"
+    access: tenant
+    audit: employee.terminated
+    cases:
+      - {target: employee_other, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
+      - {target: employee_self, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {E: 403}}

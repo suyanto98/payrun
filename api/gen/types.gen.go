@@ -5,10 +5,212 @@ package gen
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for AcceptedInvitationMembershipStatus.
+const (
+	AcceptedInvitationMembershipStatusACTIVE AcceptedInvitationMembershipStatus = "ACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the AcceptedInvitationMembershipStatus enum.
+func (e AcceptedInvitationMembershipStatus) Valid() bool {
+	switch e {
+	case AcceptedInvitationMembershipStatusACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EmployeePtkpStatus.
+const (
+	EmployeePtkpStatusK0  EmployeePtkpStatus = "K/0"
+	EmployeePtkpStatusK1  EmployeePtkpStatus = "K/1"
+	EmployeePtkpStatusK2  EmployeePtkpStatus = "K/2"
+	EmployeePtkpStatusK3  EmployeePtkpStatus = "K/3"
+	EmployeePtkpStatusTK0 EmployeePtkpStatus = "TK/0"
+	EmployeePtkpStatusTK1 EmployeePtkpStatus = "TK/1"
+	EmployeePtkpStatusTK2 EmployeePtkpStatus = "TK/2"
+	EmployeePtkpStatusTK3 EmployeePtkpStatus = "TK/3"
+)
+
+// Valid indicates whether the value is a known member of the EmployeePtkpStatus enum.
+func (e EmployeePtkpStatus) Valid() bool {
+	switch e {
+	case EmployeePtkpStatusK0:
+		return true
+	case EmployeePtkpStatusK1:
+		return true
+	case EmployeePtkpStatusK2:
+		return true
+	case EmployeePtkpStatusK3:
+		return true
+	case EmployeePtkpStatusTK0:
+		return true
+	case EmployeePtkpStatusTK1:
+		return true
+	case EmployeePtkpStatusTK2:
+		return true
+	case EmployeePtkpStatusTK3:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EmployeeStatus.
+const (
+	EmployeeStatusACTIVE     EmployeeStatus = "ACTIVE"
+	EmployeeStatusRESIGNED   EmployeeStatus = "RESIGNED"
+	EmployeeStatusTERMINATED EmployeeStatus = "TERMINATED"
+)
+
+// Valid indicates whether the value is a known member of the EmployeeStatus enum.
+func (e EmployeeStatus) Valid() bool {
+	switch e {
+	case EmployeeStatusACTIVE:
+		return true
+	case EmployeeStatusRESIGNED:
+		return true
+	case EmployeeStatusTERMINATED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EmployeeCreatePtkpStatus.
+const (
+	EmployeeCreatePtkpStatusK0  EmployeeCreatePtkpStatus = "K/0"
+	EmployeeCreatePtkpStatusK1  EmployeeCreatePtkpStatus = "K/1"
+	EmployeeCreatePtkpStatusK2  EmployeeCreatePtkpStatus = "K/2"
+	EmployeeCreatePtkpStatusK3  EmployeeCreatePtkpStatus = "K/3"
+	EmployeeCreatePtkpStatusTK0 EmployeeCreatePtkpStatus = "TK/0"
+	EmployeeCreatePtkpStatusTK1 EmployeeCreatePtkpStatus = "TK/1"
+	EmployeeCreatePtkpStatusTK2 EmployeeCreatePtkpStatus = "TK/2"
+	EmployeeCreatePtkpStatusTK3 EmployeeCreatePtkpStatus = "TK/3"
+)
+
+// Valid indicates whether the value is a known member of the EmployeeCreatePtkpStatus enum.
+func (e EmployeeCreatePtkpStatus) Valid() bool {
+	switch e {
+	case EmployeeCreatePtkpStatusK0:
+		return true
+	case EmployeeCreatePtkpStatusK1:
+		return true
+	case EmployeeCreatePtkpStatusK2:
+		return true
+	case EmployeeCreatePtkpStatusK3:
+		return true
+	case EmployeeCreatePtkpStatusTK0:
+		return true
+	case EmployeeCreatePtkpStatusTK1:
+		return true
+	case EmployeeCreatePtkpStatusTK2:
+		return true
+	case EmployeeCreatePtkpStatusTK3:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EmployeeListItemStatus.
+const (
+	EmployeeListItemStatusACTIVE     EmployeeListItemStatus = "ACTIVE"
+	EmployeeListItemStatusRESIGNED   EmployeeListItemStatus = "RESIGNED"
+	EmployeeListItemStatusTERMINATED EmployeeListItemStatus = "TERMINATED"
+)
+
+// Valid indicates whether the value is a known member of the EmployeeListItemStatus enum.
+func (e EmployeeListItemStatus) Valid() bool {
+	switch e {
+	case EmployeeListItemStatusACTIVE:
+		return true
+	case EmployeeListItemStatusRESIGNED:
+		return true
+	case EmployeeListItemStatusTERMINATED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EmployeeUpdatePtkpStatus.
+const (
+	EmployeeUpdatePtkpStatusK0  EmployeeUpdatePtkpStatus = "K/0"
+	EmployeeUpdatePtkpStatusK1  EmployeeUpdatePtkpStatus = "K/1"
+	EmployeeUpdatePtkpStatusK2  EmployeeUpdatePtkpStatus = "K/2"
+	EmployeeUpdatePtkpStatusK3  EmployeeUpdatePtkpStatus = "K/3"
+	EmployeeUpdatePtkpStatusTK0 EmployeeUpdatePtkpStatus = "TK/0"
+	EmployeeUpdatePtkpStatusTK1 EmployeeUpdatePtkpStatus = "TK/1"
+	EmployeeUpdatePtkpStatusTK2 EmployeeUpdatePtkpStatus = "TK/2"
+	EmployeeUpdatePtkpStatusTK3 EmployeeUpdatePtkpStatus = "TK/3"
+)
+
+// Valid indicates whether the value is a known member of the EmployeeUpdatePtkpStatus enum.
+func (e EmployeeUpdatePtkpStatus) Valid() bool {
+	switch e {
+	case EmployeeUpdatePtkpStatusK0:
+		return true
+	case EmployeeUpdatePtkpStatusK1:
+		return true
+	case EmployeeUpdatePtkpStatusK2:
+		return true
+	case EmployeeUpdatePtkpStatusK3:
+		return true
+	case EmployeeUpdatePtkpStatusTK0:
+		return true
+	case EmployeeUpdatePtkpStatusTK1:
+		return true
+	case EmployeeUpdatePtkpStatusTK2:
+		return true
+	case EmployeeUpdatePtkpStatusTK3:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InvitationStatus.
+const (
+	InvitationStatusINVITED InvitationStatus = "INVITED"
+)
+
+// Valid indicates whether the value is a known member of the InvitationStatus enum.
+func (e InvitationStatus) Valid() bool {
+	switch e {
+	case InvitationStatusINVITED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MemberStatus.
+const (
+	MemberStatusACTIVE  MemberStatus = "ACTIVE"
+	MemberStatusINVITED MemberStatus = "INVITED"
+	MemberStatusREVOKED MemberStatus = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the MemberStatus enum.
+func (e MemberStatus) Valid() bool {
+	switch e {
+	case MemberStatusACTIVE:
+		return true
+	case MemberStatusINVITED:
+		return true
+	case MemberStatusREVOKED:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for MembershipListDataStatus.
 const (
@@ -19,6 +221,24 @@ const (
 func (e MembershipListDataStatus) Valid() bool {
 	switch e {
 	case MembershipListDataStatusACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrgUnitStatus.
+const (
+	OrgUnitStatusACTIVE   OrgUnitStatus = "ACTIVE"
+	OrgUnitStatusINACTIVE OrgUnitStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the OrgUnitStatus enum.
+func (e OrgUnitStatus) Valid() bool {
+	switch e {
+	case OrgUnitStatusACTIVE:
+		return true
+	case OrgUnitStatusINACTIVE:
 		return true
 	default:
 		return false
@@ -178,6 +398,24 @@ func (e TenantSummaryStatus) Valid() bool {
 	}
 }
 
+// Defines values for TerminateRequestType.
+const (
+	TerminateRequestTypeRESIGNED   TerminateRequestType = "RESIGNED"
+	TerminateRequestTypeTERMINATED TerminateRequestType = "TERMINATED"
+)
+
+// Valid indicates whether the value is a known member of the TerminateRequestType enum.
+func (e TerminateRequestType) Valid() bool {
+	switch e {
+	case TerminateRequestTypeRESIGNED:
+		return true
+	case TerminateRequestTypeTERMINATED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for XRequestedWith.
 const (
 	XRequestedWithFetch XRequestedWith = "fetch"
@@ -223,11 +461,237 @@ func (e RefreshSessionParamsXRequestedWith) Valid() bool {
 	}
 }
 
+// Defines values for ListDepartmentsParamsStatus.
+const (
+	ListDepartmentsParamsStatusACTIVE   ListDepartmentsParamsStatus = "ACTIVE"
+	ListDepartmentsParamsStatusINACTIVE ListDepartmentsParamsStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ListDepartmentsParamsStatus enum.
+func (e ListDepartmentsParamsStatus) Valid() bool {
+	switch e {
+	case ListDepartmentsParamsStatusACTIVE:
+		return true
+	case ListDepartmentsParamsStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListEmployeesParamsStatus.
+const (
+	ListEmployeesParamsStatusACTIVE     ListEmployeesParamsStatus = "ACTIVE"
+	ListEmployeesParamsStatusRESIGNED   ListEmployeesParamsStatus = "RESIGNED"
+	ListEmployeesParamsStatusTERMINATED ListEmployeesParamsStatus = "TERMINATED"
+)
+
+// Valid indicates whether the value is a known member of the ListEmployeesParamsStatus enum.
+func (e ListEmployeesParamsStatus) Valid() bool {
+	switch e {
+	case ListEmployeesParamsStatusACTIVE:
+		return true
+	case ListEmployeesParamsStatusRESIGNED:
+		return true
+	case ListEmployeesParamsStatusTERMINATED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMembersParamsStatus.
+const (
+	ListMembersParamsStatusACTIVE  ListMembersParamsStatus = "ACTIVE"
+	ListMembersParamsStatusINVITED ListMembersParamsStatus = "INVITED"
+	ListMembersParamsStatusREVOKED ListMembersParamsStatus = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the ListMembersParamsStatus enum.
+func (e ListMembersParamsStatus) Valid() bool {
+	switch e {
+	case ListMembersParamsStatusACTIVE:
+		return true
+	case ListMembersParamsStatusINVITED:
+		return true
+	case ListMembersParamsStatusREVOKED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPositionsParamsStatus.
+const (
+	ListPositionsParamsStatusACTIVE   ListPositionsParamsStatus = "ACTIVE"
+	ListPositionsParamsStatusINACTIVE ListPositionsParamsStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the ListPositionsParamsStatus enum.
+func (e ListPositionsParamsStatus) Valid() bool {
+	switch e {
+	case ListPositionsParamsStatusACTIVE:
+		return true
+	case ListPositionsParamsStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// AcceptInvitationRequest defines model for AcceptInvitationRequest.
+type AcceptInvitationRequest struct {
+	// Token `<tenant_id>.<secret>` from the invite link fragment.
+	Token string `json:"token"`
+}
+
+// AcceptedInvitation defines model for AcceptedInvitation.
+type AcceptedInvitation struct {
+	Membership struct {
+		Roles    []Role                             `json:"roles"`
+		Status   AcceptedInvitationMembershipStatus `json:"status"`
+		TenantId openapi_types.UUID                 `json:"tenant_id"`
+	} `json:"membership"`
+}
+
+// AcceptedInvitationMembershipStatus defines model for AcceptedInvitation.Membership.Status.
+type AcceptedInvitationMembershipStatus string
+
 // ActiveTenant defines model for ActiveTenant.
 type ActiveTenant struct {
 	Id    openapi_types.UUID `json:"id"`
 	Name  string             `json:"name"`
 	Roles []Role             `json:"roles"`
+}
+
+// Bank defines model for Bank.
+type Bank struct {
+	// AccountMasked Examples: ******7890
+	AccountMasked *string `json:"account_masked"`
+	Holder        *string `json:"holder"`
+	Name          *string `json:"name"`
+}
+
+// BankInput defines model for BankInput.
+type BankInput struct {
+	// AccountNumber 6–20 digits; spaces, dots and dashes are ignored.
+	AccountNumber *string `json:"account_number,omitempty"`
+	Holder        *string `json:"holder,omitempty"`
+	Name          *string `json:"name,omitempty"`
+}
+
+// Employee PII is always masked here (full view: GET /employees/{id}/pii, Sprint 4). MANAGER and EMPLOYEE
+// receive the basic version without `ptkp_status`, `nik_masked`, `npwp_masked` and `bank`.
+// `current_org` is filled from Sprint 3 (org assignments).
+type Employee struct {
+	Bank       *Bank  `json:"bank,omitempty"`
+	CurrentOrg any    `json:"current_org"`
+	EmployeeNo string `json:"employee_no"`
+
+	// EndDate Last working day (inclusive).
+	EndDate  *openapi_types.Date `json:"end_date"`
+	FullName string              `json:"full_name"`
+	HireDate openapi_types.Date  `json:"hire_date"`
+	Id       openapi_types.UUID  `json:"id"`
+
+	// NikMasked Examples: ************0001
+	NikMasked *string `json:"nik_masked,omitempty"`
+
+	// NpwpMasked Examples: ***********1234
+	NpwpMasked *string              `json:"npwp_masked,omitempty"`
+	PtkpStatus *EmployeePtkpStatus  `json:"ptkp_status,omitempty"`
+	Status     EmployeeStatus       `json:"status"`
+	UserId     *openapi_types.UUID  `json:"user_id"`
+	Version    int32                `json:"version"`
+	WorkEmail  *openapi_types.Email `json:"work_email"`
+}
+
+// EmployeePtkpStatus defines model for Employee.PtkpStatus.
+type EmployeePtkpStatus string
+
+// EmployeeStatus defines model for Employee.Status.
+type EmployeeStatus string
+
+// EmployeeCreate `org` and `salary` (design W2) are added in Sprint 3 with their tables.
+type EmployeeCreate struct {
+	Bank       *BankInput `json:"bank,omitempty"`
+	EmployeeNo string     `json:"employee_no"`
+	FullName   string     `json:"full_name"`
+
+	// HireDate At most 90 days ahead.
+	HireDate openapi_types.Date `json:"hire_date"`
+
+	// Nik 16 digits. Encrypted at rest; unique per tenant (NIK_TAKEN).
+	Nik *string `json:"nik,omitempty"`
+
+	// Npwp 15–16 digits. Encrypted at rest; unique per tenant (NPWP_TAKEN).
+	Npwp       *string                   `json:"npwp,omitempty"`
+	PtkpStatus *EmployeeCreatePtkpStatus `json:"ptkp_status,omitempty"`
+	WorkEmail  *openapi_types.Email      `json:"work_email,omitempty"`
+}
+
+// EmployeeCreatePtkpStatus defines model for EmployeeCreate.PtkpStatus.
+type EmployeeCreatePtkpStatus string
+
+// EmployeeList defines model for EmployeeList.
+type EmployeeList struct {
+	Data []EmployeeListItem `json:"data"`
+	Page Page               `json:"page"`
+}
+
+// EmployeeListItem defines model for EmployeeListItem.
+type EmployeeListItem struct {
+	// Department Filled from Sprint 3.
+	Department any                `json:"department"`
+	EmployeeNo string             `json:"employee_no"`
+	FullName   string             `json:"full_name"`
+	HireDate   openapi_types.Date `json:"hire_date"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Position Filled from Sprint 3.
+	Position any                    `json:"position"`
+	Status   EmployeeListItemStatus `json:"status"`
+}
+
+// EmployeeListItemStatus defines model for EmployeeListItem.Status.
+type EmployeeListItemStatus string
+
+// EmployeeUpdate Partial update; `employee_no`, `hire_date` and status cannot be changed here.
+type EmployeeUpdate struct {
+	Bank       *BankInput                `json:"bank,omitempty"`
+	FullName   *string                   `json:"full_name,omitempty"`
+	Nik        *string                   `json:"nik,omitempty"`
+	Npwp       *string                   `json:"npwp,omitempty"`
+	PtkpStatus *EmployeeUpdatePtkpStatus `json:"ptkp_status,omitempty"`
+	WorkEmail  *openapi_types.Email      `json:"work_email,omitempty"`
+}
+
+// EmployeeUpdatePtkpStatus defines model for EmployeeUpdate.PtkpStatus.
+type EmployeeUpdatePtkpStatus string
+
+// Empty defines model for Empty.
+type Empty = map[string]interface{}
+
+// Invitation defines model for Invitation.
+type Invitation struct {
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// InviteUrl Shown once; contains the secret in the fragment (`/invite#<tenant_id>.<secret>`).
+	InviteUrl    string             `json:"invite_url"`
+	MembershipId openapi_types.UUID `json:"membership_id"`
+	Status       InvitationStatus   `json:"status"`
+}
+
+// InvitationStatus defines model for Invitation.Status.
+type InvitationStatus string
+
+// InvitationRequest defines model for InvitationRequest.
+type InvitationRequest struct {
+	Email openapi_types.Email `json:"email"`
+
+	// EmployeeId Links the user to this employee on accept.
+	EmployeeId *openapi_types.UUID `json:"employee_id,omitempty"`
+	Roles      []Role              `json:"roles"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -248,6 +712,33 @@ type Me struct {
 	Id         openapi_types.UUID  `json:"id"`
 }
 
+// Member defines model for Member.
+type Member struct {
+	AcceptedAt   *time.Time           `json:"accepted_at"`
+	Id           openapi_types.UUID   `json:"id"`
+	InvitedEmail *openapi_types.Email `json:"invited_email"`
+	Roles        []Role               `json:"roles"`
+	Status       MemberStatus         `json:"status"`
+	User         *MemberUser          `json:"user"`
+	Version      int32                `json:"version"`
+}
+
+// MemberStatus defines model for Member.Status.
+type MemberStatus string
+
+// MemberList defines model for MemberList.
+type MemberList struct {
+	Data []Member `json:"data"`
+	Page Page     `json:"page"`
+}
+
+// MemberUser defines model for MemberUser.
+type MemberUser struct {
+	DisplayName string              `json:"display_name"`
+	Email       openapi_types.Email `json:"email"`
+	Id          openapi_types.UUID  `json:"id"`
+}
+
 // MembershipList defines model for MembershipList.
 type MembershipList struct {
 	Data []struct {
@@ -260,6 +751,40 @@ type MembershipList struct {
 
 // MembershipListDataStatus defines model for MembershipList.Data.Status.
 type MembershipListDataStatus string
+
+// OrgUnit defines model for OrgUnit.
+type OrgUnit struct {
+	Code    string             `json:"code"`
+	Id      openapi_types.UUID `json:"id"`
+	Name    string             `json:"name"`
+	Status  OrgUnitStatus      `json:"status"`
+	Version int32              `json:"version"`
+}
+
+// OrgUnitStatus defines model for OrgUnit.Status.
+type OrgUnitStatus string
+
+// OrgUnitCreate defines model for OrgUnitCreate.
+type OrgUnitCreate struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+// OrgUnitList defines model for OrgUnitList.
+type OrgUnitList struct {
+	Data []OrgUnit `json:"data"`
+}
+
+// OrgUnitUpdate `code` is immutable.
+type OrgUnitUpdate struct {
+	Name string `json:"name"`
+}
+
+// Page defines model for Page.
+type Page struct {
+	HasMore    bool    `json:"has_more"`
+	NextCursor *string `json:"next_cursor,omitempty"`
+}
 
 // Pending Placeholder until the feature sprint defines the body (Sprint 0 skeleton).
 type Pending = map[string]interface{}
@@ -397,6 +922,17 @@ type TenantSummary struct {
 // TenantSummaryStatus defines model for TenantSummary.Status.
 type TenantSummaryStatus string
 
+// TerminateRequest defines model for TerminateRequest.
+type TerminateRequest struct {
+	// EndDate Last working day (inclusive); not before hire_date.
+	EndDate openapi_types.Date   `json:"end_date"`
+	Reason  *string              `json:"reason,omitempty"`
+	Type    TerminateRequestType `json:"type"`
+}
+
+// TerminateRequestType defines model for TerminateRequest.Type.
+type TerminateRequestType string
+
 // User defines model for User.
 type User struct {
 	DisplayName   string              `json:"display_name"`
@@ -505,7 +1041,7 @@ type ListAttendanceImportErrorsParams struct {
 
 // CorrectAttendanceParams defines parameters for CorrectAttendance.
 type CorrectAttendanceParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -546,31 +1082,36 @@ type ListComponentDefinitionsParams struct {
 
 // UpdateComponentDefinitionParams defines parameters for UpdateComponentDefinition.
 type UpdateComponentDefinitionParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // ListDepartmentsParams defines parameters for ListDepartments.
 type ListDepartmentsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Status *ListDepartmentsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 }
+
+// ListDepartmentsParamsStatus defines parameters for ListDepartments.
+type ListDepartmentsParamsStatus string
 
 // UpdateDepartmentParams defines parameters for UpdateDepartment.
 type UpdateDepartmentParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // ListEmployeesParams defines parameters for ListEmployees.
 type ListEmployeesParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status *ListEmployeesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Q      *string                    `form:"q,omitempty" json:"q,omitempty"`
+	Limit  *Limit                     `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListEmployeesParamsStatus defines parameters for ListEmployees.
+type ListEmployeesParamsStatus string
 
 // CreateEmployeeParams defines parameters for CreateEmployee.
 type CreateEmployeeParams struct {
@@ -580,7 +1121,7 @@ type CreateEmployeeParams struct {
 
 // UpdateEmployeeParams defines parameters for UpdateEmployee.
 type UpdateEmployeeParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -604,7 +1145,7 @@ type ChangeSalaryParams struct {
 
 // TerminateEmployeeParams defines parameters for TerminateEmployee.
 type TerminateEmployeeParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -656,15 +1197,20 @@ type ListMyPayslipsParams struct {
 
 // ListMembersParams defines parameters for ListMembers.
 type ListMembersParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status *ListMembersParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Role   *Role                    `form:"role,omitempty" json:"role,omitempty"`
+	Limit  *Limit                   `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListMembersParamsStatus defines parameters for ListMembers.
+type ListMembersParamsStatus string
+
 // UpdateMemberRolesParams defines parameters for UpdateMemberRoles.
 type UpdateMemberRolesParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -734,21 +1280,21 @@ type ListPayslipsParams struct {
 
 // ListPositionsParams defines parameters for ListPositions.
 type ListPositionsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Status *ListPositionsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 }
+
+// ListPositionsParamsStatus defines parameters for ListPositions.
+type ListPositionsParamsStatus string
 
 // UpdatePositionParams defines parameters for UpdatePosition.
 type UpdatePositionParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // UpdateTenantSettingsParams defines parameters for UpdateTenantSettings.
 type UpdateTenantSettingsParams struct {
-	// IfMatch Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+	// IfMatch Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -803,19 +1349,19 @@ type UpdateComponentDefinitionJSONRequestBody = Pending
 type DeactivateComponentDefinitionJSONRequestBody = Pending
 
 // CreateDepartmentJSONRequestBody defines body for CreateDepartment for application/json ContentType.
-type CreateDepartmentJSONRequestBody = Pending
+type CreateDepartmentJSONRequestBody = OrgUnitCreate
 
 // UpdateDepartmentJSONRequestBody defines body for UpdateDepartment for application/json ContentType.
-type UpdateDepartmentJSONRequestBody = Pending
+type UpdateDepartmentJSONRequestBody = OrgUnitUpdate
 
 // DeactivateDepartmentJSONRequestBody defines body for DeactivateDepartment for application/json ContentType.
-type DeactivateDepartmentJSONRequestBody = Pending
+type DeactivateDepartmentJSONRequestBody = Empty
 
 // CreateEmployeeJSONRequestBody defines body for CreateEmployee for application/json ContentType.
-type CreateEmployeeJSONRequestBody = Pending
+type CreateEmployeeJSONRequestBody = EmployeeCreate
 
 // UpdateEmployeeJSONRequestBody defines body for UpdateEmployee for application/json ContentType.
-type UpdateEmployeeJSONRequestBody = Pending
+type UpdateEmployeeJSONRequestBody = EmployeeUpdate
 
 // AssignComponentJSONRequestBody defines body for AssignComponent for application/json ContentType.
 type AssignComponentJSONRequestBody = Pending
@@ -827,16 +1373,16 @@ type AssignEmployeeOrgJSONRequestBody = Pending
 type ChangeSalaryJSONRequestBody = Pending
 
 // TerminateEmployeeJSONRequestBody defines body for TerminateEmployee for application/json ContentType.
-type TerminateEmployeeJSONRequestBody = Pending
+type TerminateEmployeeJSONRequestBody = TerminateRequest
 
 // CreateHolidayJSONRequestBody defines body for CreateHoliday for application/json ContentType.
 type CreateHolidayJSONRequestBody = Pending
 
 // CreateInvitationJSONRequestBody defines body for CreateInvitation for application/json ContentType.
-type CreateInvitationJSONRequestBody = Pending
+type CreateInvitationJSONRequestBody = InvitationRequest
 
 // AcceptInvitationJSONRequestBody defines body for AcceptInvitation for application/json ContentType.
-type AcceptInvitationJSONRequestBody = Pending
+type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
 
 // CreateLeaveRequestJSONRequestBody defines body for CreateLeaveRequest for application/json ContentType.
 type CreateLeaveRequestJSONRequestBody = Pending
@@ -875,13 +1421,13 @@ type ExcludePayrollItemJSONRequestBody = Pending
 type SubmitPayrollRunJSONRequestBody = Pending
 
 // CreatePositionJSONRequestBody defines body for CreatePosition for application/json ContentType.
-type CreatePositionJSONRequestBody = Pending
+type CreatePositionJSONRequestBody = OrgUnitCreate
 
 // UpdatePositionJSONRequestBody defines body for UpdatePosition for application/json ContentType.
-type UpdatePositionJSONRequestBody = Pending
+type UpdatePositionJSONRequestBody = OrgUnitUpdate
 
 // DeactivatePositionJSONRequestBody defines body for DeactivatePosition for application/json ContentType.
-type DeactivatePositionJSONRequestBody = Pending
+type DeactivatePositionJSONRequestBody = Empty
 
 // SwitchTenantJSONRequestBody defines body for SwitchTenant for application/json ContentType.
 type SwitchTenantJSONRequestBody = SwitchTenantRequest

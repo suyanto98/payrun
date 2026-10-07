@@ -810,3 +810,22 @@ Kontrak yang berlaku ada di `api/openapi.yaml` (dicek `TestContract_S1ResponsesM
 | T1 seed | `tenant_settings`, membership, jenis cuti, komponen, departemen/posisi | `tenant_settings` (timezone dari input), membership OWNER, audit `tenant.created` | Tabel jenis cuti, komponen, departemen, dan posisi baru ada di S2–S3; seed-nya ditambahkan bersama tabelnya |
 | A6 switch ke tenant `PENDING_VERIFICATION` | — | `403 FORBIDDEN` ("Email verification required…") | Sama dengan tenant `SUSPENDED`: tenant ada, tetapi belum boleh dipakai |
 | A4 `/me` | `{id, email, display_name, active_tenant, employee_id}` | Ditambah `email_verified` | SPA menampilkan banner "verifikasi email" |
+
+## Catatan implementasi (Sprint 2)
+
+Kontrak yang berlaku: `api/openapi.yaml` (dicek `TestContract_S2ResponsesMatchSpec`); otorisasi: `api/authz_matrix.yaml` (`TestAuthzMatrix`, `TestCrossTenant`). Perbedaan terhadap U1–U3, G1–G4, W1–W5:
+
+| Endpoint | Desain | Implementasi S2 | Alasan |
+|---|---|---|---|
+| W2 request | `org` + `salary` di body | Belum ada; field tak dikenal → `400` | `org_assignments` dan `salary_assignments` dibuat di S3; field-nya ditambahkan bersama tabelnya |
+| W1/W3 respons | `department`, `position`, `current_org` terisi | Selalu `null` | Sama, S3 |
+| W1/W3 `MANAGER` | Bawahan langsung hari ini | Himpunan bawahan kosong (list kosong, detail `404`) | Relasi atasan ada di `org_assignments` (S3) |
+| W2/W5 `PERIOD_LOCKED` | Tolak tanggal di periode `FINALIZED` | Belum dicek | `payroll_periods` baru ada di S4; trigger PeriodGuard `employment_spans` ditambahkan saat itu |
+| G4 deactivate | `409` kalau masih dipakai assignment hari ini | Selalu boleh | Sama, S3 |
+| W4/W5 urutan error | — | Otorisasi dicek **sebelum** `If-Match`: role tanpa hak mendapat `403`/`404`, bukan `428` | File 17: status penolakan ditentukan otorisasi, bukan kelengkapan header |
+| W4 `0 baris` | — | Dibedakan lewat lookup: tidak ada / tenant lain → `404`, versi basi → `412` | Menjawab `412` untuk id tenant lain membocorkan keberadaannya (ditemukan `TestCrossTenant`) |
+| U2 respons | `invite_url` | `invite_url` = `PUBLIC_BASE_URL/invite#<tenant_id>.<secret>` + `Cache-Control: no-store`; tidak ada email undangan | MVP (PF-02 AC2): link ditampilkan sekali |
+| U3 accept | Email cocok | Ditambah: email user wajib **terverifikasi** (`403` "Verify your email…"), karena verifikasi kini butuh password akun (review S1). Token tidak valid / tenant salah / kedaluwarsa / sudah dipakai / email beda → satu code `410 INVITATION_INVALID`. User yang pernah `REVOKED` di tenant itu → `409 MEMBERSHIP_EXISTS` (re-invite menyusul bersama revoke, S4) | R2-8 |
+| U2/U3 `employee_id` | Tautkan user ke employee | `iam` memanggil modul `employee` lewat interface `EmployeeLinker` di composition root (cek belum tertaut saat undang, tautkan saat accept; sudah tertaut → `409 INVALID_STATE_TRANSITION`) | ADR-001: modul tidak menyentuh tabel modul lain |
+| A4 `/me` `employee_id` | Terisi | Terisi kalau token punya `tid` dan user tertaut ke employee di tenant itu | — |
+| Kode baru | — | `409 NPWP_TAKEN` (`uq_employees_npwp_bidx`), dimasukkan ke katalog lebih dulu | Pola `NIK_TAKEN` |

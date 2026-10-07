@@ -29,6 +29,19 @@ type AuditLog struct {
 	CreatedAt     time.Time
 }
 
+type Department struct {
+	TenantID  uuid.UUID
+	ID        uuid.UUID
+	Code      string
+	Name      string
+	Status    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	CreatedBy *uuid.UUID
+	UpdatedBy *uuid.UUID
+	Version   int32
+}
+
 type EmailVerification struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -36,6 +49,46 @@ type EmailVerification struct {
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    *time.Time
+}
+
+type Employee struct {
+	TenantID          uuid.UUID
+	ID                uuid.UUID
+	EmployeeNo        string
+	FullName          string
+	WorkEmail         *string
+	UserID            *uuid.UUID
+	Status            string
+	PtkpStatus        string
+	NikEnc            []byte
+	NikBidx           []byte
+	NikLast4          *string
+	NpwpEnc           []byte
+	NpwpBidx          []byte
+	NpwpLast4         *string
+	BankName          *string
+	BankAccountEnc    []byte
+	BankAccountLast4  *string
+	BankAccountHolder *string
+	PiiKeyVersion     *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	CreatedBy         *uuid.UUID
+	UpdatedBy         *uuid.UUID
+	Version           int32
+}
+
+type EmploymentSpan struct {
+	TenantID   uuid.UUID
+	ID         uuid.UUID
+	EmployeeID uuid.UUID
+	Span       pgtype.Range[pgtype.Date]
+	EndReason  *string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	CreatedBy  *uuid.UUID
+	UpdatedBy  *uuid.UUID
+	Version    int32
 }
 
 type IdempotencyKey struct {
@@ -52,6 +105,20 @@ type IdempotencyKey struct {
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
 	UpdatedAt      time.Time
+}
+
+type Invitation struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	MembershipID uuid.UUID
+	EmployeeID   *uuid.UUID
+	TokenHash    []byte
+	Email        string
+	ExpiresAt    time.Time
+	AcceptedAt   *time.Time
+	RevokedAt    *time.Time
+	CreatedAt    time.Time
+	CreatedBy    *uuid.UUID
 }
 
 type Job struct {
@@ -100,6 +167,19 @@ type PlatformIdempotencyKey struct {
 	ResponseBody   []byte
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
+}
+
+type Position struct {
+	TenantID  uuid.UUID
+	ID        uuid.UUID
+	Code      string
+	Name      string
+	Status    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	CreatedBy *uuid.UUID
+	UpdatedBy *uuid.UUID
+	Version   int32
 }
 
 type RefreshToken struct {

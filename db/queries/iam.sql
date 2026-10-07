@@ -129,3 +129,51 @@ SELECT family_id, user_id FROM refresh_tokens WHERE token_hash = @token_hash;
 -- [none]/[platform] → tenant_id NULL (baris platform); [tenant] → tenant_id = tenant aktif.
 INSERT INTO audit_log (id, tenant_id, actor_type, actor_id, action, target_type, target_id, request_id, ip, user_agent, reason)
 VALUES (@id, @tenant_id, @actor_type, @actor_id, @action, @target_type, @target_id, @request_id, @ip, @user_agent, @reason);
+
+-- ---------------------------------------------------------------- members & invitations (Sprint 2)
+
+-- name: ActiveMemberEmailExists :one
+-- [tenant] Email sudah anggota ACTIVE tenant ini? users terlihat lewat users_tenant_member_read.
+SELECT EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id
+               WHERE m.status = 'ACTIVE' AND lower(u.email) = lower(@email));
+
+-- name: CreateInvitedMembership :exec
+-- [tenant] Duplikat undangan INVITED untuk email yang sama → uq_memberships_invited_email.
+INSERT INTO memberships (tenant_id, id, invited_email, roles, status, created_by, updated_by)
+VALUES (@tenant_id, @id, lower(@email), @roles, 'INVITED', @actor, @actor);
+
+-- name: CreateInvitation :exec
+-- [tenant]
+INSERT INTO invitations (tenant_id, id, membership_id, employee_id, token_hash, email, expires_at, created_at, created_by)
+VALUES (@tenant_id, @id, @membership_id, @employee_id, @token_hash, lower(@email), @expires_at, @created_at, @actor);
+
+-- name: GetInvitationForUpdate :one
+-- [tenant] (WithTenantTxFor tenant dari token) FOR UPDATE: dua accept paralel diserialkan.
+SELECT tenant_id, id, membership_id, employee_id, email, expires_at, accepted_at, revoked_at
+FROM invitations WHERE token_hash = @token_hash
+FOR UPDATE;
+
+-- name: AcceptMembership :one
+-- [tenant] Guard status INVITED; user sudah punya membership di tenant ini → uq_memberships_user.
+UPDATE memberships
+SET status = 'ACTIVE', user_id = @user_id, accepted_at = @now, updated_by = @user_id, version = version + 1
+WHERE id = @id AND status = 'INVITED'
+RETURNING tenant_id, roles, status;
+
+-- name: MarkInvitationAccepted :exec
+-- [tenant]
+UPDATE invitations SET accepted_at = @now WHERE id = @id AND accepted_at IS NULL;
+
+-- name: ListMembers :many
+-- [tenant] Urut created_at DESC, id DESC (keyset). user hanya terlihat untuk anggota ACTIVE
+-- (users_tenant_member_read); undangan INVITED dan member REVOKED → user null.
+SELECT m.tenant_id, m.id, m.user_id, u.email AS user_email, u.display_name AS user_display_name,
+       m.invited_email, m.roles, m.status, m.accepted_at, m.version, m.created_at
+FROM memberships m
+LEFT JOIN users u ON u.id = m.user_id
+WHERE (sqlc.narg(status)::text IS NULL OR m.status = sqlc.narg(status))
+  AND (sqlc.narg(role)::text IS NULL OR sqlc.narg(role)::text = ANY (m.roles))
+  AND (sqlc.narg(after_at)::timestamptz IS NULL
+       OR (m.created_at, m.id) < (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
+ORDER BY m.created_at DESC, m.id DESC
+LIMIT @lim;

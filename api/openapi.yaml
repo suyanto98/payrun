@@ -423,6 +423,8 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, INVITED, REVOKED] } }
+        - { name: role, in: query, required: false, schema: { $ref: '#/components/schemas/Role' } }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -430,7 +432,7 @@ paths:
           description: OK. Body model `MemberList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/MemberList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -448,13 +450,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/InvitationRequest' }
       responses:
         '201':
           description: Created. Body model `Invitation` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Invitation' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -477,13 +479,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/AcceptInvitationRequest' }
       responses:
         '200':
           description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AcceptedInvitation' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -562,14 +564,13 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, INACTIVE], default: ACTIVE } }
       responses:
         '200':
           description: OK. Body model `DepartmentList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnitList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -586,13 +587,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OrgUnitCreate' }
       responses:
         '201':
           description: Created. Body model `Department` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -616,13 +617,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OrgUnitUpdate' }
       responses:
         '200':
           description: OK. Body model `Department` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -643,16 +644,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
           description: OK. Body model `Department` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -671,14 +672,13 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, INACTIVE], default: ACTIVE } }
       responses:
         '200':
           description: OK. Body model `PositionList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnitList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -695,13 +695,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OrgUnitCreate' }
       responses:
         '201':
           description: Created. Body model `Position` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -725,13 +725,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OrgUnitUpdate' }
       responses:
         '200':
           description: OK. Body model `Position` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -752,16 +752,16 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
           description: OK. Body model `Position` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OrgUnit' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -773,13 +773,19 @@ paths:
     get:
       tags: [employees]
       operationId: listEmployees
-      summary: Employees (filter + cursor); PII masked
+      summary: Employees (filter + cursor); no PII at all
+      description: |
+        Sorted by `employee_no, id`, or `lower(full_name), id` when `q` is set (prefix match on name or
+        employee number). MANAGER sees direct reports only (none until org assignments in Sprint 3);
+        EMPLOYEE gets 403.
       x-endpoint: W1
       x-feature: PF-06
       x-roles: "O, H, P; M (reports)"
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] } }
+        - { name: q, in: query, required: false, schema: { type: string, minLength: 2, maxLength: 50 } }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
@@ -787,7 +793,7 @@ paths:
           description: OK. Body model `EmployeeList` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/EmployeeList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -806,13 +812,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/EmployeeCreate' }
       responses:
         '201':
           description: Created. Body model `Employee` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Employee' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -836,7 +842,7 @@ paths:
           description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Employee' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -857,13 +863,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/EmployeeUpdate' }
       responses:
         '200':
           description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Employee' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -888,13 +894,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/TerminateRequest' }
       responses:
         '200':
           description: OK. Body model `Employee` (docs/design/16-api-endpoints.md §16).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Employee' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2174,7 +2180,7 @@ components:
       name: If-Match
       in: header
       required: true
-      description: Optimistic concurrency. The resource `version` the client read; mismatch → 409 VERSION_CONFLICT.
+      description: Optimistic concurrency. The resource `version` from its ETag (e.g. `"3"`); missing → 428 PRECONDITION_REQUIRED, stale → 412 VERSION_CONFLICT.
       schema: { type: string }
     XRequestedWith:
       name: X-Requested-With
@@ -2370,6 +2376,202 @@ components:
         status: { type: string, enum: [PENDING_VERIFICATION, ACTIVE, SUSPENDED] }
         settings: { $ref: '#/components/schemas/TenantSettings' }
         version: { type: integer }
+    OrgUnit:
+      type: object
+      required: [id, code, name, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, pattern: '^[A-Z0-9_]{1,20}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        version: { type: integer, format: int32 }
+    OrgUnitList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/OrgUnit' }
+    OrgUnitCreate:
+      type: object
+      additionalProperties: false
+      required: [code, name]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9_]{1,20}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    OrgUnitUpdate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      description: "`code` is immutable."
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+    Empty:
+      type: object
+      additionalProperties: false
+    Bank:
+      type: object
+      required: [name, account_masked, holder]
+      properties:
+        name: { type: [string, 'null'] }
+        account_masked: { type: [string, 'null'], examples: ['******7890'] }
+        holder: { type: [string, 'null'] }
+    Employee:
+      type: object
+      description: |
+        PII is always masked here (full view: GET /employees/{id}/pii, Sprint 4). MANAGER and EMPLOYEE
+        receive the basic version without `ptkp_status`, `nik_masked`, `npwp_masked` and `bank`.
+        `current_org` is filled from Sprint 3 (org assignments).
+      required: [id, employee_no, full_name, work_email, status, hire_date, end_date, current_org, user_id, version]
+      properties:
+        id: { type: string, format: uuid }
+        employee_no: { type: string }
+        full_name: { type: string }
+        work_email: { type: [string, 'null'], format: email }
+        status: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] }
+        hire_date: { type: string, format: date }
+        end_date: { type: [string, 'null'], format: date, description: Last working day (inclusive). }
+        current_org: { type: 'null' }
+        user_id: { type: [string, 'null'], format: uuid }
+        version: { type: integer, format: int32 }
+        ptkp_status: { type: string, enum: [TK/0, TK/1, TK/2, TK/3, K/0, K/1, K/2, K/3] }
+        nik_masked: { type: [string, 'null'], examples: ['************0001'] }
+        npwp_masked: { type: [string, 'null'], examples: ['***********1234'] }
+        bank:
+          oneOf:
+            - $ref: '#/components/schemas/Bank'
+            - type: 'null'
+    EmployeeListItem:
+      type: object
+      required: [id, employee_no, full_name, status, department, position, hire_date]
+      properties:
+        id: { type: string, format: uuid }
+        employee_no: { type: string }
+        full_name: { type: string }
+        status: { type: string, enum: [ACTIVE, RESIGNED, TERMINATED] }
+        department: { type: 'null', description: Filled from Sprint 3. }
+        position: { type: 'null', description: Filled from Sprint 3. }
+        hire_date: { type: string, format: date }
+    EmployeeList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/EmployeeListItem' }
+        page: { $ref: '#/components/schemas/Page' }
+    BankInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 50 }
+        account_number: { type: string, description: '6–20 digits; spaces, dots and dashes are ignored.' }
+        holder: { type: string, minLength: 1, maxLength: 120 }
+    EmployeeCreate:
+      type: object
+      additionalProperties: false
+      description: "`org` and `salary` (design W2) are added in Sprint 3 with their tables."
+      required: [employee_no, full_name, hire_date]
+      properties:
+        employee_no: { type: string, pattern: '^[A-Za-z0-9-]{1,30}$' }
+        full_name: { type: string, minLength: 1, maxLength: 120 }
+        work_email: { type: string, format: email }
+        hire_date: { type: string, format: date, description: At most 90 days ahead. }
+        ptkp_status: { type: string, enum: [TK/0, TK/1, TK/2, TK/3, K/0, K/1, K/2, K/3], default: TK/0 }
+        nik: { type: string, description: 16 digits. Encrypted at rest; unique per tenant (NIK_TAKEN). }
+        npwp: { type: string, description: 15–16 digits. Encrypted at rest; unique per tenant (NPWP_TAKEN). }
+        bank: { $ref: '#/components/schemas/BankInput' }
+    EmployeeUpdate:
+      type: object
+      additionalProperties: false
+      description: "Partial update; `employee_no`, `hire_date` and status cannot be changed here."
+      properties:
+        full_name: { type: string, minLength: 1, maxLength: 120 }
+        work_email: { type: string, format: email }
+        ptkp_status: { type: string, enum: [TK/0, TK/1, TK/2, TK/3, K/0, K/1, K/2, K/3] }
+        nik: { type: string }
+        npwp: { type: string }
+        bank: { $ref: '#/components/schemas/BankInput' }
+    TerminateRequest:
+      type: object
+      additionalProperties: false
+      required: [type, end_date]
+      properties:
+        type: { type: string, enum: [RESIGNED, TERMINATED] }
+        end_date: { type: string, format: date, description: Last working day (inclusive); not before hire_date. }
+        reason: { type: string, maxLength: 500 }
+    MemberUser:
+      type: object
+      required: [id, email, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+    Member:
+      type: object
+      required: [id, user, invited_email, roles, status, accepted_at, version]
+      properties:
+        id: { type: string, format: uuid }
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/MemberUser'
+            - type: 'null'
+        invited_email: { type: [string, 'null'], format: email }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+        status: { type: string, enum: [INVITED, ACTIVE, REVOKED] }
+        accepted_at: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int32 }
+    MemberList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Member' }
+        page: { $ref: '#/components/schemas/Page' }
+    InvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [email, roles]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Role' }
+        employee_id: { type: string, format: uuid, description: Links the user to this employee on accept. }
+    Invitation:
+      type: object
+      required: [membership_id, status, invite_url, expires_at]
+      properties:
+        membership_id: { type: string, format: uuid }
+        status: { type: string, enum: [INVITED] }
+        invite_url: { type: string, description: 'Shown once; contains the secret in the fragment (`/invite#<tenant_id>.<secret>`).' }
+        expires_at: { type: string, format: date-time }
+    AcceptInvitationRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token: { type: string, maxLength: 128, description: '`<tenant_id>.<secret>` from the invite link fragment.' }
+    AcceptedInvitation:
+      type: object
+      required: [membership]
+      properties:
+        membership:
+          type: object
+          required: [tenant_id, roles, status]
+          properties:
+            tenant_id: { type: string, format: uuid }
+            roles:
+              type: array
+              items: { $ref: '#/components/schemas/Role' }
+            status: { type: string, enum: [ACTIVE] }
     Problem:
       type: object
       description: RFC 9457 Problem Details with a stable machine-readable code.

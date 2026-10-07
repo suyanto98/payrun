@@ -3,6 +3,7 @@ package app_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"payrun/internal/modules/iam"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
+	"payrun/internal/platform/crypto"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/db/dbtest"
 	"payrun/internal/platform/idgen"
@@ -41,6 +43,8 @@ type env struct {
 	clk    *clock.Fake
 	mailer *fakeMailer
 	tdb    dbtest.TestDB // akses superuser untuk menyiapkan state yang tidak bisa dicapai lewat API
+	// handler adalah router API (dipakai test matriks untuk chi.Walk).
+	handler http.Handler
 }
 
 // fakeMailer merekam email alih-alih mengirim; fail = simulasi SMTP mati.
@@ -116,12 +120,13 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
 		AllowedOrigins: []string{"http://localhost:5173"}, PublicBaseURL: "http://localhost:5173", Tiers: tiers,
 		IAM:    iam.Config{Argon2: auth.TestArgon2, RefreshTTL: 7 * 24 * time.Hour, RefreshFamilyTTL: 30 * 24 * time.Hour},
-		Mailer: &fakeMailer{},
+		Mailer: &fakeMailer{}, Keyring: testKeyring(t), BlindIndex: testBlindIndex(t),
 	}
 	if err := deps.ValidateAPI(); err != nil { // env test harus lengkap seperti produksi
 		t.Fatal(err)
 	}
-	e := env{srv: httptest.NewServer(app.APIRouter(deps)), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb}
+	h := app.APIRouter(deps)
+	e := env{srv: httptest.NewServer(h), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb, handler: h}
 	t.Cleanup(e.srv.Close)
 	return e
 }
@@ -277,4 +282,22 @@ func activeTenantID(body map[string]any) string {
 	at, _ := body["active_tenant"].(map[string]any)
 	id, _ := at["id"].(string)
 	return id
+}
+
+func testKeyring(t *testing.T) *crypto.Keyring {
+	t.Helper()
+	kr, err := crypto.ParseKeyring(`{"v1":"`+base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))+`"}`, "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return kr
+}
+
+func testBlindIndex(t *testing.T) *crypto.BlindIndex {
+	t.Helper()
+	bi, err := crypto.ParseBlindIndexKey(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bi
 }

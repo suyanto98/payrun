@@ -63,6 +63,8 @@ type Service struct {
 	// dengan aktivasi tenant PENDING_VERIFICATION milik user (modul tenancy; ADR-001: iam tidak
 	// meng-import tenancy).
 	onEmailVerified func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
+	// linker menautkan user ke employee saat undangan diterima (modul employee; ADR-001).
+	linker EmployeeLinker
 }
 
 func NewService(pool *pgxpool.Pool, tokens *auth.Tokens, c clock.Clock, ids idgen.Generator, cfg Config, mailer mail.Sender) *Service {

@@ -68,3 +68,34 @@ func TestContract_S1ResponsesMatchSpec(t *testing.T) {
 	_, prob := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": "x@y.test", "password": "wrong password"})
 	assertMatchesSpec(t, "problem", prob, &gen.Problem{})
 }
+
+// TestContract_S2ResponsesMatchSpec: respons sukses endpoint Sprint 2 terhadap skemanya, termasuk
+// versi dasar employee (MANAGER/EMPLOYEE) dan daftar.
+func TestContract_S2ResponsesMatchSpec(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	o := f.tokens[roleO]
+	_, depts := e.do(t, http.MethodGet, "/api/v1/departments", o, nil)
+	assertMatchesSpec(t, "departments", depts, &gen.OrgUnitList{})
+	_, dept := e.do(t, http.MethodPost, "/api/v1/positions", o, map[string]any{"code": "MGR", "name": "Manajer"})
+	assertMatchesSpec(t, "position", dept, &gen.OrgUnit{})
+	_, full := e.do(t, http.MethodGet, "/api/v1/employees/"+f.empSelf.String(), o, nil)
+	assertMatchesSpec(t, "employee (full)", full, &gen.Employee{})
+	_, basic := e.do(t, http.MethodGet, "/api/v1/employees/"+f.empSelf.String(), f.tokens[roleE], nil)
+	assertMatchesSpec(t, "employee (basic)", basic, &gen.Employee{})
+	_, list := e.do(t, http.MethodGet, "/api/v1/employees?limit=1", o, nil)
+	assertMatchesSpec(t, "employees", list, &gen.EmployeeList{})
+	_, inv := e.do(t, http.MethodPost, "/api/v1/invitations", o, map[string]any{"email": "new@alpha.test", "roles": []string{"MANAGER"}})
+	assertMatchesSpec(t, "invitation", inv, &gen.Invitation{})
+	_, members := e.do(t, http.MethodGet, "/api/v1/members", o, nil)
+	assertMatchesSpec(t, "members", members, &gen.MemberList{})
+	u := e.createUser(t, "new@alpha.test")
+	e.verifyUser(t, u)
+	tok, _, _ := e.login(t, "new@alpha.test")
+	_, acc := e.do(t, http.MethodPost, "/api/v1/invitations/accept", tok, map[string]string{"token": inviteToken(t, inv)})
+	assertMatchesSpec(t, "accepted invitation", acc, &gen.AcceptedInvitation{})
+	_, me := e.do(t, http.MethodGet, "/api/v1/me", f.tokens[roleE], nil)
+	if me["employee_id"] != f.empSelf.String() {
+		t.Errorf("/me employee_id must be the linked employee in the active tenant: %v", me)
+	}
+}

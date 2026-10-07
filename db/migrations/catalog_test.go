@@ -192,6 +192,11 @@ var appGrantMatrix = map[string]string{
 	"platform_idempotency_keys": "DELETE,INSERT,SELECT,UPDATE",
 	"jobs":                      "DELETE,INSERT,SELECT,UPDATE",
 	"audit_log":                 "INSERT,SELECT",
+	"departments":               "INSERT,SELECT,UPDATE",
+	"positions":                 "INSERT,SELECT,UPDATE",
+	"employees":                 "INSERT,SELECT,UPDATE",
+	"employment_spans":          "INSERT,SELECT,UPDATE",
+	"invitations":               "INSERT,SELECT,UPDATE",
 }
 
 func TestCatalog_AppGrantsMatchMatrix(t *testing.T) {

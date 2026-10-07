@@ -19,12 +19,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"payrun/db/migrations"
+	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
+	"payrun/internal/modules/org"
 	"payrun/internal/modules/tenancy"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
+	"payrun/internal/platform/crypto"
 	"payrun/internal/platform/httpx"
+	"payrun/internal/platform/idempotency"
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/mail"
 	"payrun/internal/platform/metrics"
@@ -49,6 +53,10 @@ type Deps struct {
 
 	IAM    iam.Config
 	Mailer mail.Sender // verifikasi email (Mailpit di dev)
+
+	// PII (ADR-P08): keyring enkripsi + kunci blind index (terpisah).
+	Keyring    *crypto.Keyring
+	BlindIndex *crypto.BlindIndex
 }
 
 // ValidateAPI memastikan dependency wajib API terisi. Wiring yang lupa harus menggagalkan boot,
@@ -57,6 +65,7 @@ func (d Deps) ValidateAPI() error {
 	var errs []error
 	for name, missing := range map[string]bool{
 		"Logger": d.Logger == nil, "Pool": d.Pool == nil, "Tokens": d.Tokens == nil, "Clock": d.Clock == nil, "IDs": d.IDs == nil, "Mailer": d.Mailer == nil,
+		"Keyring": d.Keyring == nil, "BlindIndex": d.BlindIndex == nil,
 	} {
 		if missing {
 			errs = append(errs, fmt.Errorf("app: dependency %s is required", name))
@@ -100,6 +109,12 @@ func APIRouter(d Deps) http.Handler {
 		SetRefreshCookie: iamH.SetRefreshCookie,
 	})
 
+	idem := idempotency.NewService(d.Pool, d.IDs, d.Clock)
+	orgH := org.NewHandler(org.NewService(d.Pool, d.IDs))
+	employeeSvc := employee.NewService(d.Pool, employee.PII{Keyring: d.Keyring, BlindIndex: d.BlindIndex}, d.Clock, d.IDs)
+	employeeH := employee.NewHandler(employeeSvc, idem)
+	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
+
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
 	r.Route("/api/v1", func(v1 chi.Router) {
 		authed := v1.With(auth.RequireUser(d.Tokens))
@@ -107,8 +122,12 @@ func APIRouter(d Deps) http.Handler {
 		write := authed.With(limiter.Middleware(tiers.Write, byUser))
 		// Endpoint tenant-scoped: token tanpa `tid` → 403 "Select a tenant first".
 		tenantRead := authed.With(auth.RequireTenant, limiter.Middleware(tiers.Read, byUser))
+		tenantWrite := authed.With(auth.RequireTenant, limiter.Middleware(tiers.Write, byUser))
 		iamH.Routes(v1, read, write)
+		iamH.TenantRoutes(tenantRead, tenantWrite)
 		tenancyH.Routes(v1.With(limiter.Middleware(tiers.AuthIP, ratelimit.ByIP)), tenantRead)
+		orgH.Routes(tenantRead, tenantWrite)
+		employeeH.Routes(tenantRead, tenantWrite)
 	})
 	return r
 }

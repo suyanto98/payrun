@@ -326,3 +326,18 @@ Migrasi `db/migrations/00002_tenancy_iam.sql`. Deviasi dari desain di atas, masi
 | `jobs` (review keamanan S1, migrasi `00004`) | Tanpa RLS; dijaga trigger `jobs_enforce_tenant` saat INSERT | **RLS + FORCE** policy `jobs_tenant`: `current_tenant() IS NULL OR tenant_id = current_tenant()`; trigger `jobs_forbid_tenant_change` (`ck_jobs_tenant_immutable`) menolak UPDATE `tenant_id` di mode apa pun; `jobs` keluar dari allowlist §2.2 | Trigger INSERT saja tidak mencegah transaksi tenant A membaca payload job tenant B, atau memindahkan job ke tenant lain lewat UPDATE (worker lalu menjalankannya di `WithTenantTxFor(jobs.tenant_id)` = tenant korban). Tanpa tenant context (claim worker lintas tenant) semua baris tetap terlihat |
 
 Test katalog §2.5 (a)–(f) dan matriks grant §1.2 ada di `db/migrations/catalog_test.go`, masing-masing dengan test negatif. Test perilaku (tanpa context = 0 baris, query tanpa filter, `WITH CHECK`, kebocoran pool setelah COMMIT/ROLLBACK, mode eksklusif C2, `password_hash`, `jobs_enforce_tenant`, isolasi `jobs` setelah INSERT, PI-16, audit platform) ada di `internal/platform/db/rls_test.go` dan berjalan sebagai `payrun_app`.
+
+## Catatan implementasi (Sprint 2)
+
+Migrasi `00005`: `departments`, `positions`, `employees`, `employment_spans`, `invitations`, semuanya RLS + FORCE + `tenant_isolation`, grant tanpa `DELETE`.
+
+| Aspek | Desain | Implementasi S2 | Alasan |
+|---|---|---|---|
+| `employees.pii_key_version` | `smallint` | `text` (contoh `v1`) | Versi keyring berupa string (`PII_KEYRING` `{"v1": …}`), sama dengan prefix ciphertext |
+| Format ciphertext | `v1:<base64 nonce>:<base64 ct>` | `bytea`: `"v1:"` + nonce 12 byte + ct‖tag | Disimpan sebagai `bytea`, jadi base64 tidak perlu; prefix versi tetap ada untuk rotasi |
+| AAD / blind index | AAD `tenant_id:employees.nik`; HMAC `tenant_id || ":" || nik` | AAD dan scope blind index sama: `"<tenant_id>:employees.<field>"`; blind index HMAC-SHA256 dengan kunci terpisah `PII_BLIND_INDEX_KEY` | NIK yang sama di dua tenant menghasilkan index berbeda (tidak bisa dikorelasikan dari dump) |
+| `ck_employees_*_pair` | `enc` ⇔ `bidx` | `enc` ⇔ `bidx` ⇔ `last4` (NPWP sama); rekening `enc` ⇔ `last4` | Ketiga kolom selalu ditulis bersamaan |
+| `invitations.employee_id` | Tidak ada di tabel (hanya di request U2) | Kolom `employee_id` + composite FK ke `employees` | Penautan dilakukan saat accept, jadi harus tersimpan di undangan |
+| `ix_invitations_employee` | — | Index penuh `(tenant_id, employee_id)` | Index FK harus mencakup semua baris (C4; partial ditolak `TestCatalog_EveryFKHasIndex`) |
+| `payrun_readonly` | — | Tanpa kolom `*_enc`/`*_bidx` employees dan `token_hash` undangan | Dump analis tidak membawa ciphertext/hash |
+| Tenant guard C-46 | Helper decode repository | `db.GuardTenant(ctx, table, row.tenant_id)` dipanggil setiap decode baris tenant di modul S2; mismatch → `500` + `payrun_tenant_isolation_violations_total{table}` + log error | `TestTenantGuard_DetectsForeignRow` |

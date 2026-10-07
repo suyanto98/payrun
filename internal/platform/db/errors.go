@@ -19,6 +19,14 @@ import (
 var constraintErrors = map[string]*apperr.Error{
 	"uq_users_email_lower": apperr.ErrEmailRegistered,
 	"uq_tenants_slug":      apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "slug", Code: "DUPLICATE"}),
+	// Sprint 2.
+	"uq_departments_code":          apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "code", Code: "DUPLICATE"}),
+	"uq_positions_code":            apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "code", Code: "DUPLICATE"}),
+	"uq_employees_employee_no":     apperr.ErrEmployeeNoTaken,
+	"uq_employees_nik_bidx":        apperr.ErrNIKTaken,
+	"uq_employees_npwp_bidx":       apperr.ErrNPWPTaken,
+	"uq_memberships_user":          apperr.ErrMembershipExists,
+	"uq_memberships_invited_email": apperr.ErrMembershipExists,
 	// Berikutnya bersama tabelnya, contoh uq_payroll_runs_active_per_period → ACTIVE_RUN_EXISTS (S4).
 	// Pelanggaran yang berarti BUG (RLS WITH CHECK 42501, trigger immutability run final) sengaja
 	// TIDAK dipetakan → 500 + alert.

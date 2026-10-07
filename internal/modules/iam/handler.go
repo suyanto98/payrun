@@ -57,6 +57,68 @@ func (h *Handler) Routes(public, read, write chi.Router) {
 	read.Get("/me/memberships", h.memberships)
 	write.Post("/session/switch-tenant", h.switchTenant)
 	write.Post("/auth/resend-verification", h.resendVerification)
+	// U3: Bearer tanpa `tid` (tenant berasal dari token undangan), tier auth-ip per IP.
+	write.With(h.cfg.Limiter.Middleware(h.cfg.Tiers.AuthIP, ratelimit.ByIP)).Post("/invitations/accept", h.acceptInvitation)
+}
+
+// TenantRoutes: endpoint member tenant-scoped (U1, U2), hanya OWNER/HR_ADMIN (file 17 §2.1).
+func (h *Handler) TenantRoutes(read, write chi.Router) {
+	admin := auth.RequireAnyRole(auth.RoleOwner, auth.RoleHRAdmin)
+	read.With(admin).Get("/members", h.listMembers)
+	write.With(admin).Post("/invitations", h.invite)
+}
+
+func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {
+	if err := httpx.OnlyQuery(r, "status", "role", "limit", "cursor"); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	limit, err := httpx.Limit(r, 20, 100)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	qs := r.URL.Query()
+	ms, page, err := h.svc.ListMembers(r.Context(), MemberQuery{Status: qs.Get("status"), Role: qs.Get("role"), Cursor: qs.Get("cursor"), Limit: limit})
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": ms, "page": page})
+}
+
+func (h *Handler) invite(w http.ResponseWriter, r *http.Request) {
+	var in InviteInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	inv, err := h.svc.Invite(r.Context(), p, in, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	// invite_url memuat secret: jangan di-cache di mana pun.
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteJSON(w, http.StatusCreated, inv)
+}
+
+func (h *Handler) acceptInvitation(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token string `json:"token"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	m, err := h.svc.AcceptInvitation(r.Context(), p.UserID, in.Token, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"membership": m})
 }
 
 // Strict menerapkan tier auth-strict untuk (IP, subjek). Email tak terdaftar ikut dibatasi, sehingga
@@ -176,11 +238,18 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
+	var empID *uuid.UUID
+	if active != nil && h.svc.linker != nil {
+		if empID, err = h.svc.linker.SelfID(r.Context(), p.UserID); err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+	}
 	httpx.WriteJSON(w, http.StatusOK, struct {
 		User
 		ActiveTenant *ActiveTenant `json:"active_tenant"`
-		EmployeeID   *uuid.UUID    `json:"employee_id"` // diisi mulai Sprint 2 (tabel employees)
-	}{u, active, nil})
+		EmployeeID   *uuid.UUID    `json:"employee_id"` // employee milik user di tenant aktif (S2)
+	}{u, active, empID})
 }
 
 func (h *Handler) memberships(w http.ResponseWriter, r *http.Request) {

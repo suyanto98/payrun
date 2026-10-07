@@ -225,3 +225,13 @@ Untuk **setiap** endpoint tenant-scoped yang menerima ID: semua aktor Beta meman
 | Job background lintas tenant | Test job dengan `tenant_id` palsu di payload (PFS-09) |
 | Presigned URL ditebak / kedaluwarsa | Test S5 (TTL, signature) + Step 6 |
 | Manipulasi `tid` di JWT | Test middleware auth (signature) |
+
+---
+
+## Catatan implementasi (Sprint 2)
+
+- Matriks sebagai data ada di **`api/authz_matrix.yaml`** (bukan `authz_matrix.yaml` di root). `TestAuthzMatrix_CoversEveryRoute` membandingkannya dengan `chi.Walk` dua arah (§4.4 aturan 1–2) dan mewajibkan setiap baris tenant punya case. Baris S3+ ditambahkan bersama rutenya.
+- Endpoint yang mengubah data mendapat resource **baru** per aktor (`If-Match: "1"` selalu valid), sehingga urutan eksekusi tidak memengaruhi hasil.
+- §4.3 lintas tenant: role yang **diizinkan** endpoint wajib `404`. Role yang **ditolak** endpoint boleh `403` (penolakan tingkat aksi oleh `RequireAnyRole`, dijawab sebelum id dibaca sehingga tidak bergantung pada keberadaan resource) atau `404`. Respons 2xx apa pun = kebocoran.
+- Fixture §4.1 di S2 belum memuat bawahan `MANAGER` dan data payroll; kasus 👥 dan Y/S ditambahkan di S3–S7.
+
