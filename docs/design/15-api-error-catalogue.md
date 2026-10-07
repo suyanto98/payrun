@@ -19,7 +19,7 @@
 | 401 | `INVALID_CREDENTIALS` | Email/password salah (pesan tidak membedakan keduanya) | Tidak | — | Login |
 | 401 | `REFRESH_TOKEN_REUSED` | Refresh token lama dipakai ulang; seluruh family dicabut | Tidak | Login ulang | ADR-009 |
 | 403 | `FORBIDDEN` | Resource terlihat, tetapi aksi tidak diizinkan untuk role ini | Tidak | — | Policy (ADR-010) |
-| 403 | ~~`ACCOUNT_LOCKED`~~ | **Tidak dikirim ke client (Step 12 R2-5).** Login terkunci menjawab `401 INVALID_CREDENTIALS` + `Retry-After`, sama persis dengan kredensial salah, agar tidak menjadi oracle enumerasi akun. Status lock hanya di log/metrik | Setelah `Retry-After` | Tunggu | `users.locked_until` |
+| 403 | ~~`ACCOUNT_LOCKED`~~ | **Tidak dikirim ke client (Step 12 R2-5).** Login terkunci menjawab `401 INVALID_CREDENTIALS`, sama persis dengan kredensial salah, agar tidak menjadi oracle enumerasi akun. *(Sprint 1: tanpa `Retry-After`, karena header yang hanya muncul untuk akun terkunci juga oracle.)* Status lock hanya di log/metrik | Tidak | Tunggu | `users.locked_until` |
 | 404 | `NOT_FOUND` | Resource tidak ada **atau** tidak boleh diketahui pemanggil | Tidak | — | Scoping query / RLS |
 | 409 | `REQUEST_IN_PROGRESS` | Request dengan key yang sama masih diproses | Ya, sama persis | Ulangi dengan backoff | ADR-L02 (`lock_timeout`) |
 | 409 | `RESOURCE_BUSY` | Lock resource tidak didapat dalam `lock_timeout` (2 dtk) | Ya, sama persis | Ulangi dengan backoff | ADR-011 (`55P03`) |
@@ -91,6 +91,7 @@
 | 409 | `DUPLICATE_CODE` | Kode/slug/tanggal unik pada master data sudah dipakai (slug tenant, kode departemen/posisi/komponen, tanggal libur) | Tidak | `field` | `uq_*_code` / `uq_tenants_slug` / `uq_holidays_date` |
 | 409 | `PAYSLIP_NOT_READY` | PDF slip masih `PENDING` atau `FAILED` (sedang di-render/di-retry) | Ya, setelah `Retry-After` | — | `payslips.status` |
 | 410 | `INVITATION_INVALID` | Token undangan kedaluwarsa, sudah dipakai, atau tidak valid (satu code agar tidak bisa dipakai menebak) | Tidak | — | `invitations` |
+| 410 | `EMAIL_VERIFICATION_INVALID` | *(Sprint 1, R2-8)* Link verifikasi email kedaluwarsa, sudah dipakai, atau tidak valid (satu code, pola `INVITATION_INVALID`) | Tidak; minta link baru | — | `email_verifications` |
 
 ---
 

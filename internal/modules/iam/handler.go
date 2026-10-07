@@ -14,6 +14,7 @@ import (
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/httpx"
 	"payrun/internal/platform/ratelimit"
+	"payrun/internal/platform/reqmeta"
 )
 
 // RefreshCookieName dan path mengikuti ADR-009: cookie hanya dikirim browser ke /api/v1/auth/*.
@@ -45,6 +46,7 @@ func (h *Handler) Routes(public, read, write chi.Router) {
 	public.Group(func(r chi.Router) {
 		r.Use(h.cfg.Limiter.Middleware(h.cfg.Tiers.AuthIP, ratelimit.ByIP))
 		r.Post("/auth/login", h.login)
+		r.Post("/auth/verify-email", h.verifyEmail)
 		r.Group(func(r chi.Router) { // diautentikasi lewat cookie → CSRF guard
 			r.Use(httpx.CSRFGuard(h.cfg.AllowedOrigins))
 			r.Post("/auth/refresh", h.refresh)
@@ -54,6 +56,7 @@ func (h *Handler) Routes(public, read, write chi.Router) {
 	read.Get("/me", h.me)
 	read.Get("/me/memberships", h.memberships)
 	write.Post("/session/switch-tenant", h.switchTenant)
+	write.Post("/auth/resend-verification", h.resendVerification)
 }
 
 // Strict menerapkan tier auth-strict untuk (IP, subjek). Email tak terdaftar ikut dibatasi, sehingga
@@ -99,7 +102,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	sess, err := h.svc.Login(r.Context(), in, Meta(r))
+	sess, err := h.svc.Login(r.Context(), in, reqmeta.From(r))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -142,7 +145,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	sess, err := h.svc.Refresh(r.Context(), raw, active, Meta(r))
+	sess, err := h.svc.Refresh(r.Context(), raw, active, reqmeta.From(r))
 	if err != nil {
 		if apperr.As(err).Code == apperr.ErrRefreshReused.Code {
 			h.SetRefreshCookie(w, "", -1) // family sudah dicabut: hapus cookie di browser
@@ -158,7 +161,7 @@ func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
 
 // logout selalu 204 (cookie tidak valid pun "berhasil" logout) dan selalu menghapus cookie.
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
-	if err := h.svc.Logout(r.Context(), refreshCookie(r), Meta(r)); err != nil {
+	if err := h.svc.Logout(r.Context(), refreshCookie(r), reqmeta.From(r)); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
@@ -204,12 +207,45 @@ func (h *Handler) switchTenant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := auth.PrincipalFrom(r.Context())
-	sess, err := h.svc.SwitchTenant(r.Context(), p.UserID, tid, Meta(r))
+	sess, err := h.svc.SwitchTenant(r.Context(), p.UserID, tid, reqmeta.From(r))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, NewSessionResponse(sess, false))
+}
+
+// verifyEmail: tanpa auth (link di email). auth-strict per IP membatasi tebakan token (yang toh
+// 256 bit) dan spam ke endpoint.
+func (h *Handler) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token string `json:"token"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if !h.Strict(w, r, "verify-email") {
+		return
+	}
+	if err := h.svc.VerifyEmail(r.Context(), in.Token, reqmeta.From(r)); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// resendVerification: auth-strict per user (setiap panggilan mengirim email: cegah spam ke inbox).
+func (h *Handler) resendVerification(w http.ResponseWriter, r *http.Request) {
+	p, _ := auth.PrincipalFrom(r.Context())
+	if !h.Strict(w, r, "resend-verification|"+p.UserID.String()) {
+		return
+	}
+	if err := h.svc.ResendVerification(r.Context(), p.UserID); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func refreshCookie(r *http.Request) string {
@@ -235,13 +271,4 @@ func (h *Handler) SetRefreshCookie(w http.ResponseWriter, value string, maxAge t
 		c.MaxAge = -1
 	}
 	http.SetCookie(w, c)
-}
-
-// Meta mengambil metadata request untuk audit/sesi. Diekspor untuk tenancy.
-func Meta(r *http.Request) RequestMeta {
-	m := RequestMeta{RequestID: httpx.RequestIDFrom(r.Context()), UserAgent: r.UserAgent()}
-	if ip := httpx.ClientIPFrom(r); ip.IsValid() {
-		m.IP = &ip
-	}
-	return m
 }

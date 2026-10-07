@@ -55,14 +55,29 @@ services:
       S3_ACCESS_KEY: payrun-dev-access
       S3_SECRET_KEY: payrun-dev-secret-only-for-local
       OTEL_EXPORTER_OTLP_ENDPOINT: ${PR_OTLP_ENDPOINT:-}
+      SMTP_ADDR: mailpit:1025          # Mailpit menangkap semua email dev (UI: http://127.0.0.1:8025)
+      MAIL_FROM: "PayRun Dev <no-reply@payrun.local>"
     ports:
       - "127.0.0.1:${PR_HTTP_PORT:-8081}:8080"   # API
       - "127.0.0.1:${PR_OPS_PORT:-9190}:9090"    # ops (health/metrics) — di demo/prod tidak dipublish
     depends_on:
       migrate: { condition: service_completed_successfully }
+      mailpit: { condition: service_healthy }
     read_only: true
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+
+  # ---------------------------------------------------------------- email (dev): Mailpit
+  # Menangkap semua email (verifikasi, undangan); tidak ada yang keluar ke internet (Step 12 R2-8).
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:${PR_MAILPIT_UI_PORT:-8025}:8025"   # UI web
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   # ---------------------------------------------------------------- object storage (profile storage)
   # S3-compatible untuk payslip PDF (Sprint 7, ADR-012). SeaweedFS menggantikan MinIO: image MinIO

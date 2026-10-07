@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"syscall"
 	"time"
+	_ "time/tzdata" // validasi timezone IANA (signup, settings) tidak bergantung pada zoneinfo image
 
 	"payrun/db/migrations"
 	"payrun/internal/app"
@@ -29,6 +30,7 @@ import (
 	"payrun/internal/platform/config"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/mail"
 	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/observability"
 	"payrun/internal/platform/ratelimit"
@@ -111,6 +113,8 @@ func runAPI() error {
 		Logger: logger, Pool: pool, Tokens: tokens, Clock: clk, IDs: ids, CookieSecure: cfg.CookieSecure,
 		AllowedOrigins: cfg.AllowedOrigins, TrustedProxies: cfg.TrustedProxies, PublicBaseURL: cfg.PublicBaseURL, Tiers: &tiers,
 		IAM: iam.Config{Argon2: auth.DefaultArgon2, RefreshTTL: cfg.RefreshTTL, RefreshFamilyTTL: cfg.RefreshFamilyTTL},
+		Mailer: mail.SMTP{Addr: cfg.SMTPAddr, From: cfg.MailFrom, Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword, Timeout: cfg.MailTimeout},
 	}
 	if err := deps.ValidateAPI(); err != nil {
 		return err

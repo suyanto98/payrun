@@ -47,3 +47,12 @@ sql:
         out: internal/modules/iam/store
         sql_package: pgx/v5
         emit_pointers_for_null_types: true
+  - engine: postgresql
+    schema: db/migrations
+    queries: db/queries/tenancy.sql
+    gen:
+      go:
+        package: store
+        out: internal/modules/tenancy/store
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true

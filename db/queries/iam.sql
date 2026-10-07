@@ -27,9 +27,43 @@ RETURNING failed_login_count, locked_until;
 
 -- name: GetUser :one
 -- [platform]
-SELECT id, email, display_name, status
+SELECT id, email, display_name, status, email_verified_at
 FROM users
 WHERE id = @id;
+
+-- name: CreateUser :exec
+-- [platform] app.user_id = id baru (WITH CHECK users_self). Duplikat email → uq_users_email_lower.
+INSERT INTO users (id, email, password_hash, display_name)
+VALUES (@id, @email, @password_hash, @display_name);
+
+-- name: AddOwnerMembership :exec
+-- [tenant] Membership OWNER pendaftar tenant (signup).
+INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by)
+VALUES (@tenant_id, @id, @user_id, ARRAY['OWNER'], 'ACTIVE', @now, @user_id);
+
+-- name: MarkEmailVerified :execrows
+-- [platform]
+UPDATE users SET email_verified_at = @now WHERE id = @id AND email_verified_at IS NULL;
+
+-- name: CreateEmailVerification :exec
+-- [none]
+INSERT INTO email_verifications (id, user_id, token_hash, created_at, expires_at)
+VALUES (@id, @user_id, @token_hash, @created_at, @expires_at);
+
+-- name: InvalidatePendingVerifications :exec
+-- [none] Link lama mati saat link baru dikirim (hanya link terakhir yang berlaku).
+UPDATE email_verifications SET used_at = @now WHERE user_id = @user_id AND used_at IS NULL;
+
+-- name: GetEmailVerificationForUpdate :one
+-- [none] FOR UPDATE: dua klik paralel pada link yang sama diserialkan; yang kedua melihat used_at.
+SELECT id, user_id, expires_at, used_at
+FROM email_verifications
+WHERE token_hash = @token_hash
+FOR UPDATE;
+
+-- name: MarkEmailVerificationUsed :exec
+-- [none]
+UPDATE email_verifications SET used_at = @now WHERE id = @id;
 
 -- name: ListActiveMemberships :many
 -- [platform] Tenant terlihat hanya lewat cabang self tenants_current (membership ACTIVE).

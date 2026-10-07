@@ -4,8 +4,179 @@
 package gen
 
 import (
+	"encoding/json"
+
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for MembershipListDataStatus.
+const (
+	MembershipListDataStatusACTIVE MembershipListDataStatus = "ACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the MembershipListDataStatus enum.
+func (e MembershipListDataStatus) Valid() bool {
+	switch e {
+	case MembershipListDataStatusACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for Role.
+const (
+	EMPLOYEE     Role = "EMPLOYEE"
+	HRADMIN      Role = "HR_ADMIN"
+	MANAGER      Role = "MANAGER"
+	OWNER        Role = "OWNER"
+	PAYROLLADMIN Role = "PAYROLL_ADMIN"
+)
+
+// Valid indicates whether the value is a known member of the Role enum.
+func (e Role) Valid() bool {
+	switch e {
+	case EMPLOYEE:
+		return true
+	case HRADMIN:
+		return true
+	case MANAGER:
+		return true
+	case OWNER:
+		return true
+	case PAYROLLADMIN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SessionTokenType.
+const (
+	SessionTokenTypeBearer SessionTokenType = "Bearer"
+)
+
+// Valid indicates whether the value is a known member of the SessionTokenType enum.
+func (e SessionTokenType) Valid() bool {
+	switch e {
+	case SessionTokenTypeBearer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SignupResultTokenType.
+const (
+	SignupResultTokenTypeBearer SignupResultTokenType = "Bearer"
+)
+
+// Valid indicates whether the value is a known member of the SignupResultTokenType enum.
+func (e SignupResultTokenType) Valid() bool {
+	switch e {
+	case SignupResultTokenTypeBearer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantStatus.
+const (
+	TenantStatusACTIVE              TenantStatus = "ACTIVE"
+	TenantStatusPENDINGVERIFICATION TenantStatus = "PENDING_VERIFICATION"
+	TenantStatusSUSPENDED           TenantStatus = "SUSPENDED"
+)
+
+// Valid indicates whether the value is a known member of the TenantStatus enum.
+func (e TenantStatus) Valid() bool {
+	switch e {
+	case TenantStatusACTIVE:
+		return true
+	case TenantStatusPENDINGVERIFICATION:
+		return true
+	case TenantStatusSUSPENDED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantSettingsIncompleteAttendancePolicy.
+const (
+	COUNTASABSENT  TenantSettingsIncompleteAttendancePolicy = "COUNT_AS_ABSENT"
+	COUNTASPRESENT TenantSettingsIncompleteAttendancePolicy = "COUNT_AS_PRESENT"
+)
+
+// Valid indicates whether the value is a known member of the TenantSettingsIncompleteAttendancePolicy enum.
+func (e TenantSettingsIncompleteAttendancePolicy) Valid() bool {
+	switch e {
+	case COUNTASABSENT:
+		return true
+	case COUNTASPRESENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantSettingsOvertimeBasis.
+const (
+	BASE          TenantSettingsOvertimeBasis = "BASE"
+	BASEPLUSFIXED TenantSettingsOvertimeBasis = "BASE_PLUS_FIXED"
+)
+
+// Valid indicates whether the value is a known member of the TenantSettingsOvertimeBasis enum.
+func (e TenantSettingsOvertimeBasis) Valid() bool {
+	switch e {
+	case BASE:
+		return true
+	case BASEPLUSFIXED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantSettingsProrationBasis.
+const (
+	CALENDARDAYS TenantSettingsProrationBasis = "CALENDAR_DAYS"
+	WORKINGDAYS  TenantSettingsProrationBasis = "WORKING_DAYS"
+)
+
+// Valid indicates whether the value is a known member of the TenantSettingsProrationBasis enum.
+func (e TenantSettingsProrationBasis) Valid() bool {
+	switch e {
+	case CALENDARDAYS:
+		return true
+	case WORKINGDAYS:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TenantSummaryStatus.
+const (
+	TenantSummaryStatusACTIVE              TenantSummaryStatus = "ACTIVE"
+	TenantSummaryStatusPENDINGVERIFICATION TenantSummaryStatus = "PENDING_VERIFICATION"
+	TenantSummaryStatusSUSPENDED           TenantSummaryStatus = "SUSPENDED"
+)
+
+// Valid indicates whether the value is a known member of the TenantSummaryStatus enum.
+func (e TenantSummaryStatus) Valid() bool {
+	switch e {
+	case TenantSummaryStatusACTIVE:
+		return true
+	case TenantSummaryStatusPENDINGVERIFICATION:
+		return true
+	case TenantSummaryStatusSUSPENDED:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for XRequestedWith.
 const (
@@ -52,6 +223,44 @@ func (e RefreshSessionParamsXRequestedWith) Valid() bool {
 	}
 }
 
+// ActiveTenant defines model for ActiveTenant.
+type ActiveTenant struct {
+	Id    openapi_types.UUID `json:"id"`
+	Name  string             `json:"name"`
+	Roles []Role             `json:"roles"`
+}
+
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Password string              `json:"password"`
+}
+
+// Me defines model for Me.
+type Me struct {
+	ActiveTenant  *ActiveTenant       `json:"active_tenant"`
+	DisplayName   string              `json:"display_name"`
+	Email         openapi_types.Email `json:"email"`
+	EmailVerified bool                `json:"email_verified"`
+
+	// EmployeeId Filled from Sprint 2 (employees).
+	EmployeeId *openapi_types.UUID `json:"employee_id"`
+	Id         openapi_types.UUID  `json:"id"`
+}
+
+// MembershipList defines model for MembershipList.
+type MembershipList struct {
+	Data []struct {
+		Roles      []Role                   `json:"roles"`
+		Status     MembershipListDataStatus `json:"status"`
+		TenantId   openapi_types.UUID       `json:"tenant_id"`
+		TenantName string                   `json:"tenant_name"`
+	} `json:"data"`
+}
+
+// MembershipListDataStatus defines model for MembershipList.Data.Status.
+type MembershipListDataStatus string
+
 // Pending Placeholder until the feature sprint defines the body (Sprint 0 skeleton).
 type Pending = map[string]interface{}
 
@@ -75,6 +284,130 @@ type Problem struct {
 	Status             int                 `json:"status"`
 	Title              string              `json:"title"`
 	Type               string              `json:"type"`
+}
+
+// Role defines model for Role.
+type Role string
+
+// Session defines model for Session.
+type Session struct {
+	AccessToken  string        `json:"access_token"`
+	ActiveTenant *ActiveTenant `json:"active_tenant"`
+
+	// ExpiresIn Seconds
+	ExpiresIn int              `json:"expires_in"`
+	TokenType SessionTokenType `json:"token_type"`
+	User      *User            `json:"user,omitempty"`
+}
+
+// SessionTokenType defines model for Session.TokenType.
+type SessionTokenType string
+
+// SignupReplay defines model for SignupReplay.
+type SignupReplay struct {
+	EmailVerificationRequired bool          `json:"email_verification_required"`
+	Tenant                    TenantSummary `json:"tenant"`
+}
+
+// SignupRequest defines model for SignupRequest.
+type SignupRequest struct {
+	CompanyName string `json:"company_name"`
+	Owner       struct {
+		DisplayName string              `json:"display_name"`
+		Email       openapi_types.Email `json:"email"`
+		Password    string              `json:"password"`
+	} `json:"owner"`
+	Slug string `json:"slug"`
+
+	// Timezone IANA name; default Asia/Jakarta
+	//
+	// Examples: Asia/Jakarta
+	Timezone *string `json:"timezone,omitempty"`
+}
+
+// SignupResult defines model for SignupResult.
+type SignupResult struct {
+	AccessToken               string        `json:"access_token"`
+	ActiveTenant              *ActiveTenant `json:"active_tenant"`
+	EmailVerificationRequired bool          `json:"email_verification_required"`
+
+	// ExpiresIn Seconds
+	ExpiresIn int                   `json:"expires_in"`
+	Tenant    TenantSummary         `json:"tenant"`
+	TokenType SignupResultTokenType `json:"token_type"`
+	User      *User                 `json:"user,omitempty"`
+}
+
+// SignupResultTokenType defines model for SignupResult.TokenType.
+type SignupResultTokenType string
+
+// SwitchTenantRequest defines model for SwitchTenantRequest.
+type SwitchTenantRequest struct {
+	TenantId openapi_types.UUID `json:"tenant_id"`
+}
+
+// Tenant defines model for Tenant.
+type Tenant struct {
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	Settings TenantSettings     `json:"settings"`
+	Slug     string             `json:"slug"`
+	Status   TenantStatus       `json:"status"`
+	Version  int                `json:"version"`
+}
+
+// TenantStatus defines model for Tenant.Status.
+type TenantStatus string
+
+// TenantSettings defines model for TenantSettings.
+type TenantSettings struct {
+	CutoffDayOfNextMonth       int                                      `json:"cutoff_day_of_next_month"`
+	CutoffTimeLocal            string                                   `json:"cutoff_time_local"`
+	IncompleteAttendancePolicy TenantSettingsIncompleteAttendancePolicy `json:"incomplete_attendance_policy"`
+
+	// NetChangeWarningPct Decimal string
+	NetChangeWarningPct string                      `json:"net_change_warning_pct"`
+	OvertimeBasis       TenantSettingsOvertimeBasis `json:"overtime_basis"`
+
+	// OvertimeMaxHoursPerDay Decimal string; null = no limit
+	OvertimeMaxHoursPerDay *string                      `json:"overtime_max_hours_per_day"`
+	ProrationBasis         TenantSettingsProrationBasis `json:"proration_basis"`
+	RulesetCode            string                       `json:"ruleset_code"`
+	Timezone               string                       `json:"timezone"`
+	WorkDays               []int                        `json:"work_days"`
+}
+
+// TenantSettingsIncompleteAttendancePolicy defines model for TenantSettings.IncompleteAttendancePolicy.
+type TenantSettingsIncompleteAttendancePolicy string
+
+// TenantSettingsOvertimeBasis defines model for TenantSettings.OvertimeBasis.
+type TenantSettingsOvertimeBasis string
+
+// TenantSettingsProrationBasis defines model for TenantSettings.ProrationBasis.
+type TenantSettingsProrationBasis string
+
+// TenantSummary defines model for TenantSummary.
+type TenantSummary struct {
+	Id     openapi_types.UUID  `json:"id"`
+	Name   string              `json:"name"`
+	Slug   string              `json:"slug"`
+	Status TenantSummaryStatus `json:"status"`
+}
+
+// TenantSummaryStatus defines model for TenantSummary.Status.
+type TenantSummaryStatus string
+
+// User defines model for User.
+type User struct {
+	DisplayName   string              `json:"display_name"`
+	Email         openapi_types.Email `json:"email"`
+	EmailVerified bool                `json:"email_verified"`
+	Id            openapi_types.UUID  `json:"id"`
+}
+
+// VerifyEmailRequest defines model for VerifyEmailRequest.
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
 }
 
 // Cursor defines model for Cursor.
@@ -104,11 +437,17 @@ type Conflict = Problem
 // Forbidden RFC 9457 Problem Details with a stable machine-readable code.
 type Forbidden = Problem
 
+// Gone RFC 9457 Problem Details with a stable machine-readable code.
+type Gone = Problem
+
 // NotFound RFC 9457 Problem Details with a stable machine-readable code.
 type NotFound = Problem
 
 // RateLimited RFC 9457 Problem Details with a stable machine-readable code.
 type RateLimited = Problem
+
+// ServiceUnavailable RFC 9457 Problem Details with a stable machine-readable code.
+type ServiceUnavailable = Problem
 
 // Unauthenticated RFC 9457 Problem Details with a stable machine-readable code.
 type Unauthenticated = Problem
@@ -190,6 +529,7 @@ type LogoutParamsXRequestedWith string
 type RefreshSessionParams struct {
 	// XRequestedWith CSRF guard for cookie-authenticated endpoints. Must be `fetch`.
 	XRequestedWith RefreshSessionParamsXRequestedWith `json:"X-Requested-With"`
+	XActiveTenant  *openapi_types.UUID                `json:"X-Active-Tenant,omitempty"`
 }
 
 // RefreshSessionParamsXRequestedWith defines parameters for RefreshSession.
@@ -299,14 +639,6 @@ type ListLeaveTypesParams struct {
 
 // ListMyLeaveBalancesParams defines parameters for ListMyLeaveBalances.
 type ListMyLeaveBalancesParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
-// ListMyMembershipsParams defines parameters for ListMyMemberships.
-type ListMyMembershipsParams struct {
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
@@ -425,6 +757,11 @@ type SignupTenantParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// SignupTenant201JSONResponseBody defines parameters for SignupTenant.
+type SignupTenant201JSONResponseBody struct {
+	union json.RawMessage
+}
+
 // CreateAdjustmentJSONRequestBody defines body for CreateAdjustment for application/json ContentType.
 type CreateAdjustmentJSONRequestBody = Pending
 
@@ -450,10 +787,10 @@ type ClockOutJSONRequestBody = Pending
 type CorrectAttendanceJSONRequestBody = Pending
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
-type LoginJSONRequestBody = Pending
+type LoginJSONRequestBody = LoginRequest
 
-// RefreshSessionJSONRequestBody defines body for RefreshSession for application/json ContentType.
-type RefreshSessionJSONRequestBody = Pending
+// VerifyEmailJSONRequestBody defines body for VerifyEmail for application/json ContentType.
+type VerifyEmailJSONRequestBody = VerifyEmailRequest
 
 // CreateComponentDefinitionJSONRequestBody defines body for CreateComponentDefinition for application/json ContentType.
 type CreateComponentDefinitionJSONRequestBody = Pending
@@ -546,10 +883,72 @@ type UpdatePositionJSONRequestBody = Pending
 type DeactivatePositionJSONRequestBody = Pending
 
 // SwitchTenantJSONRequestBody defines body for SwitchTenant for application/json ContentType.
-type SwitchTenantJSONRequestBody = Pending
+type SwitchTenantJSONRequestBody = SwitchTenantRequest
 
 // UpdateTenantSettingsJSONRequestBody defines body for UpdateTenantSettings for application/json ContentType.
 type UpdateTenantSettingsJSONRequestBody = Pending
 
 // SignupTenantJSONRequestBody defines body for SignupTenant for application/json ContentType.
-type SignupTenantJSONRequestBody = Pending
+type SignupTenantJSONRequestBody = SignupRequest
+
+// AsSignupResult returns the union data inside the SignupTenant201JSONResponseBody as a SignupResult
+func (t SignupTenant201JSONResponseBody) AsSignupResult() (SignupResult, error) {
+	var body SignupResult
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSignupResult overwrites any union data inside the SignupTenant201JSONResponseBody as the provided SignupResult
+func (t *SignupTenant201JSONResponseBody) FromSignupResult(v SignupResult) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSignupResult performs a merge with any union data inside the SignupTenant201JSONResponseBody, using the provided SignupResult
+func (t *SignupTenant201JSONResponseBody) MergeSignupResult(v SignupResult) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSignupReplay returns the union data inside the SignupTenant201JSONResponseBody as a SignupReplay
+func (t SignupTenant201JSONResponseBody) AsSignupReplay() (SignupReplay, error) {
+	var body SignupReplay
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSignupReplay overwrites any union data inside the SignupTenant201JSONResponseBody as the provided SignupReplay
+func (t *SignupTenant201JSONResponseBody) FromSignupReplay(v SignupReplay) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSignupReplay performs a merge with any union data inside the SignupTenant201JSONResponseBody, using the provided SignupReplay
+func (t *SignupTenant201JSONResponseBody) MergeSignupReplay(v SignupReplay) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SignupTenant201JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SignupTenant201JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}

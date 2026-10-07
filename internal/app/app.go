@@ -15,17 +15,21 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"payrun/db/migrations"
 	"payrun/internal/modules/iam"
+	"payrun/internal/modules/tenancy"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/httpx"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/mail"
 	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/ratelimit"
+	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tracing"
 )
 
@@ -43,7 +47,8 @@ type Deps struct {
 	PublicBaseURL  string
 	Tiers          *ratelimit.Tiers // nil → ratelimit.DefaultTiers()
 
-	IAM iam.Config
+	IAM    iam.Config
+	Mailer mail.Sender // verifikasi email (Mailpit di dev)
 }
 
 // ValidateAPI memastikan dependency wajib API terisi. Wiring yang lupa harus menggagalkan boot,
@@ -51,7 +56,7 @@ type Deps struct {
 func (d Deps) ValidateAPI() error {
 	var errs []error
 	for name, missing := range map[string]bool{
-		"Logger": d.Logger == nil, "Pool": d.Pool == nil, "Tokens": d.Tokens == nil, "Clock": d.Clock == nil, "IDs": d.IDs == nil,
+		"Logger": d.Logger == nil, "Pool": d.Pool == nil, "Tokens": d.Tokens == nil, "Clock": d.Clock == nil, "IDs": d.IDs == nil, "Mailer": d.Mailer == nil,
 	} {
 		if missing {
 			errs = append(errs, fmt.Errorf("app: dependency %s is required", name))
@@ -79,9 +84,20 @@ func APIRouter(d Deps) http.Handler {
 		tiers = *d.Tiers
 	}
 	limiter := ratelimit.New(d.Clock)
-	iamSvc := iam.NewService(d.Pool, d.Tokens, d.Clock, d.IDs, d.IAM)
+	iamCfg := d.IAM
+	if iamCfg.PublicBaseURL == "" {
+		iamCfg.PublicBaseURL = d.PublicBaseURL
+	}
+	iamSvc := iam.NewService(d.Pool, d.Tokens, d.Clock, d.IDs, iamCfg, d.Mailer)
 	iamH := iam.NewHandler(iamSvc, iam.HandlerConfig{
 		CookieSecure: d.CookieSecure, AllowedOrigins: d.AllowedOrigins, Limiter: limiter, Tiers: tiers,
+	})
+	tenancySvc := tenancy.NewService(d.Pool, iamSvc, d.Clock, d.IDs)
+	iamSvc.OnEmailVerified(tenancySvc.ActivatePendingTenants) // verifikasi email → tenant PENDING menjadi ACTIVE
+	tenancyH := tenancy.NewHandler(tenancySvc, tenancy.HandlerConfig{
+		Strict:           iamH.Strict,
+		StartSession:     sessionStarter(iamSvc),
+		SetRefreshCookie: iamH.SetRefreshCookie,
 	})
 
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
@@ -89,8 +105,10 @@ func APIRouter(d Deps) http.Handler {
 		authed := v1.With(auth.RequireUser(d.Tokens))
 		read := authed.With(limiter.Middleware(tiers.Read, byUser))
 		write := authed.With(limiter.Middleware(tiers.Write, byUser))
-		// Endpoint tenant-scoped (mulai tahap tenancy): authed.With(auth.RequireTenant, ...).
+		// Endpoint tenant-scoped: token tanpa `tid` → 403 "Select a tenant first".
+		tenantRead := authed.With(auth.RequireTenant, limiter.Middleware(tiers.Read, byUser))
 		iamH.Routes(v1, read, write)
+		tenancyH.Routes(v1.With(limiter.Middleware(tiers.AuthIP, ratelimit.ByIP)), tenantRead)
 	})
 	return r
 }
@@ -138,4 +156,18 @@ func boolFloat(b bool) float64 {
 		return 1
 	}
 	return 0
+}
+
+// sessionStarter mengadaptasi iam.StartSession untuk respons signup tenancy (tenancy tidak mengenal
+// tipe iam; ADR-001).
+func sessionStarter(svc *iam.Service) func(ctx context.Context, userID, tenantID uuid.UUID, meta reqmeta.Meta) (map[string]any, string, time.Duration, error) {
+	return func(ctx context.Context, userID, tenantID uuid.UUID, meta reqmeta.Meta) (map[string]any, string, time.Duration, error) {
+		sess, err := svc.StartSession(ctx, userID, tenantID, "auth.login_succeeded", meta)
+		if err != nil {
+			return nil, "", 0, err
+		}
+		r := iam.NewSessionResponse(sess, true)
+		return map[string]any{"access_token": r.AccessToken, "token_type": r.TokenType, "expires_in": r.ExpiresIn,
+			"user": r.User, "active_tenant": r.ActiveTenant}, sess.RefreshToken, sess.RefreshMaxAge, nil
+	}
 }

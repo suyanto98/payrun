@@ -67,6 +67,13 @@ type Config struct {
 	PIIKeyringJSON   string `env:"PII_KEYRING"`
 	PIIActiveVersion string `env:"PII_ACTIVE_KEY_VERSION"`
 
+	// SMTP untuk email transaksional (verifikasi email, undangan). Dev/demo: Mailpit (Step 12 R2-8).
+	SMTPAddr     string        `env:"SMTP_ADDR"`
+	SMTPUsername string        `env:"SMTP_USERNAME"`
+	SMTPPassword string        `env:"SMTP_PASSWORD"`
+	MailFrom     string        `env:"MAIL_FROM" envDefault:"PayRun <no-reply@payrun.local>"`
+	MailTimeout  time.Duration `env:"MAIL_TIMEOUT" envDefault:"10s"`
+
 	// Object storage S3-compatible (MinIO di dev, ADR-012). Dipakai payslip PDF (Sprint 7); belum
 	// divalidasi wajib sampai ada kode yang memakainya.
 	S3Endpoint  string `env:"S3_ENDPOINT"`
@@ -139,6 +146,12 @@ func (c *Config) ValidateAPI() error {
 	}
 	if c.RefreshTTL <= 0 || c.RefreshTTL > c.RefreshFamilyTTL {
 		errs = append(errs, fmt.Errorf("REFRESH_TTL (%s) harus > 0 dan <= REFRESH_FAMILY_TTL (%s)", c.RefreshTTL, c.RefreshFamilyTTL))
+	}
+	if c.SMTPAddr == "" {
+		errs = append(errs, errors.New("SMTP_ADDR wajib (verifikasi email; dev: Mailpit)"))
+	}
+	if strings.ContainsAny(c.MailFrom, "\r\n") || !strings.Contains(c.MailFrom, "@") {
+		errs = append(errs, errors.New("MAIL_FROM harus satu alamat email (tanpa baris baru)"))
 	}
 	errs = append(errs, c.validatePublicURLs()...)
 	errs = append(errs, c.validateShared()...)

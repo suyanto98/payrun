@@ -792,3 +792,21 @@ Semua nilai uang berupa string decimal 2 digit. Rate berupa string decimal 6 dig
 ## 18. Catatan untuk katalog error
 
 Dua code yang diusulkan saat menulis file ini sudah **diadopsi** ke [`01-error-catalogue.md`](01-error-catalogue.md): `409 DUPLICATE_CODE` (+ `field`) untuk duplikat kode/slug/tanggal master data, dan `409 PAYSLIP_NOT_READY` (+ `Retry-After`) untuk PDF slip yang belum siap. Endpoint di atas sudah diperbarui untuk memakai kedua code ini.
+
+---
+
+## Catatan implementasi (Sprint 1)
+
+Kontrak yang berlaku ada di `api/openapi.yaml` (dicek `TestContract_S1ResponsesMatchSpec`). Perbedaan dan tambahan terhadap A1–A6, T1–T2:
+
+| Endpoint | Desain | Implementasi S1 | Alasan |
+|---|---|---|---|
+| A1 login, `active_tenant` | Tenant terakhir yang dipakai, atau satu-satunya membership | Hanya "satu-satunya membership ACTIVE di tenant ACTIVE"; selain itu `null` | Tidak ada kolom untuk "tenant terakhir". SPA mengirim `X-Active-Tenant` saat refresh, yang sudah memulihkan tenant terakhir per perangkat |
+| A1 akun terkunci | `401 INVALID_CREDENTIALS` + `Retry-After` (R2-5) | `401 INVALID_CREDENTIALS` **tanpa** `Retry-After` | Header itu hanya muncul untuk akun yang ada dan terkunci, sehingga sendirinya menjadi oracle enumerasi (temuan LedgerPay S4). Status lock ada di log/metrik `app_authn_lockouts_total` |
+| A7 `POST /auth/verify-email` | — (R2-8 hanya menyebut "link sekali pakai") | Baru. `{token}` → `204`; token tidak dikenal/kedaluwarsa/terpakai → `410 EMAIL_VERIFICATION_INVALID`. Mengaktifkan semua tenant `PENDING_VERIFICATION` tempat user OWNER | Keputusan S1: tenant hasil signup berstatus `PENDING_VERIFICATION` sampai email diverifikasi |
+| A8 `POST /auth/resend-verification` | — | Baru. Bearer (tanpa `tid`), `204`; link lama mati; `503` kalau SMTP gagal | Email dikirim langsung setelah commit (worker/outbox baru ada S4), sehingga harus ada jalan pemulihan |
+| T1 signup | `201` dengan token + `active_tenant` | Email baru: tenant `PENDING_VERIFICATION`, `active_tenant: null`, `email_verification_required: true`, email verifikasi dikirim. Akun lama terverifikasi (password cocok): tenant `ACTIVE` dan langsung terpilih | R2-8 |
+| T1 idempotency | `request_hash` mencakup email | `request_hash` = SHA-256 atas field permintaan **tanpa password**; replay hanya `{tenant, email_verification_required}` + `Idempotent-Replayed: true` | SHA-256 atas JSON berisi password yang tersimpan di DB bisa di-crack offline |
+| T1 seed | `tenant_settings`, membership, jenis cuti, komponen, departemen/posisi | `tenant_settings` (timezone dari input), membership OWNER, audit `tenant.created` | Tabel jenis cuti, komponen, departemen, dan posisi baru ada di S2–S3; seed-nya ditambahkan bersama tabelnya |
+| A6 switch ke tenant `PENDING_VERIFICATION` | — | `403 FORBIDDEN` ("Email verification required…") | Sama dengan tenant `SUSPENDED`: tenant ada, tetapi belum boleh dipakai |
+| A4 `/me` | `{id, email, display_name, active_tenant, employee_id}` | Ditambah `email_verified` | SPA menampilkan banner "verifikasi email" |

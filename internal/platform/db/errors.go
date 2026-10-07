@@ -17,9 +17,11 @@ import (
 // TIDAK dipetakan: ia jatuh ke INTERNAL_ERROR dan harus berbunyi di log/alert.
 // Test TestDBErrorMapping_AllCatalogueConstraints memastikan setiap nama di sini benar-benar ada di DB.
 var constraintErrors = map[string]*apperr.Error{
-	// Diisi bersama tabelnya, contoh uq_users_email_lower → EMAIL_ALREADY_REGISTERED (S1),
-	// uq_payroll_runs_active_per_period → ACTIVE_RUN_EXISTS (S4). Pelanggaran yang berarti BUG
-	// (RLS WITH CHECK 42501, trigger immutability run final) sengaja TIDAK dipetakan → 500 + alert.
+	"uq_users_email_lower": apperr.ErrEmailRegistered,
+	"uq_tenants_slug":      apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "slug", Code: "DUPLICATE"}),
+	// Berikutnya bersama tabelnya, contoh uq_payroll_runs_active_per_period → ACTIVE_RUN_EXISTS (S4).
+	// Pelanggaran yang berarti BUG (RLS WITH CHECK 42501, trigger immutability run final) sengaja
+	// TIDAK dipetakan → 500 + alert.
 }
 
 // ConstraintNames mengembalikan nama constraint yang dipetakan (dipakai test katalog).

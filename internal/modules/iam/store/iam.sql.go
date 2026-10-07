@@ -13,6 +13,54 @@ import (
 	"github.com/google/uuid"
 )
 
+const addOwnerMembership = `-- name: AddOwnerMembership :exec
+INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by)
+VALUES ($1, $2, $3, ARRAY['OWNER'], 'ACTIVE', $4, $3)
+`
+
+type AddOwnerMembershipParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	UserID   *uuid.UUID
+	Now      *time.Time
+}
+
+// [tenant] Membership OWNER pendaftar tenant (signup).
+func (q *Queries) AddOwnerMembership(ctx context.Context, arg AddOwnerMembershipParams) error {
+	_, err := q.db.Exec(ctx, addOwnerMembership,
+		arg.TenantID,
+		arg.ID,
+		arg.UserID,
+		arg.Now,
+	)
+	return err
+}
+
+const createEmailVerification = `-- name: CreateEmailVerification :exec
+INSERT INTO email_verifications (id, user_id, token_hash, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type CreateEmailVerificationParams struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// [none]
+func (q *Queries) CreateEmailVerification(ctx context.Context, arg CreateEmailVerificationParams) error {
+	_, err := q.db.Exec(ctx, createEmailVerification,
+		arg.ID,
+		arg.UserID,
+		arg.TokenHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :exec
 INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, parent_id, issued_at, expires_at, family_expires_at, user_agent, ip)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -48,6 +96,29 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return err
 }
 
+const createUser = `-- name: CreateUser :exec
+INSERT INTO users (id, email, password_hash, display_name)
+VALUES ($1, $2, $3, $4)
+`
+
+type CreateUserParams struct {
+	ID           uuid.UUID
+	Email        string
+	PasswordHash string
+	DisplayName  string
+}
+
+// [platform] app.user_id = id baru (WITH CHECK users_self). Duplikat email → uq_users_email_lower.
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
+	_, err := q.db.Exec(ctx, createUser,
+		arg.ID,
+		arg.Email,
+		arg.PasswordHash,
+		arg.DisplayName,
+	)
+	return err
+}
+
 const getActiveMembership = `-- name: GetActiveMembership :one
 SELECT m.tenant_id, t.name AS tenant_name, t.status AS tenant_status, m.roles
 FROM memberships m
@@ -76,6 +147,33 @@ func (q *Queries) GetActiveMembership(ctx context.Context, arg GetActiveMembersh
 		&i.TenantName,
 		&i.TenantStatus,
 		&i.Roles,
+	)
+	return i, err
+}
+
+const getEmailVerificationForUpdate = `-- name: GetEmailVerificationForUpdate :one
+SELECT id, user_id, expires_at, used_at
+FROM email_verifications
+WHERE token_hash = $1
+FOR UPDATE
+`
+
+type GetEmailVerificationForUpdateRow struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+// [none] FOR UPDATE: dua klik paralel pada link yang sama diserialkan; yang kedua melihat used_at.
+func (q *Queries) GetEmailVerificationForUpdate(ctx context.Context, tokenHash []byte) (GetEmailVerificationForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getEmailVerificationForUpdate, tokenHash)
+	var i GetEmailVerificationForUpdateRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.UsedAt,
 	)
 	return i, err
 }
@@ -132,16 +230,17 @@ func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, tokenHash []byte
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, display_name, status
+SELECT id, email, display_name, status, email_verified_at
 FROM users
 WHERE id = $1
 `
 
 type GetUserRow struct {
-	ID          uuid.UUID
-	Email       string
-	DisplayName string
-	Status      string
+	ID              uuid.UUID
+	Email           string
+	DisplayName     string
+	Status          string
+	EmailVerifiedAt *time.Time
 }
 
 // [platform]
@@ -153,6 +252,7 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (GetUserRow, error)
 		&i.Email,
 		&i.DisplayName,
 		&i.Status,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
@@ -191,6 +291,21 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 		arg.UserAgent,
 		arg.Reason,
 	)
+	return err
+}
+
+const invalidatePendingVerifications = `-- name: InvalidatePendingVerifications :exec
+UPDATE email_verifications SET used_at = $1 WHERE user_id = $2 AND used_at IS NULL
+`
+
+type InvalidatePendingVerificationsParams struct {
+	Now    *time.Time
+	UserID uuid.UUID
+}
+
+// [none] Link lama mati saat link baru dikirim (hanya link terakhir yang berlaku).
+func (q *Queries) InvalidatePendingVerifications(ctx context.Context, arg InvalidatePendingVerificationsParams) error {
+	_, err := q.db.Exec(ctx, invalidatePendingVerifications, arg.Now, arg.UserID)
 	return err
 }
 
@@ -234,6 +349,39 @@ func (q *Queries) ListActiveMemberships(ctx context.Context, userID uuid.UUID) (
 		return nil, err
 	}
 	return items, nil
+}
+
+const markEmailVerificationUsed = `-- name: MarkEmailVerificationUsed :exec
+UPDATE email_verifications SET used_at = $1 WHERE id = $2
+`
+
+type MarkEmailVerificationUsedParams struct {
+	Now *time.Time
+	ID  uuid.UUID
+}
+
+// [none]
+func (q *Queries) MarkEmailVerificationUsed(ctx context.Context, arg MarkEmailVerificationUsedParams) error {
+	_, err := q.db.Exec(ctx, markEmailVerificationUsed, arg.Now, arg.ID)
+	return err
+}
+
+const markEmailVerified = `-- name: MarkEmailVerified :execrows
+UPDATE users SET email_verified_at = $1 WHERE id = $2 AND email_verified_at IS NULL
+`
+
+type MarkEmailVerifiedParams struct {
+	Now *time.Time
+	ID  uuid.UUID
+}
+
+// [platform]
+func (q *Queries) MarkEmailVerified(ctx context.Context, arg MarkEmailVerifiedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markEmailVerified, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const markRefreshTokenUsed = `-- name: MarkRefreshTokenUsed :exec

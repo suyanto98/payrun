@@ -58,6 +58,13 @@ func (e *Error) WithRetryAfter(seconds int) *Error {
 	return &c
 }
 
+// WithFields mengembalikan salinan dengan daftar field (contoh DUPLICATE_CODE menyebut field `slug`).
+func (e *Error) WithFields(fields ...FieldError) *Error {
+	c := *e
+	c.Fields = fields
+	return &c
+}
+
 // WithExistingResource mengembalikan salinan yang menyebut ID resource yang sudah ada.
 func (e *Error) WithExistingResource(id string) *Error {
 	c := *e
@@ -107,6 +114,10 @@ var (
 
 // Kode khusus PayRun (katalog §3: tenancy, IAM, payroll, approval) ditambahkan bersama fiturnya,
 // SETELAH masuk katalog docs/design/15-api-error-catalogue.md (pelajaran LedgerPay §6).
+var (
+	ErrDuplicateCode            = def(http.StatusConflict, "DUPLICATE_CODE", "Code is already in use")
+	ErrEmailVerificationInvalid = def(http.StatusGone, "EMAIL_VERIFICATION_INVALID", "Verification link is invalid or expired")
+)
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.
 func Validation(fields ...FieldError) *Error {

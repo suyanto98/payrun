@@ -11,7 +11,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,8 +23,10 @@ import (
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/mail"
 	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/observability"
+	"payrun/internal/platform/reqmeta"
 )
 
 type Config struct {
@@ -34,6 +35,10 @@ type Config struct {
 	RefreshFamilyTTL time.Duration
 	// HashConcurrency: hash argon2 paralel maksimum (C-45). 0 → 4 (desain: VM 2 vCPU / 4 GiB).
 	HashConcurrency int
+	// PublicBaseURL: basis link di email (verifikasi), contoh https://payrun.example.com.
+	PublicBaseURL string
+	// VerificationTTL: masa berlaku link verifikasi email. 0 → 24 jam.
+	VerificationTTL time.Duration
 }
 
 // Kebijakan sesi dan lockout (ADR-009 + catatan implementasi, C-03, C-05).
@@ -51,28 +56,42 @@ type Service struct {
 	clock     clock.Clock
 	ids       idgen.Generator
 	cfg       Config
+	mailer    mail.Sender
 	hasher    *auth.Hasher
 	dummyHash string
+	// onEmailVerified dipanggil di transaksi verifikasi (mode platform user). Diisi composition root
+	// dengan aktivasi tenant PENDING_VERIFICATION milik user (modul tenancy; ADR-001: iam tidak
+	// meng-import tenancy).
+	onEmailVerified func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error
 }
 
-func NewService(pool *pgxpool.Pool, tokens *auth.Tokens, c clock.Clock, ids idgen.Generator, cfg Config) *Service {
+func NewService(pool *pgxpool.Pool, tokens *auth.Tokens, c clock.Clock, ids idgen.Generator, cfg Config, mailer mail.Sender) *Service {
 	n := cfg.HashConcurrency
 	if n <= 0 {
 		n = 4
 	}
-	return &Service{pool: pool, tokens: tokens, clock: c, ids: ids, cfg: cfg,
+	if cfg.VerificationTTL <= 0 {
+		cfg.VerificationTTL = 24 * time.Hour
+	}
+	return &Service{pool: pool, tokens: tokens, clock: c, ids: ids, cfg: cfg, mailer: mailer,
 		hasher: auth.NewHasher(cfg.Argon2, n, hashMaxWait), dummyHash: auth.DummyHash(cfg.Argon2)}
 }
 
-// Hasher dipakai tenancy (signup) lewat composition root, supaya batas konkurensi argon2 (C-45)
-// berlaku untuk SEMUA jalur hashing, bukan per modul.
-func (s *Service) Hasher() *auth.Hasher { return s.hasher }
+// OnEmailVerified memasang hook aktivasi (lihat field onEmailVerified).
+func (s *Service) OnEmailVerified(fn func(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error) {
+	s.onEmailVerified = fn
+}
 
 // User adalah representasi user yang aman dikirim ke client (tanpa password_hash).
 type User struct {
-	ID          uuid.UUID `json:"id"`
-	Email       string    `json:"email"`
-	DisplayName string    `json:"display_name"`
+	ID            uuid.UUID `json:"id"`
+	Email         string    `json:"email"`
+	DisplayName   string    `json:"display_name"`
+	EmailVerified bool      `json:"email_verified"`
+}
+
+func userFrom(u store.GetUserRow) User {
+	return User{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, EmailVerified: u.EmailVerifiedAt != nil}
 }
 
 // ActiveTenant adalah tenant yang menjadi `tid` token, dengan role user di dalamnya.
@@ -80,13 +99,6 @@ type ActiveTenant struct {
 	ID    uuid.UUID `json:"id"`
 	Name  string    `json:"name"`
 	Roles []string  `json:"roles"`
-}
-
-// RequestMeta adalah metadata request untuk audit dan daftar sesi.
-type RequestMeta struct {
-	RequestID string
-	UserAgent string
-	IP        *netip.Addr
 }
 
 // Session adalah hasil login/refresh/signup: access token (body) + refresh token mentah (cookie
@@ -116,7 +128,7 @@ type Credentials struct {
 // dan argon2 SELALU dijalankan (dummy hash untuk email tak dikenal) supaya waktu respons juga tidak
 // membocorkan email terdaftar (T-SH-01, C-03). Gagal password menaikkan counter lockout.
 // Dipakai login dan signup dengan akun yang sudah ada.
-func (s *Service) VerifyCredentials(ctx context.Context, email, password string, meta RequestMeta) (Credentials, error) {
+func (s *Service) VerifyCredentials(ctx context.Context, email, password string, meta reqmeta.Meta) (Credentials, error) {
 	row, found, err := authLookup(ctx, s.pool, email)
 	if err != nil {
 		return Credentials{}, err
@@ -154,7 +166,7 @@ func (s *Service) VerifyCredentials(ctx context.Context, email, password string,
 
 // Login: kredensial → sesi baru. active_tenant = satu-satunya membership ACTIVE (tenant ACTIVE) kalau
 // user hanya punya satu; selain itu null dan token tanpa `tid` (client memanggil switch-tenant).
-func (s *Service) Login(ctx context.Context, in LoginInput, meta RequestMeta) (Session, error) {
+func (s *Service) Login(ctx context.Context, in LoginInput, meta reqmeta.Meta) (Session, error) {
 	cred, err := s.VerifyCredentials(ctx, in.Email, in.Password, meta)
 	if err != nil {
 		return Session{}, err
@@ -165,7 +177,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput, meta RequestMeta) (S
 // StartSession menerbitkan refresh token family baru + access token untuk user yang sudah
 // terautentikasi (login, atau signup yang baru saja membuat tenant). preferTenant != Nil → tenant itu
 // (membership tetap dicek); Nil → pilihan otomatis Login.
-func (s *Service) StartSession(ctx context.Context, userID, preferTenant uuid.UUID, action string, meta RequestMeta) (Session, error) {
+func (s *Service) StartSession(ctx context.Context, userID, preferTenant uuid.UUID, action string, meta reqmeta.Meta) (Session, error) {
 	rawRefresh, refreshHash, err := newRefreshToken()
 	if err != nil {
 		return Session{}, err
@@ -181,7 +193,7 @@ func (s *Service) StartSession(ctx context.Context, userID, preferTenant uuid.UU
 		if err != nil {
 			return err
 		}
-		sess.User = User{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName}
+		sess.User = userFrom(u)
 		if sess.ActiveTenant, err = s.pickTenant(ctx, q, userID, preferTenant); err != nil {
 			return err
 		}
@@ -241,7 +253,7 @@ func (s *Service) signAccess(sess Session, userID uuid.UUID, now time.Time) (Ses
 
 // recordFailure mencatat login gagal (audit platform) dan, untuk password salah, menaikkan counter
 // lockout. Mode platform untuk user tersebut: UPDATE users hanya lolos lewat policy users_self.
-func (s *Service) recordFailure(ctx context.Context, userID uuid.UUID, reason string, count bool, now time.Time, meta RequestMeta) error {
+func (s *Service) recordFailure(ctx context.Context, userID uuid.UUID, reason string, count bool, now time.Time, meta reqmeta.Meta) error {
 	return db.MapError(db.WithPlatformTx(ctx, s.pool, userID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		if count {
@@ -271,7 +283,7 @@ func (s *Service) recordFailure(ctx context.Context, userID uuid.UUID, reason st
 //
 // activeTenant (header X-Active-Tenant): `tid` dipertahankan HANYA kalau membership masih ACTIVE, dan
 // roles dibaca ulang dari DB. Inilah yang membatasi akses setelah membership dicabut ≤ 15 menit (ADR-P02).
-func (s *Service) Refresh(ctx context.Context, raw string, activeTenant uuid.UUID, meta RequestMeta) (Session, error) {
+func (s *Service) Refresh(ctx context.Context, raw string, activeTenant uuid.UUID, meta reqmeta.Meta) (Session, error) {
 	if raw == "" {
 		return Session{}, apperr.ErrUnauthenticated
 	}
@@ -318,7 +330,7 @@ func (s *Service) Refresh(ctx context.Context, raw string, activeTenant uuid.UUI
 		if u.Status != "ACTIVE" {
 			return apperr.ErrUnauthenticated
 		}
-		sess.User = User{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName}
+		sess.User = userFrom(u)
 		if activeTenant != uuid.Nil {
 			if sess.ActiveTenant, err = s.pickTenant(ctx, q, t.UserID, activeTenant); err != nil {
 				return err
@@ -361,7 +373,7 @@ func (s *Service) Refresh(ctx context.Context, raw string, activeTenant uuid.UUI
 
 // Logout mencabut seluruh family dari refresh token. Selalu "berhasil": token tak dikenal atau sudah
 // dicabut tidak menghasilkan error (natural idempotent).
-func (s *Service) Logout(ctx context.Context, raw string, meta RequestMeta) error {
+func (s *Service) Logout(ctx context.Context, raw string, meta reqmeta.Meta) error {
 	if raw == "" {
 		return nil
 	}
@@ -397,7 +409,7 @@ func (s *Service) Me(ctx context.Context, p auth.Principal) (User, *ActiveTenant
 		if err != nil {
 			return err
 		}
-		u = User{ID: row.ID, Email: row.Email, DisplayName: row.DisplayName}
+		u = userFrom(row)
 		if p.TenantID != uuid.Nil {
 			active, err = s.pickTenant(ctx, q, p.UserID, p.TenantID)
 		}
@@ -433,7 +445,7 @@ func (s *Service) Memberships(ctx context.Context, userID uuid.UUID) ([]Membersh
 // SwitchTenant menerbitkan access token baru dengan `tid` = tenantID setelah membership ACTIVE dicek
 // di DB. Bukan anggota / membership dicabut / tenant tidak ada → 404 (tidak dibedakan); tenant
 // disuspend → 403. Refresh token tidak berubah (tidak terikat tenant). Audit di tenant tujuan.
-func (s *Service) SwitchTenant(ctx context.Context, userID, tenantID uuid.UUID, meta RequestMeta) (Session, error) {
+func (s *Service) SwitchTenant(ctx context.Context, userID, tenantID uuid.UUID, meta reqmeta.Meta) (Session, error) {
 	var sess Session
 	now := s.clock.Now()
 	err := db.WithPlatformTx(ctx, s.pool, userID, func(tx pgx.Tx) error {
@@ -445,7 +457,11 @@ func (s *Service) SwitchTenant(ctx context.Context, userID, tenantID uuid.UUID, 
 		if err != nil {
 			return err
 		}
-		if m.TenantStatus != "ACTIVE" {
+		switch m.TenantStatus {
+		case "ACTIVE":
+		case "PENDING_VERIFICATION":
+			return apperr.ErrForbidden.WithDetail("Email verification required to activate this tenant")
+		default:
 			return apperr.ErrForbidden.WithDetail("Tenant is suspended")
 		}
 		sess.ActiveTenant = &ActiveTenant{ID: m.TenantID, Name: m.TenantName, Roles: m.Roles}
@@ -461,7 +477,7 @@ func (s *Service) SwitchTenant(ctx context.Context, userID, tenantID uuid.UUID, 
 	return s.signAccess(sess, userID, now)
 }
 
-func (s *Service) audit(ctx context.Context, q *store.Queries, tenantID *uuid.UUID, userID uuid.UUID, action, reason string, meta RequestMeta) error {
+func (s *Service) audit(ctx context.Context, q *store.Queries, tenantID *uuid.UUID, userID uuid.UUID, action, reason string, meta reqmeta.Meta) error {
 	target := "user"
 	return q.InsertAudit(ctx, store.InsertAuditParams{
 		ID: s.ids.New(), TenantID: tenantID, ActorType: "USER", ActorID: &userID, Action: action,

@@ -29,6 +29,15 @@ type AuditLog struct {
 	CreatedAt     time.Time
 }
 
+type EmailVerification struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
 type IdempotencyKey struct {
 	TenantID       uuid.UUID
 	ID             uuid.UUID
@@ -151,4 +160,5 @@ type User struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	Version          int32
+	EmailVerifiedAt  *time.Time
 }

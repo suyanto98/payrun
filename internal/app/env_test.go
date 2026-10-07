@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +27,7 @@ import (
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/db/dbtest"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/mail"
 	"payrun/internal/platform/ratelimit"
 )
 
@@ -31,10 +36,56 @@ func TestMain(m *testing.M) { dbtest.Main(m) }
 // env: server API sungguhan (httptest) di atas DB test yang terhubung sebagai payrun_app, dengan jam
 // palsu yang dipakai token, refresh, dan lockout.
 type env struct {
-	srv  *httptest.Server
-	pool *pgxpool.Pool
-	clk  *clock.Fake
+	srv    *httptest.Server
+	pool   *pgxpool.Pool
+	clk    *clock.Fake
+	mailer *fakeMailer
 }
+
+// fakeMailer merekam email alih-alih mengirim; fail = simulasi SMTP mati.
+type fakeMailer struct {
+	mu   sync.Mutex
+	msgs []mail.Message
+	fail bool
+}
+
+func (m *fakeMailer) Send(_ context.Context, msg mail.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail {
+		return errors.New("smtp down")
+	}
+	m.msgs = append(m.msgs, msg)
+	return nil
+}
+
+func (m *fakeMailer) setFail(v bool) { m.mu.Lock(); m.fail = v; m.mu.Unlock() }
+
+// lastToken mengambil token dari link verifikasi terakhir yang dikirim ke alamat itu.
+func (m *fakeMailer) lastToken(t *testing.T, to string) string {
+	t.Helper()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := len(m.msgs) - 1; i >= 0; i-- {
+		if m.msgs[i].To != to {
+			continue
+		}
+		_, after, ok := strings.Cut(m.msgs[i].Text, "/verify-email?token=")
+		if !ok {
+			continue
+		}
+		tok, _, _ := strings.Cut(after, "\n")
+		v, err := url.QueryUnescape(tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	t.Fatalf("no verification email sent to %s", to)
+	return ""
+}
+
+func (m *fakeMailer) count() int { m.mu.Lock(); defer m.mu.Unlock(); return len(m.msgs) }
 
 const password = "correct horse battery"
 
@@ -63,12 +114,13 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 		// Loopback = proxy tepercaya: test mensimulasikan banyak IP client lewat X-Forwarded-For.
 		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
 		AllowedOrigins: []string{"http://localhost:5173"}, PublicBaseURL: "http://localhost:5173", Tiers: tiers,
-		IAM: iam.Config{Argon2: auth.TestArgon2, RefreshTTL: 7 * 24 * time.Hour, RefreshFamilyTTL: 30 * 24 * time.Hour},
+		IAM:    iam.Config{Argon2: auth.TestArgon2, RefreshTTL: 7 * 24 * time.Hour, RefreshFamilyTTL: 30 * 24 * time.Hour},
+		Mailer: &fakeMailer{},
 	}
 	if err := deps.ValidateAPI(); err != nil { // env test harus lengkap seperti produksi
 		t.Fatal(err)
 	}
-	e := env{srv: httptest.NewServer(app.APIRouter(deps)), pool: tdb.App, clk: clk}
+	e := env{srv: httptest.NewServer(app.APIRouter(deps)), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer)}
 	t.Cleanup(e.srv.Close)
 	return e
 }

@@ -19,6 +19,8 @@ func validDev() Config {
 		PublicBaseURL:      "http://localhost:5173",
 		PIIKeyringJSON:     `{"v1":"cGF5cnVuLWRldi1vbmx5LXBpaS1rZXktMzItYnl0ZXM="}`,
 		PIIActiveVersion:   "v1",
+		SMTPAddr:           "localhost:1025",
+		MailFrom:           "PayRun <no-reply@payrun.local>",
 	}
 }
 
@@ -46,6 +48,8 @@ func TestValidateAPI(t *testing.T) {
 		{"origin with path rejected", func(c *Config) { c.AllowedOrigins = []string{"http://localhost:5173/app"} }, "scheme://host"},
 		{"empty origins rejected", func(c *Config) { c.AllowedOrigins = nil }, "ALLOWED_ORIGINS wajib"},
 		{"refresh ttl longer than family rejected", func(c *Config) { c.RefreshTTL = 800 * time.Hour }, "REFRESH_TTL"},
+		{"smtp required", func(c *Config) { c.SMTPAddr = "" }, "SMTP_ADDR"},
+		{"mail from header injection rejected", func(c *Config) { c.MailFrom = "a@b\r\nBcc: x@y" }, "MAIL_FROM"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
