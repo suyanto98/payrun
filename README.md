@@ -2,7 +2,7 @@
 
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
-**Status:** Sprint 6 (attendance, leave, overtime, finalize). Sprint 5 selesai (🏁 M6): approval generik + submit run dengan approver dihitung server, deteksi stale (PeriodGuard + change log + fingerprint, `RUN_STALE`), `payrun verify-run` (recompute dari snapshot), Demo B otomatis (`make demo-verify`), halaman payroll dan inbox approval; Sprint 4: payroll run asinkron per chunk lewat `payrun worker` (resumable, fencing lease), role change/revoke, full view PII ter-audit; Sprint 1–3: tenancy, IAM, RLS, employee + PII terenkripsi, kompensasi effective-dated, payroll engine 33 golden case (Tono Maret 2026 = Rp6.888.609) ([roadmap](docs/design/30-roadmap.md)).
+**Status:** Sprint 7 (payslip, adjustment, observability). Sprint 6 selesai: absensi, cuti (saldo dipotong saat approve), dan lembur mengalir ke payroll dengan cut-off periode; override HR; finalize mengunci periode dan run (Demo C). Sprint 5 (🏁 M6): approval + deteksi stale, `payrun verify-run`, Demo B otomatis. Sprint 4: payroll run asinkron per chunk lewat `payrun worker`. Sprint 1–3: tenancy, IAM, RLS, PII terenkripsi, kompensasi effective-dated, payroll engine 33 golden case (Tono Maret 2026 = Rp6.888.609) ([roadmap](docs/design/30-roadmap.md)).
 
 ## Quick start
 
@@ -32,7 +32,7 @@ Dev ports: API `127.0.0.1:8081`, ops `127.0.0.1:9190`, Postgres `127.0.0.1:55433
 | `db/migrations` | goose migrations, embedded in the binary; run as `payrun_owner` |
 | `api/openapi.yaml` | API contract (source of truth, ADR-003); `api/gen` is generated from it |
 | `api/authz_matrix.yaml` | Authorization matrix as data; every route must have a row (test fails otherwise) |
-| `web/` | SPA (Vue 3 + TypeScript): login, verifikasi email, tenant picker, employees, payroll run, approval |
+| `web/` | SPA (Vue 3 + TypeScript): login, verifikasi email, tenant picker, employees, payroll run, approval, absensi, cuti, lembur |
 | `deploy/` | Dockerfile (distroless), dev compose, Postgres init (roles) |
 | `docs/` | Design documents and ADRs ([index](docs/README.md)) |
 
