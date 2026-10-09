@@ -9,6 +9,7 @@ import InviteView from './pages/InviteView.vue'
 import PayrollRunsView from './pages/PayrollRunsView.vue'
 import PayrollRunView from './pages/PayrollRunView.vue'
 import ApprovalsView from './pages/ApprovalsView.vue'
+import VerifyEmailView from './pages/VerifyEmailView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -26,6 +27,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: LoginView, meta: { guest: true } },
     { path: '/invite', component: InviteView, meta: { public: true, title: 'Undangan' } },
+    { path: '/verify-email', component: VerifyEmailView, meta: { public: true, title: 'Verifikasi email' } },
     { path: '/select-tenant', component: SelectTenantView, meta: { title: 'Pilih perusahaan' } },
     { path: '/', redirect: '/employees' },
     { path: '/employees', component: EmployeesView, meta: { tenant: true, title: 'Karyawan' } },
@@ -47,6 +49,12 @@ router.beforeEach(async (to) => {
   if (to.path === '/invite' && to.hash.length > 1) {
     auth.pendingInvite = decodeURIComponent(to.hash.slice(1))
     return { path: '/invite', hash: '', replace: true }
+  }
+  // Verifikasi email: token di query (link email, A7) dipindah ke memori dan dihapus dari URL, supaya
+  // tidak tertinggal di riwayat browser atau terkirim sebagai Referer.
+  if (to.path === '/verify-email' && typeof to.query.token === 'string' && to.query.token !== '') {
+    auth.pendingVerify = to.query.token
+    return { path: '/verify-email', query: {}, replace: true }
   }
   if (to.meta.public) return
   // `next` memakai path + query saja, TANPA hash: fragment bisa berisi rahasia (undangan).

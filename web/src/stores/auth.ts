@@ -28,6 +28,8 @@ export const useAuth = defineStore('auth', {
     // Token undangan (`<tenant_id>.<secret>`) dari fragment /invite#… — HANYA di memori: tidak pernah
     // masuk URL query, storage, atau log (review S2).
     pendingInvite: '' as string,
+    // Token verifikasi email dari /verify-email?token=… — juga HANYA di memori (dihapus dari URL oleh router).
+    pendingVerify: '' as string,
     ready: false,
   }),
   getters: {
