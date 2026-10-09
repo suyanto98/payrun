@@ -87,6 +87,7 @@
 | 422 | `DECISION_NOTE_REQUIRED` | Reject tanpa catatan | Tidak | — | APP |
 | 422 | `SELF_APPROVAL_REASON_REQUIRED` | Self-approve run (tenant satu admin) tanpa alasan | Tidak | — | `ck_approval_requests_not_self` |
 | 403 | `SELF_APPROVAL_FORBIDDEN` | Self-approval di luar pengecualian ADR-P09 | Tidak | — | APP + CHECK |
+| 422 | `NO_APPROVER_AVAILABLE` | Request cuti/lembur tanpa calon approver selain pengaju (tanpa atasan, HR_ADMIN, maupun OWNER lain); ditambahkan S6 | Tidak | — | APP |
 | 422 | `EMPLOYEE_NOT_ACTIVE` | Aksi untuk employee yang tidak aktif pada tanggal tersebut | Tidak | — | APP |
 | 422 | `CLOCK_OUT_WITHOUT_CLOCK_IN` | Clock out tanpa clock in di hari itu | Tidak | — | APP |
 | 409 | `DUPLICATE_CODE` | Kode/slug/tanggal unik pada master data sudah dipakai (slug tenant, kode departemen/posisi/komponen, tanggal libur) | Tidak | `field` | `uq_*_code` / `uq_tenants_slug` / `uq_holidays_date` |

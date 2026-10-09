@@ -26,6 +26,24 @@ func (q *Queries) ActivateTenant(ctx context.Context, id uuid.UUID) (int64, erro
 	return result.RowsAffected(), nil
 }
 
+const calendarSettings = `-- name: CalendarSettings :one
+SELECT timezone, work_days, coalesce(overtime_max_hours_per_day::text, '')::text AS overtime_max FROM tenant_settings WHERE tenant_id = $1
+`
+
+type CalendarSettingsRow struct {
+	Timezone    string
+	WorkDays    []int16
+	OvertimeMax string
+}
+
+// [tenant] Zona waktu + hari kerja mingguan (kalender kerja, dipakai modul input S6).
+func (q *Queries) CalendarSettings(ctx context.Context, tenantID uuid.UUID) (CalendarSettingsRow, error) {
+	row := q.db.QueryRow(ctx, calendarSettings, tenantID)
+	var i CalendarSettingsRow
+	err := row.Scan(&i.Timezone, &i.WorkDays, &i.OvertimeMax)
+	return i, err
+}
+
 const claimPlatformIdempotencyKey = `-- name: ClaimPlatformIdempotencyKey :one
 INSERT INTO platform_idempotency_keys (id, endpoint, key, request_hash, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -390,6 +408,21 @@ func (q *Queries) ListPendingOwnedTenants(ctx context.Context, userID uuid.UUID)
 		return nil, err
 	}
 	return items, nil
+}
+
+const seedLeaveTypes = `-- name: SeedLeaveTypes :exec
+SELECT seed_leave_types($1::uuid, $2::uuid)
+`
+
+type SeedLeaveTypesParams struct {
+	TenantID uuid.UUID
+	Actor    uuid.UUID
+}
+
+// [tenant] Seed jenis cuti default (13 §6, S6): ANNUAL (dibayar, kuota 12), SICK (dibayar), UNPAID.
+func (q *Queries) SeedLeaveTypes(ctx context.Context, arg SeedLeaveTypesParams) error {
+	_, err := q.db.Exec(ctx, seedLeaveTypes, arg.TenantID, arg.Actor)
+	return err
 }
 
 const seedSystemComponents = `-- name: SeedSystemComponents :exec

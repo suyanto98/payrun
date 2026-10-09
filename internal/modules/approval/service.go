@@ -53,6 +53,7 @@ type Service struct {
 	pool     *pgxpool.Pool
 	ids      idgen.Generator
 	subjects map[string]Subject
+	members  Memberships
 }
 
 func NewService(pool *pgxpool.Pool, ids idgen.Generator) *Service {
@@ -184,9 +185,20 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id uuid.UUID, st
 			return err
 		}
 		involved := p.UserID == a.ApproverID || p.UserID == a.RequesterID
+		override := false
+		if !involved {
+			// Override HR (file 17 §3.3): hanya cuti/lembur, role HR_ADMIN dibaca ulang dari DB. Selain itu
+			// pemanggil bukan pihak approval ini → 404 (tidak membocorkan keberadaannya).
+			ok, err := s.canOverride(ctx, tx, p.UserID, a.SubjectType)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return apperr.ErrNotFound
+			}
+			override = true
+		}
 		switch {
-		case !involved:
-			return apperr.ErrNotFound // bukan approver (override HR untuk cuti/lembur menyusul S6)
 		case p.UserID == a.RequesterID && !a.SelfApproved:
 			return apperr.ErrSelfApproval // requester tidak memutuskan request miliknya (BR7, PI-11)
 		case a.Status != "PENDING":
@@ -198,7 +210,13 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id uuid.UUID, st
 		}
 		decided := false
 		decideFn := func(ctx context.Context) error {
-			n, err := q.DecideApproval(ctx, store.DecideApprovalParams{Status: status, Note: note, Actor: &p.UserID, ID: id})
+			var n int64
+			var err error
+			if override {
+				n, err = q.DecideApprovalOverride(ctx, store.DecideApprovalOverrideParams{Status: status, Note: note, Actor: &p.UserID, ID: id})
+			} else {
+				n, err = q.DecideApproval(ctx, store.DecideApprovalParams{Status: status, Note: note, Actor: &p.UserID, ID: id})
+			}
 			if err != nil {
 				return db.MapError(err)
 			}
@@ -228,6 +246,13 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id uuid.UUID, st
 		if status == "REJECTED" {
 			action = "approval.rejected"
 		}
+		if override {
+			if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "approval.overridden",
+				TargetType: "approval_request", TargetID: id, Reason: deref(note),
+				Diff: map[string]any{"decision": status, "approver_id": a.ApproverID.String(), "subject_type": a.SubjectType}}, meta); err != nil {
+				return err
+			}
+		}
 		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: action,
 			TargetType: "approval_request", TargetID: id, Reason: deref(note),
 			Diff: map[string]any{"subject_type": a.SubjectType, "subject_id": a.SubjectID.String()}}, meta); err != nil {
@@ -249,6 +274,22 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id uuid.UUID, st
 		return Decision{}, db.MapError(err)
 	}
 	return out, nil
+}
+
+// canOverride: HR_ADMIN (menurut DB) memutuskan approval cuti/lembur milik orang lain. Tidak pernah untuk
+// PAYROLL_RUN (pemisahan tugas, ADR-P09 amandemen).
+func (s *Service) canOverride(ctx context.Context, tx pgx.Tx, user uuid.UUID, subjectType string) (bool, error) {
+	if subjectType != SubjectLeave && subjectType != SubjectOvertime {
+		return false, nil
+	}
+	if s.members == nil {
+		return false, fmt.Errorf("approval: memberships not wired")
+	}
+	roles, err := s.members.ActiveRolesTx(ctx, tx, user)
+	if err != nil {
+		return false, err
+	}
+	return (auth.Principal{Roles: roles}).HasRole(auth.RoleHRAdmin), nil
 }
 
 // ---------------------------------------------------------------- R1 inbox

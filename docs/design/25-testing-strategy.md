@@ -352,7 +352,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 ## 5. Traceability matrix
 
-Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-03…PI-07, PI-11…PI-14, PI-16 per Sprint 5, dijaga `TestTraceability_PayRunInvariantsReferenceExistingTests`); baris lain masih **planned**. Matriks ini wajib diperbarui di PR yang menambah atau mengubah invariant/skenario. Test `TestTraceability_DocsReferenceExistingTests` (nightly; **Step 12: S17, mulai M4**) mem-parse dokumen ini dan memastikan setiap nama test benar-benar ada di kode.
+Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-03…PI-08, PI-10…PI-14, PI-16 per Sprint 6, dijaga `TestTraceability_PayRunInvariantsReferenceExistingTests`); baris lain masih **planned**. Matriks ini wajib diperbarui di PR yang menambah atau mengubah invariant/skenario. Test `TestTraceability_DocsReferenceExistingTests` (nightly; **Step 12: S17, mulai M4**) mem-parse dokumen ini dan memastikan setiap nama test benar-benar ada di kode.
 
 ### 5.1 LedgerPay invariants
 
@@ -381,17 +381,17 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | PI-01 Satu tenant per baris | `TestCrossTenant/<endpoint>`, `rls_bypass_query_test`, `rls_no_context_returns_zero_rows`, `pool_leakage_after_commit`, `with_tenant_tx_retry_resets_tenant`, `rls_catalogue_test` |
 | PI-02 Tanpa referensi lintas tenant | `TestRLS_CompositeFK_RejectsCrossTenantItem`, `TestCatalogue_TenantFKsComposite` |
 | PI-03 Satu run aktif per period | ✅ `TestCreateRun_ConcurrentSamePeriod_SingleRun`, `TestCreateRun_DoubleClickReplays`, `TestPayrollRun_CrashAndResume` (run ganda) |
-| PI-04 Run final immutable | ✅ `TestFinalizedRun_DirectUpdateRejected` (API + SQL langsung + chunk zombie) |
+| PI-04 Run final immutable | ✅ `TestFinalizedRun_DirectUpdateRejected` (API + SQL langsung + chunk zombie), `TestFinalize_LocksPeriodAndRun`, `TestDemoC_FinalizedPayrollIsImmutable`, `TestFinalize_RetryAfterUnknownCommit_Idempotent` |
 | PI-05 Total = Σ | ✅ `TestRunTotals_EqualSumOfItems`, `TestProperty_Invariants` (net = Σ lines), `TestGolden`, `TestTonoMarch2026_LineByLine` |
 | PI-06 Satu item per (run, employee, version) | ✅ `TestCalcChunk_StaleCalcVersion_NoOp`, `TestCalcChunk_LeaseStolen_FencedCommitRollsBack`, `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`, `TestPayrollRun_CrashAndResume` |
 | PI-07 Eligibility & prorata | ✅ `TestEligibility_JoinerLeaverIncludedExactly`, `TestProperty_Invariants`, `TestGolden`, `TestApprove_StaleDetectsHireAndTermination` |
-| PI-08 Hanya approved ≤ cut-off | `TestCutoff_ApprovedAfterCutoff_NextPeriod`, golden "Lembur" + "Absensi & cuti" |
+| PI-08 Hanya approved ≤ cut-off | ✅ `TestCutoff_ApprovedAfterCutoff_NextPeriod`, `TestInputProvider_AttendanceLeaveOvertimeFlowIntoEngine`; golden "Lembur" + "Absensi & cuti" (`TestGolden`) |
 | PI-09 Effective dating tanpa overlap | `salary_change_parallel_one_wins`, golden "Effective dating" |
-| PI-10 Saldo cuti ≥ 0 | `leave_parallel_approve_respects_balance` |
-| PI-11 Approval sekali, tanpa self-approval | ✅ `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestApproval_SelfApprovalRejectedByDB`, `TestRunApprove_BySubmitter_Forbidden`, `TestSubmit_SelfApprovalOnlyForSingleAdminTenant`, `TestAuthzMatrix` |
+| PI-10 Saldo cuti ≥ 0 | ✅ `TestLeave_ParallelApproveRespectsBalance`, `TestLeave_SubmitApproveRejectCancel` |
+| PI-11 Approval sekali, tanpa self-approval | ✅ `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestApproval_SelfApprovalRejectedByDB`, `TestRunApprove_BySubmitter_Forbidden`, `TestSubmit_SelfApprovalOnlyForSingleAdminTenant`, `TestApproval_HROverrideLeaveOnly`, `TestApprover_FallbackAndNoApprover`, `TestAuthzMatrix` |
 | PI-12 Determinisme | ✅ `TestProperty_Invariants` (determinisme), `TestGolden` (recompute dari snapshot JSON), `TestRecompute_FromSnapshotMatchesStoredResults` (`payrun verify-run`); `TestPayslipPDF_DeterministicBytes` (S7) |
 | PI-13 Approve hanya jika input tidak berubah | ✅ `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees`, `TestApprove_BlocksConcurrentInputWrite` (O3), `TestApprove_StaleDetectedForWriterCommittedAfterChunkRead` (O12 d1), `TestCreateRun_WaitsForInputWriterOfMissingPeriod` (D1), `TestApprove_StaleFalsePositiveFiltered`, `TestApprove_StaleDetectsHireAndTermination` (D6), `TestPeriodGuard_RecordsInputChanges` |
-| PI-14 Period final terkunci | ✅ `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` (termasuk kenaikan gaji setelah periode final dan trigger DB) |
+| PI-14 Period final terkunci | ✅ `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` (termasuk kenaikan gaji setelah periode final dan trigger DB), `TestAttendanceEdit_FinalizedPeriod_PeriodLocked`, `TestFinalize_LocksPeriodAndRun` |
 | PI-15 Adjustment sekali | `TestAdjustment_AppliedOnce`, golden "Adjustment" |
 | PI-16 ≥ 1 owner | ✅ `TestMembership_OwnerParallelRevokeKeepsOne`, `TestMemberRoles_LastOwnerGuard` |
 | PI-17 Akses slip | `TestPayslipAccess_Matrix`, `TestAuthzMatrix` |

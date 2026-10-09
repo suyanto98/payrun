@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -112,6 +114,22 @@ type matrixRunner struct {
 	// items: run → item ERROR miliknya, untuk {item_id}. run/runItem: target baca bersama.
 	items       map[uuid.UUID]uuid.UUID
 	run, runItm uuid.UUID
+	callN       int64 // nomor per panggilan: placeholder tanggal dalam satu body memakai nomor yang sama
+}
+
+// workday: hari kerja (Sen–Jum) unik di 2027 untuk nomor n (cuti/lembur tanpa tumpang tindih).
+func workday(n int64) time.Time {
+	base := time.Date(2027, 1, 4, 0, 0, 0, 0, time.UTC) // Senin
+	return base.AddDate(0, 0, int(n/5)*7+int(n%5))
+}
+
+func (m *matrixRunner) leaveType(t *testing.T, code string) uuid.UUID {
+	t.Helper()
+	var id uuid.UUID
+	m.e.inTenant(t, m.f.id, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT id FROM leave_types WHERE code = $1`, code).Scan(&id)
+	})
+	return id
 }
 
 func (m *matrixRunner) next() int64 { return m.seq.Add(1) }
@@ -139,6 +157,14 @@ func (m *matrixRunner) fill(t *testing.T, v any) any {
 		x = strings.ReplaceAll(x, "{dept}", m.f.dept.String())
 		x = strings.ReplaceAll(x, "{pos}", m.f.pos.String())
 		x = strings.ReplaceAll(x, "{comp}", m.f.comp.String())
+		day := workday(m.callN)
+		x = strings.ReplaceAll(x, "{workday}", day.Format(time.DateOnly))
+		x = strings.ReplaceAll(x, "{ot_date}", day.Format(time.DateOnly))
+		x = strings.ReplaceAll(x, "{ot_start}", day.Format(time.DateOnly)+"T18:00:00+07:00")
+		x = strings.ReplaceAll(x, "{ot_end}", day.Format(time.DateOnly)+"T21:00:00+07:00")
+		if strings.Contains(x, "{leave_annual}") {
+			x = strings.ReplaceAll(x, "{leave_annual}", m.leaveType(t, "ANNUAL").String())
+		}
 		x = strings.ReplaceAll(x, "{owner_user}", m.f.users[roleO].String())
 		x = strings.ReplaceAll(x, "{payroll_user}", m.f.users[roleP].String())
 		if strings.Contains(x, "{period}") {
@@ -202,6 +228,38 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 		}
 		n := m.next()
 		return m.e.newMember(t, m.f.id, fmt.Sprintf("member%d@%s.test", n, m.f.slug), role)
+	case "attendance_other", "attendance_self": // catatan INCOMPLETE milik empOther / empSelf (bawahan MANAGER)
+		emp := m.f.empOther
+		if kind == "attendance_self" {
+			emp = m.f.empSelf
+		}
+		id := newID()
+		day := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, int(m.next()))
+		m.e.inTenant(t, m.f.id, func(tx pgx.Tx) error {
+			_, err := tx.Exec(context.Background(), `INSERT INTO attendance_records (tenant_id, id, employee_id, work_date, clock_in_at, status, source)
+				VALUES ($1, $2, $3, $4, '2026-01-01T00:00:00Z', 'INCOMPLETE', 'CLOCK')`, m.f.id, id, emp, day)
+			return err
+		})
+		return id
+	case "leave_own", "approval_leave": // cuti PENDING milik EMPLOYEE (approver = MANAGER, atasan langsungnya)
+		day := workday(m.next() + 500).Format(time.DateOnly)
+		r, b := m.e.doH(t, http.MethodPost, "/api/v1/leave-requests", m.f.tokens[roleE], map[string]string{"Idempotency-Key": newID().String()},
+			map[string]any{"leave_type_id": m.leaveType(t, "ANNUAL"), "start_date": day, "end_date": day})
+		if r.StatusCode != http.StatusCreated {
+			t.Fatalf("target leave: %d %v", r.StatusCode, b)
+		}
+		if kind == "approval_leave" {
+			return uuid.MustParse(b["approval"].(map[string]any)["id"].(string))
+		}
+		return uuid.MustParse(b["id"].(string))
+	case "overtime_own": // lembur PENDING milik EMPLOYEE
+		day := workday(m.next() + 500).Format(time.DateOnly)
+		r, b := m.e.doH(t, http.MethodPost, "/api/v1/overtime-requests", m.f.tokens[roleE], map[string]string{"Idempotency-Key": newID().String()},
+			map[string]any{"work_date": day, "start_at": day + "T18:00:00+07:00", "end_at": day + "T20:00:00+07:00", "reason": "Stok opname"})
+		if r.StatusCode != http.StatusCreated {
+			t.Fatalf("target overtime: %d %v", r.StatusCode, b)
+		}
+		return uuid.MustParse(b["id"].(string))
 	case "run":
 		if !fresh && m.run != uuid.Nil {
 			return m.run
@@ -213,6 +271,13 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 		return id
 	case "run_calculated": // run CALCULATED tanpa item ERROR (periode lampau: 0 karyawan eligible)
 		run, _ := m.e.calculatedRun(t, owner, m.pastPeriod())
+		return run
+	case "run_approved": // run APPROVED, siap finalize
+		run, _ := m.e.calculatedRun(t, owner, m.pastPeriod())
+		ap := m.e.submitRun(t, m.f.tokens[roleP], run, map[string]any{"approver_user_id": m.f.users[roleO]})
+		if r, b := m.e.approve(t, owner, ap); r.StatusCode != http.StatusOK {
+			t.Fatalf("target run_approved: %d %v", r.StatusCode, b)
+		}
 		return run
 	case "approval_run": // approval PAYROLL_RUN yang di-submit PAYROLL_ADMIN; approver otomatis = OWNER
 		run, _ := m.e.calculatedRun(t, owner, m.pastPeriod())
@@ -252,6 +317,7 @@ func (m *matrixRunner) call(t *testing.T, row matrixRoute, c matrixCase, token s
 		headers["Idempotency-Key"] = newID().String()
 	}
 	var body any
+	m.callN = m.next()
 	if c.Body != nil {
 		body = m.fill(t, c.Body)
 	} else if method != http.MethodGet {
@@ -315,11 +381,16 @@ func TestCrossTenant(t *testing.T) {
 	alphaRun, alphaItem := e.errorItem(t, alpha.tokens[roleO], "2026-01")
 	m := &matrixRunner{e: e, f: beta, items: map[uuid.UUID]uuid.UUID{alphaRun: alphaItem}}
 	alphaMember := e.newMember(t, alpha.id, "member@alpha.test", roleE)
+	ma := &matrixRunner{e: e, f: alpha, items: map[uuid.UUID]uuid.UUID{}}
+	ma.seq.Store(9000)
+	alphaAttendance := ma.target(t, "attendance_other", true)
+	alphaLeave := ma.target(t, "leave_own", true)
+	alphaOvertime := ma.target(t, "overtime_own", true)
 	alphaCalc, _ := e.calculatedRun(t, alpha.tokens[roleO], "2025-06")
 	alphaApproval := e.submitRun(t, alpha.tokens[roleP], alphaCalc, map[string]any{})
 	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
 		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun, "/members": alphaMember,
-		"/approvals": alphaApproval}
+		"/approvals": alphaApproval, "/attendance": alphaAttendance, "/leave-requests": alphaLeave, "/overtime-requests": alphaOvertime}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {
@@ -359,11 +430,12 @@ func TestCrossTenant(t *testing.T) {
 		t.Fatal("no cross-tenant case ran")
 	}
 	for _, path := range []string{"/departments", "/departments?status=INACTIVE", "/positions", "/employees", "/members", "/tenant",
-		"/holidays?year=2026", "/component-definitions", "/payroll-runs", "/approvals/inbox", "/approvals/inbox?status=APPROVED"} {
+		"/holidays?year=2026", "/component-definitions", "/payroll-runs", "/approvals/inbox", "/approvals/inbox?status=APPROVED",
+		"/attendance?period=2026-02", "/leave-requests", "/overtime-requests", "/leave-types"} {
 		r, b := e.do(t, http.MethodGet, "/api/v1"+path, beta.tokens[roleO], nil)
 		raw, _ := json.Marshal(b)
 		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO],
-			alphaRun, alphaItem, alphaMember, alphaApproval} {
+			alphaRun, alphaItem, alphaMember, alphaApproval, alphaAttendance, alphaLeave, alphaOvertime} {
 			if strings.Contains(string(raw), id.String()) {
 				t.Errorf("LEAK: Beta GET %s (%d) contains Alpha id %s", path, r.StatusCode, id)
 			}

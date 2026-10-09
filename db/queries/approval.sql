@@ -39,3 +39,22 @@ WHERE (sqlc.narg(approver_id)::uuid IS NULL OR a.approver_id = sqlc.narg(approve
        OR (a.created_at, a.id) < (sqlc.narg(after_at)::timestamptz, sqlc.narg(after_id)::uuid))
 ORDER BY a.created_at DESC, a.id DESC
 LIMIT @lim;
+
+-- name: CancelPendingApproval :execrows
+-- Requester membatalkan request miliknya selama PENDING (ADR-P09): 0 baris → sudah diputuskan / bukan miliknya.
+UPDATE approval_requests SET status = 'CANCELLED', decided_by = @actor, decided_at = clock_timestamp()
+WHERE subject_type = @subject_type AND subject_id = @subject_id AND status = 'PENDING' AND requester_id = @actor;
+
+-- name: ApprovalsBySubjects :many
+-- Approval terbaru per subjek (respons LeaveRequest/OvertimeRequest.approval).
+SELECT DISTINCT ON (a.subject_id) a.subject_id, a.id, a.approver_id, au.display_name AS approver_name, a.status
+FROM approval_requests a LEFT JOIN users au ON au.id = a.approver_id
+WHERE a.subject_type = @subject_type AND a.subject_id = ANY (@subject_ids::uuid[])
+ORDER BY a.subject_id, a.created_at DESC;
+
+-- name: DecideApprovalOverride :execrows
+-- [4] HR_ADMIN memutuskan menggantikan approver (hanya cuti/lembur, file 17 §3.3): is_override = true,
+-- decided_by ≠ approver_id (ck_approval_requests_override). Guard PENDING sama dengan keputusan biasa.
+UPDATE approval_requests
+SET status = @status, decision_note = @note, decided_by = @actor, decided_at = clock_timestamp(), is_override = true
+WHERE id = @id AND status = 'PENDING' AND subject_type IN ('LEAVE_REQUEST', 'OVERTIME_REQUEST') AND approver_id <> @actor;

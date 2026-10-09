@@ -113,6 +113,9 @@ func (s *Service) Submit(ctx context.Context, actor, runID uuid.UUID, in SubmitI
 		if err != nil {
 			return err
 		}
+		if cur.Status == "FINALIZED" {
+			return apperr.ErrRunFinalized
+		}
 		if cur.Status != "CALCULATED" {
 			return apperr.ErrInvalidState.WithDetail("Only a CALCULATED run can be submitted (status " + cur.Status + ")")
 		}

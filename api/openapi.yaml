@@ -1165,20 +1165,26 @@ paths:
       summary: Clock in (one record per work day; repeat = same record)
       x-endpoint: D1
       x-feature: PF-08
-      x-roles: "E (self)"
+      x-roles: "any role linked to an employee (self)"
       x-rate-tier: write
       x-priority: P0
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
-        '201':
-          description: Created. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+        '200':
+          description: Already clocked in today; the existing record (first time kept).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AttendanceRecord' }
+        '201':
+          description: Created (`status` INCOMPLETE). Work date = tenant-local date, time = server clock.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AttendanceRecord' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1192,20 +1198,21 @@ paths:
       summary: Clock out (CLOCK_OUT_WITHOUT_CLOCK_IN)
       x-endpoint: D2
       x-feature: PF-08
-      x-roles: "E (self)"
+      x-roles: "any role linked to an employee (self)"
       x-rate-tier: write
       x-priority: P0
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
-          description: OK. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` COMPLETE). Closes the latest INCOMPLETE record of the last 24 h (night shift); a second clock-out returns the record unchanged.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AttendanceRecord' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1223,16 +1230,44 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
+        - name: employee_id
+          in: query
+          required: false
+          description: 'Forced to self for EMPLOYEE; out of scope → 404.'
+          schema: { type: string, format: uuid }
+        - name: period
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Period' }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: 'Inclusive; from..to at most 62 days.'
+          schema: { type: string, format: date }
+        - name: date
+          in: query
+          required: false
+          description: 'One day (daily recap).'
+          schema: { type: string, format: date }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `AttendanceList` (docs/design/16-api-endpoints.md §16).
+          description: OK. Ordered by work date. `summary` only with `employee_id` + `period`.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AttendanceList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /attendance/{id}:
     patch:
@@ -1251,13 +1286,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/AttendanceCorrection' }
       responses:
         '200':
-          description: OK. Body model `AttendanceRecord` (docs/design/16-api-endpoints.md §16).
+          description: OK (`source` CORRECTION) with `ETag`. Audited before/after; a CALCULATED run of the period becomes stale.
+          headers:
+            ETag: { schema: { type: string } }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AttendanceRecord' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1350,15 +1387,12 @@ paths:
       x-roles: "all roles"
       x-rate-tier: read
       x-priority: P0
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `LeaveTypeList` (docs/design/16-api-endpoints.md §16).
+          description: OK. Seeded per tenant (ANNUAL, SICK, UNPAID); CRUD is P2.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/LeaveTypeList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1373,16 +1407,20 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - name: year
+          in: query
+          required: false
+          description: 'Default: current year.'
+          schema: { type: integer, minimum: 2000, maximum: 2100 }
       responses:
         '200':
-          description: OK. Body model `LeaveBalanceList` (docs/design/16-api-endpoints.md §16).
+          description: OK. `balance_days` null for leave types without a quota; before the first approved leave of the year it shows the full quota.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/LeaveBalanceList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /leave-requests:
     post:
@@ -1400,13 +1438,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/LeaveRequestCreate' }
       responses:
         '201':
-          description: Created. Body model `LeaveRequest` (docs/design/16-api-endpoints.md §16).
+          description: Created (`status` PENDING, approval at the direct manager → HR_ADMIN → OWNER). The balance is deducted at approval, not here.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1423,14 +1461,30 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+        - name: employee_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `LeaveRequestList` (docs/design/16-api-endpoints.md §16).
+          description: OK. OWNER/HR_ADMIN all; MANAGER self + direct reports; others self.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/LeaveRequestList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1447,16 +1501,17 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
-          description: OK. Body model `LeaveRequest` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` CANCELLED, approval CANCELLED). Requester only (others 404), only while PENDING (409).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/LeaveRequest' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1480,13 +1535,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/OvertimeRequestCreate' }
       responses:
         '201':
-          description: Created. Body model `OvertimeRequest` (docs/design/16-api-endpoints.md §16).
+          description: Created (`status` PENDING). Over the daily limit adds warning OVERTIME_OVER_LIMIT (not blocked).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OvertimeRequest' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1503,14 +1558,30 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+        - name: employee_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `OvertimeRequestList` (docs/design/16-api-endpoints.md §16).
+          description: OK. OWNER/HR_ADMIN/PAYROLL_ADMIN all; MANAGER self + direct reports; others self.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OvertimeRequestList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1527,16 +1598,17 @@ paths:
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
-          description: OK. Body model `OvertimeRequest` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` CANCELLED). Requester only, only while PENDING.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/OvertimeRequest' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1939,16 +2011,17 @@ paths:
         - $ref: '#/components/parameters/ResourceId'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '200':
-          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: "OK (`status` FINALIZED, `finalized_at`). The stale check runs again (409 RUN_STALE when input changed after approve); the period is locked (PERIOD_LOCKED for input writers) and the run is immutable (RUN_FINALIZED). A replay with the same key returns the same 200."
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2909,7 +2982,7 @@ components:
         (`stale` is not returned: the authoritative check is the fingerprint guard at approve/finalize).
       required: [id, period, status, calc_version, progress, totals, counts, ruleset, failure_reason, created_by,
                  created_at, calc_started_at, calculated_at, cancel_reason, approval_request_id, submitted_by,
-                 submitted_at, approved_by, approved_at]
+                 submitted_at, approved_by, approved_at, finalized_by, finalized_at]
       properties:
         id: { type: string, format: uuid }
         period: { $ref: '#/components/schemas/Period' }
@@ -2949,6 +3022,8 @@ components:
         submitted_at: { type: [string, 'null'], format: date-time }
         approved_by: { type: [string, 'null'], format: uuid }
         approved_at: { type: [string, 'null'], format: date-time }
+        finalized_by: { type: [string, 'null'], format: uuid }
+        finalized_at: { type: [string, 'null'], format: date-time }
     PayrollRunListItem:
       type: object
       required: [id, period, status, calc_version, total_net, created_at]
@@ -3129,6 +3204,169 @@ components:
           description: The subject after the decision (PAYROLL_RUN → PayrollRun).
           oneOf:
             - $ref: '#/components/schemas/PayrollRun'
+            - $ref: '#/components/schemas/LeaveRequest'
+            - $ref: '#/components/schemas/OvertimeRequest'
+    AttendanceRecord:
+      type: object
+      required: [id, employee_id, work_date, clock_in_at, clock_out_at, status, source, correction_reason, version]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        work_date: { type: string, format: date, description: Tenant-local date of the clock-in. }
+        clock_in_at: { type: [string, 'null'], format: date-time }
+        clock_out_at: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [INCOMPLETE, COMPLETE] }
+        source: { type: string, enum: [CLOCK, IMPORT, CORRECTION] }
+        correction_reason: { type: [string, 'null'] }
+        version: { type: integer, format: int32 }
+    AttendanceList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/AttendanceRecord' }
+        page: { $ref: '#/components/schemas/Page' }
+        summary:
+          type: object
+          required: [present_days, incomplete_days, working_days]
+          properties:
+            present_days: { type: integer, format: int64 }
+            incomplete_days: { type: integer, format: int64 }
+            working_days: { type: integer, description: Weekly work days minus tenant holidays in the period. }
+    AttendanceCorrection:
+      type: object
+      additionalProperties: false
+      description: Omitted times keep their current value; clock_out_at must be after clock_in_at.
+      required: [correction_reason]
+      properties:
+        clock_in_at: { type: string, format: date-time }
+        clock_out_at: { type: string, format: date-time }
+        correction_reason: { type: string, minLength: 1, maxLength: 500 }
+    LeaveType:
+      type: object
+      required: [id, code, name, is_paid, annual_quota_days, max_negative_days, status]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [ANNUAL] }
+        name: { type: string }
+        is_paid: { type: boolean }
+        annual_quota_days: { type: [string, 'null'], examples: ['12.0'] }
+        max_negative_days: { type: string, examples: ['0.0'] }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+    LeaveTypeList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/LeaveType' }
+    LeaveTypeRef:
+      type: object
+      required: [id, code, name, is_paid]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        is_paid: { type: boolean }
+    LeaveBalance:
+      type: object
+      required: [leave_type, year, balance_days, pending_days]
+      properties:
+        leave_type: { $ref: '#/components/schemas/LeaveTypeRef' }
+        year: { type: integer }
+        balance_days: { type: [string, 'null'] }
+        pending_days: { type: string, description: Informational; does not reduce the balance. }
+    LeaveBalanceList:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/LeaveBalance' }
+    SubjectApproval:
+      type: object
+      required: [id, approver, status]
+      properties:
+        id: { type: string, format: uuid }
+        approver: { $ref: '#/components/schemas/ApprovalPerson' }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+    LeaveRequestCreate:
+      type: object
+      additionalProperties: false
+      description: Inclusive dates within one calendar year, at most 60 days, at least one working day.
+      required: [leave_type_id, start_date, end_date]
+      properties:
+        leave_type_id: { type: string, format: uuid }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        reason: { type: string, maxLength: 500 }
+    LeaveRequest:
+      type: object
+      required: [id, employee_id, leave_type, start_date, end_date, days, reason, status, approved_at, approval]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        leave_type: { $ref: '#/components/schemas/LeaveTypeRef' }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        days: { type: string, description: Working days in the range (tenant calendar). }
+        reason: { type: [string, 'null'] }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+        approved_at: { type: [string, 'null'], format: date-time }
+        approval:
+          oneOf:
+            - $ref: '#/components/schemas/SubjectApproval'
+            - type: 'null'
+    LeaveRequestList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/LeaveRequest' }
+        page: { $ref: '#/components/schemas/Page' }
+    OvertimeRequestCreate:
+      type: object
+      additionalProperties: false
+      description: work_date must be the tenant-local date of start_at; duration at most 12 hours, rounded to 0.25 h.
+      required: [work_date, start_at, end_at, reason]
+      properties:
+        work_date: { type: string, format: date }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    OvertimeRequest:
+      type: object
+      required: [id, employee_id, work_date, start_at, end_at, hours, reason, status, approved_at, approval, warnings]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        work_date: { type: string, format: date }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        hours: { type: string, examples: ['4.00'] }
+        reason: { type: string }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+        approved_at: { type: [string, 'null'], format: date-time }
+        approval:
+          oneOf:
+            - $ref: '#/components/schemas/SubjectApproval'
+            - type: 'null'
+        warnings:
+          type: array
+          items: { type: string, enum: [OVERTIME_OVER_LIMIT] }
+    OvertimeRequestList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/OvertimeRequest' }
+        page: { $ref: '#/components/schemas/Page' }
     Problem:
       type: object
       description: RFC 9457 Problem Details with a stable machine-readable code.
@@ -3175,6 +3413,9 @@ components:
         error_count:
           type: integer
           description: RUN_HAS_ERRORS — ERROR items not excluded.
+        balance:
+          type: string
+          description: INSUFFICIENT_LEAVE_BALANCE — current balance in days (1 decimal).
   responses:
     ValidationError:
       description: VALIDATION_ERROR (including an unknown `tenant_id` body field), MALFORMED_JSON, INVALID_CURSOR, IDEMPOTENCY_KEY_REQUIRED, or IDEMPOTENCY_KEY_INVALID.

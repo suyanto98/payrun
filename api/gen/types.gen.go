@@ -71,6 +71,45 @@ func (e ApprovalRequestSubjectType) Valid() bool {
 	}
 }
 
+// Defines values for AttendanceRecordSource.
+const (
+	CLOCK      AttendanceRecordSource = "CLOCK"
+	CORRECTION AttendanceRecordSource = "CORRECTION"
+	IMPORT     AttendanceRecordSource = "IMPORT"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceRecordSource enum.
+func (e AttendanceRecordSource) Valid() bool {
+	switch e {
+	case CLOCK:
+		return true
+	case CORRECTION:
+		return true
+	case IMPORT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AttendanceRecordStatus.
+const (
+	COMPLETE   AttendanceRecordStatus = "COMPLETE"
+	INCOMPLETE AttendanceRecordStatus = "INCOMPLETE"
+)
+
+// Valid indicates whether the value is a known member of the AttendanceRecordStatus enum.
+func (e AttendanceRecordStatus) Valid() bool {
+	switch e {
+	case COMPLETE:
+		return true
+	case INCOMPLETE:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComponentDefinitionCalcType.
 const (
 	ComponentDefinitionCalcTypeFIXED             ComponentDefinitionCalcType = "FIXED"
@@ -467,6 +506,48 @@ func (e InvitationStatus) Valid() bool {
 	}
 }
 
+// Defines values for LeaveRequestStatus.
+const (
+	LeaveRequestStatusAPPROVED  LeaveRequestStatus = "APPROVED"
+	LeaveRequestStatusCANCELLED LeaveRequestStatus = "CANCELLED"
+	LeaveRequestStatusPENDING   LeaveRequestStatus = "PENDING"
+	LeaveRequestStatusREJECTED  LeaveRequestStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the LeaveRequestStatus enum.
+func (e LeaveRequestStatus) Valid() bool {
+	switch e {
+	case LeaveRequestStatusAPPROVED:
+		return true
+	case LeaveRequestStatusCANCELLED:
+		return true
+	case LeaveRequestStatusPENDING:
+		return true
+	case LeaveRequestStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LeaveTypeStatus.
+const (
+	LeaveTypeStatusACTIVE   LeaveTypeStatus = "ACTIVE"
+	LeaveTypeStatusINACTIVE LeaveTypeStatus = "INACTIVE"
+)
+
+// Valid indicates whether the value is a known member of the LeaveTypeStatus enum.
+func (e LeaveTypeStatus) Valid() bool {
+	switch e {
+	case LeaveTypeStatusACTIVE:
+		return true
+	case LeaveTypeStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MemberStatus.
 const (
 	MemberStatusACTIVE  MemberStatus = "ACTIVE"
@@ -515,6 +596,45 @@ func (e OrgUnitStatus) Valid() bool {
 	case OrgUnitStatusACTIVE:
 		return true
 	case OrgUnitStatusINACTIVE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OvertimeRequestStatus.
+const (
+	OvertimeRequestStatusAPPROVED  OvertimeRequestStatus = "APPROVED"
+	OvertimeRequestStatusCANCELLED OvertimeRequestStatus = "CANCELLED"
+	OvertimeRequestStatusPENDING   OvertimeRequestStatus = "PENDING"
+	OvertimeRequestStatusREJECTED  OvertimeRequestStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the OvertimeRequestStatus enum.
+func (e OvertimeRequestStatus) Valid() bool {
+	switch e {
+	case OvertimeRequestStatusAPPROVED:
+		return true
+	case OvertimeRequestStatusCANCELLED:
+		return true
+	case OvertimeRequestStatusPENDING:
+		return true
+	case OvertimeRequestStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OvertimeRequestWarnings.
+const (
+	OVERTIMEOVERLIMIT OvertimeRequestWarnings = "OVERTIME_OVER_LIMIT"
+)
+
+// Valid indicates whether the value is a known member of the OvertimeRequestWarnings enum.
+func (e OvertimeRequestWarnings) Valid() bool {
+	switch e {
+	case OVERTIMEOVERLIMIT:
 		return true
 	default:
 		return false
@@ -779,6 +899,30 @@ const (
 func (e SignupResultTokenType) Valid() bool {
 	switch e {
 	case SignupResultTokenTypeBearer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubjectApprovalStatus.
+const (
+	SubjectApprovalStatusAPPROVED  SubjectApprovalStatus = "APPROVED"
+	SubjectApprovalStatusCANCELLED SubjectApprovalStatus = "CANCELLED"
+	SubjectApprovalStatusPENDING   SubjectApprovalStatus = "PENDING"
+	SubjectApprovalStatusREJECTED  SubjectApprovalStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the SubjectApprovalStatus enum.
+func (e SubjectApprovalStatus) Valid() bool {
+	switch e {
+	case SubjectApprovalStatusAPPROVED:
+		return true
+	case SubjectApprovalStatusCANCELLED:
+		return true
+	case SubjectApprovalStatusPENDING:
+		return true
+	case SubjectApprovalStatusREJECTED:
 		return true
 	default:
 		return false
@@ -1082,6 +1226,30 @@ func (e ListEmployeesParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListLeaveRequestsParamsStatus.
+const (
+	ListLeaveRequestsParamsStatusAPPROVED  ListLeaveRequestsParamsStatus = "APPROVED"
+	ListLeaveRequestsParamsStatusCANCELLED ListLeaveRequestsParamsStatus = "CANCELLED"
+	ListLeaveRequestsParamsStatusPENDING   ListLeaveRequestsParamsStatus = "PENDING"
+	ListLeaveRequestsParamsStatusREJECTED  ListLeaveRequestsParamsStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ListLeaveRequestsParamsStatus enum.
+func (e ListLeaveRequestsParamsStatus) Valid() bool {
+	switch e {
+	case ListLeaveRequestsParamsStatusAPPROVED:
+		return true
+	case ListLeaveRequestsParamsStatusCANCELLED:
+		return true
+	case ListLeaveRequestsParamsStatusPENDING:
+		return true
+	case ListLeaveRequestsParamsStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListMembersParamsStatus.
 const (
 	ListMembersParamsStatusACTIVE  ListMembersParamsStatus = "ACTIVE"
@@ -1097,6 +1265,30 @@ func (e ListMembersParamsStatus) Valid() bool {
 	case ListMembersParamsStatusINVITED:
 		return true
 	case ListMembersParamsStatusREVOKED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListOvertimeRequestsParamsStatus.
+const (
+	ListOvertimeRequestsParamsStatusAPPROVED  ListOvertimeRequestsParamsStatus = "APPROVED"
+	ListOvertimeRequestsParamsStatusCANCELLED ListOvertimeRequestsParamsStatus = "CANCELLED"
+	ListOvertimeRequestsParamsStatusPENDING   ListOvertimeRequestsParamsStatus = "PENDING"
+	ListOvertimeRequestsParamsStatusREJECTED  ListOvertimeRequestsParamsStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ListOvertimeRequestsParamsStatus enum.
+func (e ListOvertimeRequestsParamsStatus) Valid() bool {
+	switch e {
+	case ListOvertimeRequestsParamsStatusAPPROVED:
+		return true
+	case ListOvertimeRequestsParamsStatusCANCELLED:
+		return true
+	case ListOvertimeRequestsParamsStatusPENDING:
+		return true
+	case ListOvertimeRequestsParamsStatusREJECTED:
 		return true
 	default:
 		return false
@@ -1225,6 +1417,47 @@ type ApprovalRequestStatus string
 
 // ApprovalRequestSubjectType defines model for ApprovalRequest.SubjectType.
 type ApprovalRequestSubjectType string
+
+// AttendanceCorrection Omitted times keep their current value; clock_out_at must be after clock_in_at.
+type AttendanceCorrection struct {
+	ClockInAt        *time.Time `json:"clock_in_at,omitempty"`
+	ClockOutAt       *time.Time `json:"clock_out_at,omitempty"`
+	CorrectionReason string     `json:"correction_reason"`
+}
+
+// AttendanceList defines model for AttendanceList.
+type AttendanceList struct {
+	Data    []AttendanceRecord `json:"data"`
+	Page    Page               `json:"page"`
+	Summary *struct {
+		IncompleteDays int64 `json:"incomplete_days"`
+		PresentDays    int64 `json:"present_days"`
+
+		// WorkingDays Weekly work days minus tenant holidays in the period.
+		WorkingDays int `json:"working_days"`
+	} `json:"summary,omitempty"`
+}
+
+// AttendanceRecord defines model for AttendanceRecord.
+type AttendanceRecord struct {
+	ClockInAt        *time.Time             `json:"clock_in_at"`
+	ClockOutAt       *time.Time             `json:"clock_out_at"`
+	CorrectionReason *string                `json:"correction_reason"`
+	EmployeeId       openapi_types.UUID     `json:"employee_id"`
+	Id               openapi_types.UUID     `json:"id"`
+	Source           AttendanceRecordSource `json:"source"`
+	Status           AttendanceRecordStatus `json:"status"`
+	Version          int32                  `json:"version"`
+
+	// WorkDate Tenant-local date of the clock-in.
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// AttendanceRecordSource defines model for AttendanceRecord.Source.
+type AttendanceRecordSource string
+
+// AttendanceRecordStatus defines model for AttendanceRecord.Status.
+type AttendanceRecordStatus string
 
 // Bank defines model for Bank.
 type Bank struct {
@@ -1564,6 +1797,86 @@ type InvitationRequest struct {
 	Roles      []Role              `json:"roles"`
 }
 
+// LeaveBalance defines model for LeaveBalance.
+type LeaveBalance struct {
+	BalanceDays *string      `json:"balance_days"`
+	LeaveType   LeaveTypeRef `json:"leave_type"`
+
+	// PendingDays Informational; does not reduce the balance.
+	PendingDays string `json:"pending_days"`
+	Year        int    `json:"year"`
+}
+
+// LeaveBalanceList defines model for LeaveBalanceList.
+type LeaveBalanceList struct {
+	Data []LeaveBalance `json:"data"`
+}
+
+// LeaveRequest defines model for LeaveRequest.
+type LeaveRequest struct {
+	Approval   *SubjectApproval `json:"approval"`
+	ApprovedAt *time.Time       `json:"approved_at"`
+
+	// Days Working days in the range (tenant calendar).
+	Days       string             `json:"days"`
+	EmployeeId openapi_types.UUID `json:"employee_id"`
+	EndDate    openapi_types.Date `json:"end_date"`
+	Id         openapi_types.UUID `json:"id"`
+	LeaveType  LeaveTypeRef       `json:"leave_type"`
+	Reason     *string            `json:"reason"`
+	StartDate  openapi_types.Date `json:"start_date"`
+	Status     LeaveRequestStatus `json:"status"`
+}
+
+// LeaveRequestStatus defines model for LeaveRequest.Status.
+type LeaveRequestStatus string
+
+// LeaveRequestCreate Inclusive dates within one calendar year, at most 60 days, at least one working day.
+type LeaveRequestCreate struct {
+	EndDate     openapi_types.Date `json:"end_date"`
+	LeaveTypeId openapi_types.UUID `json:"leave_type_id"`
+	Reason      *string            `json:"reason,omitempty"`
+	StartDate   openapi_types.Date `json:"start_date"`
+}
+
+// LeaveRequestList defines model for LeaveRequestList.
+type LeaveRequestList struct {
+	Data []LeaveRequest `json:"data"`
+	Page Page           `json:"page"`
+}
+
+// LeaveType defines model for LeaveType.
+type LeaveType struct {
+	// AnnualQuotaDays Examples: 12.0
+	AnnualQuotaDays *string `json:"annual_quota_days"`
+
+	// Code Examples: ANNUAL
+	Code   string             `json:"code"`
+	Id     openapi_types.UUID `json:"id"`
+	IsPaid bool               `json:"is_paid"`
+
+	// MaxNegativeDays Examples: 0.0
+	MaxNegativeDays string          `json:"max_negative_days"`
+	Name            string          `json:"name"`
+	Status          LeaveTypeStatus `json:"status"`
+}
+
+// LeaveTypeStatus defines model for LeaveType.Status.
+type LeaveTypeStatus string
+
+// LeaveTypeList defines model for LeaveTypeList.
+type LeaveTypeList struct {
+	Data []LeaveType `json:"data"`
+}
+
+// LeaveTypeRef defines model for LeaveTypeRef.
+type LeaveTypeRef struct {
+	Code   string             `json:"code"`
+	Id     openapi_types.UUID `json:"id"`
+	IsPaid bool               `json:"is_paid"`
+	Name   string             `json:"name"`
+}
+
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
@@ -1695,6 +2008,43 @@ type OrgUnitUpdate struct {
 	Name string `json:"name"`
 }
 
+// OvertimeRequest defines model for OvertimeRequest.
+type OvertimeRequest struct {
+	Approval   *SubjectApproval   `json:"approval"`
+	ApprovedAt *time.Time         `json:"approved_at"`
+	EmployeeId openapi_types.UUID `json:"employee_id"`
+	EndAt      time.Time          `json:"end_at"`
+
+	// Hours Examples: 4.00
+	Hours    string                    `json:"hours"`
+	Id       openapi_types.UUID        `json:"id"`
+	Reason   string                    `json:"reason"`
+	StartAt  time.Time                 `json:"start_at"`
+	Status   OvertimeRequestStatus     `json:"status"`
+	Warnings []OvertimeRequestWarnings `json:"warnings"`
+	WorkDate openapi_types.Date        `json:"work_date"`
+}
+
+// OvertimeRequestStatus defines model for OvertimeRequest.Status.
+type OvertimeRequestStatus string
+
+// OvertimeRequestWarnings defines model for OvertimeRequest.Warnings.
+type OvertimeRequestWarnings string
+
+// OvertimeRequestCreate work_date must be the tenant-local date of start_at; duration at most 12 hours, rounded to 0.25 h.
+type OvertimeRequestCreate struct {
+	EndAt    time.Time          `json:"end_at"`
+	Reason   string             `json:"reason"`
+	StartAt  time.Time          `json:"start_at"`
+	WorkDate openapi_types.Date `json:"work_date"`
+}
+
+// OvertimeRequestList defines model for OvertimeRequestList.
+type OvertimeRequestList struct {
+	Data []OvertimeRequest `json:"data"`
+	Page Page              `json:"page"`
+}
+
 // Page defines model for Page.
 type Page struct {
 	HasMore    bool    `json:"has_more"`
@@ -1810,8 +2160,10 @@ type PayrollRun struct {
 	CreatedBy *openapi_types.UUID `json:"created_by"`
 
 	// FailureReason Set when a job failed permanently (FAILED).
-	FailureReason *string            `json:"failure_reason"`
-	Id            openapi_types.UUID `json:"id"`
+	FailureReason *string             `json:"failure_reason"`
+	FinalizedAt   *time.Time          `json:"finalized_at"`
+	FinalizedBy   *openapi_types.UUID `json:"finalized_by"`
+	Id            openapi_types.UUID  `json:"id"`
 
 	// Period Payroll period, calendar month in the tenant timezone.
 	//
@@ -1882,6 +2234,9 @@ type Period = string
 type Problem struct {
 	// ApprovalStatus APPROVAL_ALREADY_DECIDED — the existing decision (`status` is the HTTP status, RFC 9457).
 	ApprovalStatus *ProblemApprovalStatus `json:"approval_status,omitempty"`
+
+	// Balance INSUFFICIENT_LEAVE_BALANCE — current balance in days (1 decimal).
+	Balance *string `json:"balance,omitempty"`
 
 	// ChangedCount RUN_STALE — number of employees with input changes since calc_started_at (candidates).
 	ChangedCount *int `json:"changed_count,omitempty"`
@@ -2031,6 +2386,16 @@ type SignupResult struct {
 
 // SignupResultTokenType defines model for SignupResult.TokenType.
 type SignupResultTokenType string
+
+// SubjectApproval defines model for SubjectApproval.
+type SubjectApproval struct {
+	Approver ApprovalPerson        `json:"approver"`
+	Id       openapi_types.UUID    `json:"id"`
+	Status   SubjectApprovalStatus `json:"status"`
+}
+
+// SubjectApprovalStatus defines model for SubjectApproval.Status.
+type SubjectApprovalStatus string
 
 // SubmitPayrollRunRequest Approver is chosen by the server among other active OWNER/PAYROLL_ADMIN members: automatically when exactly one exists, otherwise `approver_user_id` is required. `self_approval_reason` only when no other admin exists (422 SELF_APPROVAL_REASON_REQUIRED without it, 403 SELF_APPROVAL_FORBIDDEN when another admin exists).
 type SubmitPayrollRunRequest struct {
@@ -2205,7 +2570,17 @@ type ListApprovalInboxParamsScope string
 
 // ListAttendanceParams defines parameters for ListAttendance.
 type ListAttendanceParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	// EmployeeId Forced to self for EMPLOYEE; out of scope → 404.
+	EmployeeId *openapi_types.UUID `form:"employee_id,omitempty" json:"employee_id,omitempty"`
+	Period     *Period             `form:"period,omitempty" json:"period,omitempty"`
+	From       *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Inclusive; from..to at most 62 days.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Date One day (daily recap).
+	Date  *openapi_types.Date `form:"date,omitempty" json:"date,omitempty"`
+	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -2352,11 +2727,18 @@ type ListHolidaysParams struct {
 
 // ListLeaveRequestsParams defines parameters for ListLeaveRequests.
 type ListLeaveRequestsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status     *ListLeaveRequestsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	EmployeeId *openapi_types.UUID            `form:"employee_id,omitempty" json:"employee_id,omitempty"`
+	From       *openapi_types.Date            `form:"from,omitempty" json:"from,omitempty"`
+	To         *openapi_types.Date            `form:"to,omitempty" json:"to,omitempty"`
+	Limit      *Limit                         `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListLeaveRequestsParamsStatus defines parameters for ListLeaveRequests.
+type ListLeaveRequestsParamsStatus string
 
 // CreateLeaveRequestParams defines parameters for CreateLeaveRequest.
 type CreateLeaveRequestParams struct {
@@ -2364,20 +2746,10 @@ type CreateLeaveRequestParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
-// ListLeaveTypesParams defines parameters for ListLeaveTypes.
-type ListLeaveTypesParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
-}
-
 // ListMyLeaveBalancesParams defines parameters for ListMyLeaveBalances.
 type ListMyLeaveBalancesParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Cursor Opaque cursor from `page.next_cursor`.
-	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	// Year Default: current year.
+	Year *int `form:"year,omitempty" json:"year,omitempty"`
 }
 
 // ListMyPayslipsParams defines parameters for ListMyPayslips.
@@ -2409,11 +2781,18 @@ type UpdateMemberRolesParams struct {
 
 // ListOvertimeRequestsParams defines parameters for ListOvertimeRequests.
 type ListOvertimeRequestsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status     *ListOvertimeRequestsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	EmployeeId *openapi_types.UUID               `form:"employee_id,omitempty" json:"employee_id,omitempty"`
+	From       *openapi_types.Date               `form:"from,omitempty" json:"from,omitempty"`
+	To         *openapi_types.Date               `form:"to,omitempty" json:"to,omitempty"`
+	Limit      *Limit                            `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListOvertimeRequestsParamsStatus defines parameters for ListOvertimeRequests.
+type ListOvertimeRequestsParamsStatus string
 
 // CreateOvertimeRequestParams defines parameters for CreateOvertimeRequest.
 type CreateOvertimeRequestParams struct {
@@ -2528,13 +2907,13 @@ type RejectRequestJSONRequestBody = ApprovalDecisionRequest
 type CreateAttendanceImportJSONRequestBody = Pending
 
 // ClockInJSONRequestBody defines body for ClockIn for application/json ContentType.
-type ClockInJSONRequestBody = Pending
+type ClockInJSONRequestBody = Empty
 
 // ClockOutJSONRequestBody defines body for ClockOut for application/json ContentType.
-type ClockOutJSONRequestBody = Pending
+type ClockOutJSONRequestBody = Empty
 
 // CorrectAttendanceJSONRequestBody defines body for CorrectAttendance for application/json ContentType.
-type CorrectAttendanceJSONRequestBody = Pending
+type CorrectAttendanceJSONRequestBody = AttendanceCorrection
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -2588,10 +2967,10 @@ type CreateInvitationJSONRequestBody = InvitationRequest
 type AcceptInvitationJSONRequestBody = AcceptInvitationRequest
 
 // CreateLeaveRequestJSONRequestBody defines body for CreateLeaveRequest for application/json ContentType.
-type CreateLeaveRequestJSONRequestBody = Pending
+type CreateLeaveRequestJSONRequestBody = LeaveRequestCreate
 
 // CancelLeaveRequestJSONRequestBody defines body for CancelLeaveRequest for application/json ContentType.
-type CancelLeaveRequestJSONRequestBody = Pending
+type CancelLeaveRequestJSONRequestBody = Empty
 
 // RevokeMemberJSONRequestBody defines body for RevokeMember for application/json ContentType.
 type RevokeMemberJSONRequestBody = RevokeMemberRequest
@@ -2600,10 +2979,10 @@ type RevokeMemberJSONRequestBody = RevokeMemberRequest
 type UpdateMemberRolesJSONRequestBody = MemberRolesRequest
 
 // CreateOvertimeRequestJSONRequestBody defines body for CreateOvertimeRequest for application/json ContentType.
-type CreateOvertimeRequestJSONRequestBody = Pending
+type CreateOvertimeRequestJSONRequestBody = OvertimeRequestCreate
 
 // CancelOvertimeRequestJSONRequestBody defines body for CancelOvertimeRequest for application/json ContentType.
-type CancelOvertimeRequestJSONRequestBody = Pending
+type CancelOvertimeRequestJSONRequestBody = Empty
 
 // CreatePayrollRunJSONRequestBody defines body for CreatePayrollRun for application/json ContentType.
 type CreatePayrollRunJSONRequestBody = CreatePayrollRunRequest
@@ -2615,7 +2994,7 @@ type CalculatePayrollRunJSONRequestBody = Empty
 type CancelPayrollRunJSONRequestBody = CancelPayrollRunRequest
 
 // FinalizePayrollRunJSONRequestBody defines body for FinalizePayrollRun for application/json ContentType.
-type FinalizePayrollRunJSONRequestBody = Pending
+type FinalizePayrollRunJSONRequestBody = Empty
 
 // ExcludePayrollItemJSONRequestBody defines body for ExcludePayrollItem for application/json ContentType.
 type ExcludePayrollItemJSONRequestBody = ExcludePayrollItemRequest
@@ -2657,6 +3036,58 @@ func (t *ApprovalDecision_Subject) FromPayrollRun(v PayrollRun) error {
 
 // MergePayrollRun performs a merge with any union data inside the ApprovalDecision_Subject, using the provided PayrollRun
 func (t *ApprovalDecision_Subject) MergePayrollRun(v PayrollRun) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLeaveRequest returns the union data inside the ApprovalDecision_Subject as a LeaveRequest
+func (t ApprovalDecision_Subject) AsLeaveRequest() (LeaveRequest, error) {
+	var body LeaveRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLeaveRequest overwrites any union data inside the ApprovalDecision_Subject as the provided LeaveRequest
+func (t *ApprovalDecision_Subject) FromLeaveRequest(v LeaveRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLeaveRequest performs a merge with any union data inside the ApprovalDecision_Subject, using the provided LeaveRequest
+func (t *ApprovalDecision_Subject) MergeLeaveRequest(v LeaveRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOvertimeRequest returns the union data inside the ApprovalDecision_Subject as a OvertimeRequest
+func (t ApprovalDecision_Subject) AsOvertimeRequest() (OvertimeRequest, error) {
+	var body OvertimeRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOvertimeRequest overwrites any union data inside the ApprovalDecision_Subject as the provided OvertimeRequest
+func (t *ApprovalDecision_Subject) FromOvertimeRequest(v OvertimeRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOvertimeRequest performs a merge with any union data inside the ApprovalDecision_Subject, using the provided OvertimeRequest
+func (t *ApprovalDecision_Subject) MergeOvertimeRequest(v OvertimeRequest) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err

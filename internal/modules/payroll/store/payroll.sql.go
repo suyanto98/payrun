@@ -160,6 +160,27 @@ func (q *Queries) DeleteChunkItems(ctx context.Context, arg DeleteChunkItemsPara
 	return err
 }
 
+const deleteOldVersionItems = `-- name: DeleteOldVersionItems :execrows
+DELETE FROM payroll_items WHERE id IN (
+  SELECT old.id FROM payroll_items old WHERE old.run_id = $1 AND old.calc_version < $2 LIMIT 1000)
+`
+
+type DeleteOldVersionItemsParams struct {
+	RunID       uuid.UUID
+	KeepVersion int32
+}
+
+// Job payroll.cleanup_versions (Step 12 R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
+// transaksi finalize yang memegang lock periode. Line + snapshot ikut (CASCADE); trigger PI-04 mengizinkan
+// DELETE versi < calc_version run final.
+func (q *Queries) DeleteOldVersionItems(ctx context.Context, arg DeleteOldVersionItemsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldVersionItems, arg.RunID, arg.KeepVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const eligibleAmong = `-- name: EligibleAmong :many
 SELECT DISTINCT e.id, e.employee_no FROM employees e
 JOIN employment_spans s ON s.tenant_id = e.tenant_id AND s.employee_id = e.id
@@ -276,6 +297,45 @@ func (q *Queries) FailRun(ctx context.Context, arg FailRunParams) (int64, error)
 	return result.RowsAffected(), nil
 }
 
+const finalizePeriod = `-- name: FinalizePeriod :exec
+UPDATE payroll_periods SET status = 'FINALIZED', finalized_run_id = $1, finalized_at = $2
+WHERE id = $3 AND status <> 'FINALIZED'
+`
+
+type FinalizePeriodParams struct {
+	FinalRun *uuid.UUID
+	At       *time.Time
+	ID       uuid.UUID
+}
+
+// [2] Periode FINALIZED: PeriodGuard aplikasi + trigger guard_period_* menolak semua penulis input (PI-14).
+func (q *Queries) FinalizePeriod(ctx context.Context, arg FinalizePeriodParams) error {
+	_, err := q.db.Exec(ctx, finalizePeriod, arg.FinalRun, arg.At, arg.ID)
+	return err
+}
+
+const finalizeRun = `-- name: FinalizeRun :execrows
+
+UPDATE payroll_runs SET status = 'FINALIZED', finalized_by = $1, finalized_at = $2
+WHERE id = $3 AND status = 'APPROVED'
+`
+
+type FinalizeRunParams struct {
+	Actor *uuid.UUID
+	At    *time.Time
+	ID    uuid.UUID
+}
+
+// ---------------------------------------------------------------- finalize (S6, Y11, Step 7 `22` §3.4)
+// [3] Guard APPROVED; trigger payroll_runs_totals_check memverifikasi total (PI-05). Setelah ini terminal (PI-04).
+func (q *Queries) FinalizeRun(ctx context.Context, arg FinalizeRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, finalizeRun, arg.Actor, arg.At, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getItem = `-- name: GetItem :one
 SELECT i.tenant_id, i.id, i.run_id, i.employee_id, i.employee_no, i.employee_name, i.department_id, i.calc_version,
        i.status, i.gross, i.deductions, i.net, i.error_codes, i.warning_codes, i.issues, i.excluded_reason
@@ -336,7 +396,8 @@ SELECT r.tenant_id, r.id, r.period_id, p.year, p.month, r.status, r.calc_version
        r.eligible_count, r.ruleset_code, r.ruleset_version, r.total_gross, r.total_deductions, r.total_net,
        r.item_ok_count, r.item_error_count, r.item_excluded_count, r.warning_count, r.failure_reason,
        r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason,
-       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at
+       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at,
+       r.finalized_by, r.finalized_at
 FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
 WHERE r.id = $1
 `
@@ -373,6 +434,8 @@ type GetRunRow struct {
 	SubmittedAt       *time.Time
 	ApprovedBy        *uuid.UUID
 	ApprovedAt        *time.Time
+	FinalizedBy       *uuid.UUID
+	FinalizedAt       *time.Time
 }
 
 func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (GetRunRow, error) {
@@ -410,6 +473,8 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (GetRunRow, error) {
 		&i.SubmittedAt,
 		&i.ApprovedBy,
 		&i.ApprovedAt,
+		&i.FinalizedBy,
+		&i.FinalizedAt,
 	)
 	return i, err
 }
@@ -690,6 +755,144 @@ func (q *Queries) InputHolidays(ctx context.Context, arg InputHolidaysParams) ([
 			return nil, err
 		}
 		items = append(items, holiday_date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const inputIncomplete = `-- name: InputIncomplete :many
+SELECT employee_id, work_date FROM attendance_records
+WHERE employee_id = ANY ($1::uuid[]) AND status = 'INCOMPLETE' AND work_date >= $2 AND work_date < $3
+ORDER BY employee_id, work_date
+`
+
+type InputIncompleteParams struct {
+	Ids      []uuid.UUID
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+type InputIncompleteRow struct {
+	EmployeeID uuid.UUID
+	WorkDate   time.Time
+}
+
+// Catatan INCOMPLETE (lupa clock-out) → engine sesuai incomplete_attendance_policy. COMPLETE = hadir.
+func (q *Queries) InputIncomplete(ctx context.Context, arg InputIncompleteParams) ([]InputIncompleteRow, error) {
+	rows, err := q.db.Query(ctx, inputIncomplete, arg.Ids, arg.FromDate, arg.ToDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InputIncompleteRow
+	for rows.Next() {
+		var i InputIncompleteRow
+		if err := rows.Scan(&i.EmployeeID, &i.WorkDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const inputLeaves = `-- name: InputLeaves :many
+SELECT r.employee_id, lower(r.dates)::date AS start_date, upper(r.dates)::date AS end_exclusive, lt.is_paid
+FROM leave_requests r JOIN leave_types lt ON lt.tenant_id = r.tenant_id AND lt.id = r.leave_type_id
+WHERE r.employee_id = ANY ($1::uuid[]) AND r.status = 'APPROVED' AND r.approved_at <= $2
+  AND r.dates && daterange($3::date, $4::date, '[)')
+ORDER BY r.employee_id, lower(r.dates)
+`
+
+type InputLeavesParams struct {
+	Ids      []uuid.UUID
+	CutoffAt *time.Time
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+type InputLeavesRow struct {
+	EmployeeID   uuid.UUID
+	StartDate    time.Time
+	EndExclusive time.Time
+	IsPaid       bool
+}
+
+// PI-08: cuti APPROVED yang beririsan dengan periode dan disetujui ≤ cut-off periode.
+func (q *Queries) InputLeaves(ctx context.Context, arg InputLeavesParams) ([]InputLeavesRow, error) {
+	rows, err := q.db.Query(ctx, inputLeaves,
+		arg.Ids,
+		arg.CutoffAt,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InputLeavesRow
+	for rows.Next() {
+		var i InputLeavesRow
+		if err := rows.Scan(
+			&i.EmployeeID,
+			&i.StartDate,
+			&i.EndExclusive,
+			&i.IsPaid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const inputOvertime = `-- name: InputOvertime :many
+SELECT employee_id, work_date, sum(hours)::numeric AS hours FROM overtime_requests
+WHERE employee_id = ANY ($1::uuid[]) AND status = 'APPROVED' AND approved_at <= $2
+  AND work_date >= $3 AND work_date < $4
+GROUP BY employee_id, work_date
+ORDER BY employee_id, work_date
+`
+
+type InputOvertimeParams struct {
+	Ids      []uuid.UUID
+	CutoffAt *time.Time
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+type InputOvertimeRow struct {
+	EmployeeID uuid.UUID
+	WorkDate   time.Time
+	Hours      pgtype.Numeric
+}
+
+// PI-08: lembur APPROVED bertanggal di periode dan disetujui ≤ cut-off; jam dijumlah per hari.
+func (q *Queries) InputOvertime(ctx context.Context, arg InputOvertimeParams) ([]InputOvertimeRow, error) {
+	rows, err := q.db.Query(ctx, inputOvertime,
+		arg.Ids,
+		arg.CutoffAt,
+		arg.FromDate,
+		arg.ToDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InputOvertimeRow
+	for rows.Next() {
+		var i InputOvertimeRow
+		if err := rows.Scan(&i.EmployeeID, &i.WorkDate, &i.Hours); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1412,6 +1615,25 @@ func (q *Queries) LockTenantSettings(ctx context.Context, tenantID uuid.UUID) (L
 	var i LockTenantSettingsRow
 	err := row.Scan(&i.Timezone, &i.CutoffDayOfNextMonth, &i.CutoffTime)
 	return i, err
+}
+
+const periodCutoff = `-- name: PeriodCutoff :one
+
+SELECT cutoff_at FROM payroll_periods WHERE year = $1 AND month = $2
+`
+
+type PeriodCutoffParams struct {
+	Year  int16
+	Month int16
+}
+
+// ---------------------------------------------------------------- InputProvider absensi/cuti/lembur (S6)
+// cutoff_at dibekukan saat periode dibuat (determinisme, PI-08).
+func (q *Queries) PeriodCutoff(ctx context.Context, arg PeriodCutoffParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, periodCutoff, arg.Year, arg.Month)
+	var cutoff_at time.Time
+	err := row.Scan(&cutoff_at)
+	return cutoff_at, err
 }
 
 const recordInputChanges = `-- name: RecordInputChanges :exec

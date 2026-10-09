@@ -68,6 +68,10 @@ VALUES (@id, @tenant_id, @actor_type, @actor_id, @action, @target_type, @target_
 -- [tenant] Seed O6: komponen sistem (BASE_SALARY, OVERTIME, ABSENCE_*, BPJS_*, PPH21, ADJUSTMENT).
 SELECT seed_system_components(@tenant_id::uuid, @actor::uuid);
 
+-- name: SeedLeaveTypes :exec
+-- [tenant] Seed jenis cuti default (13 §6, S6): ANNUAL (dibayar, kuota 12), SICK (dibayar), UNPAID.
+SELECT seed_leave_types(@tenant_id::uuid, @actor::uuid);
+
 -- name: ListHolidays :many
 -- [tenant] T4: libur satu tahun (maksimal 366 baris, tanpa pagination).
 SELECT tenant_id, id, holiday_date, name, version FROM holidays
@@ -87,3 +91,7 @@ DELETE FROM holidays WHERE id = @id RETURNING holiday_date;
 -- name: GetHolidayDate :one
 -- [tenant] Tanggal libur yang akan dihapus, dibaca SEBELUM PeriodGuard (tanpa lock; urutan [1b] → [2] → [6]).
 SELECT holiday_date FROM holidays WHERE id = @id;
+
+-- name: CalendarSettings :one
+-- [tenant] Zona waktu + hari kerja mingguan (kalender kerja, dipakai modul input S6).
+SELECT timezone, work_days, coalesce(overtime_max_hours_per_day::text, '')::text AS overtime_max FROM tenant_settings WHERE tenant_id = @tenant_id;

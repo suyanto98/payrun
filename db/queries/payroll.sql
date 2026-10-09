@@ -40,7 +40,8 @@ SELECT r.tenant_id, r.id, r.period_id, p.year, p.month, r.status, r.calc_version
        r.eligible_count, r.ruleset_code, r.ruleset_version, r.total_gross, r.total_deductions, r.total_net,
        r.item_ok_count, r.item_error_count, r.item_excluded_count, r.warning_count, r.failure_reason,
        r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason,
-       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at
+       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at,
+       r.finalized_by, r.finalized_at
 FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
 WHERE r.id = @id;
 
@@ -325,3 +326,50 @@ ORDER BY item_id, sort_order;
 -- name: RulesetByVersion :one
 -- Versi ruleset yang TERSIMPAN di snapshot (bukan yang berlaku hari ini).
 SELECT payload FROM rulesets WHERE code = @code AND version = @version;
+
+-- ---------------------------------------------------------------- InputProvider absensi/cuti/lembur (S6)
+
+-- name: PeriodCutoff :one
+-- cutoff_at dibekukan saat periode dibuat (determinisme, PI-08).
+SELECT cutoff_at FROM payroll_periods WHERE year = @year AND month = @month;
+
+-- name: InputIncomplete :many
+-- Catatan INCOMPLETE (lupa clock-out) → engine sesuai incomplete_attendance_policy. COMPLETE = hadir.
+SELECT employee_id, work_date FROM attendance_records
+WHERE employee_id = ANY (@ids::uuid[]) AND status = 'INCOMPLETE' AND work_date >= @from_date AND work_date < @to_date
+ORDER BY employee_id, work_date;
+
+-- name: InputLeaves :many
+-- PI-08: cuti APPROVED yang beririsan dengan periode dan disetujui ≤ cut-off periode.
+SELECT r.employee_id, lower(r.dates)::date AS start_date, upper(r.dates)::date AS end_exclusive, lt.is_paid
+FROM leave_requests r JOIN leave_types lt ON lt.tenant_id = r.tenant_id AND lt.id = r.leave_type_id
+WHERE r.employee_id = ANY (@ids::uuid[]) AND r.status = 'APPROVED' AND r.approved_at <= @cutoff_at
+  AND r.dates && daterange(@from_date::date, @to_date::date, '[)')
+ORDER BY r.employee_id, lower(r.dates);
+
+-- name: InputOvertime :many
+-- PI-08: lembur APPROVED bertanggal di periode dan disetujui ≤ cut-off; jam dijumlah per hari.
+SELECT employee_id, work_date, sum(hours)::numeric AS hours FROM overtime_requests
+WHERE employee_id = ANY (@ids::uuid[]) AND status = 'APPROVED' AND approved_at <= @cutoff_at
+  AND work_date >= @from_date AND work_date < @to_date
+GROUP BY employee_id, work_date
+ORDER BY employee_id, work_date;
+
+-- ---------------------------------------------------------------- finalize (S6, Y11, Step 7 `22` §3.4)
+
+-- name: FinalizeRun :execrows
+-- [3] Guard APPROVED; trigger payroll_runs_totals_check memverifikasi total (PI-05). Setelah ini terminal (PI-04).
+UPDATE payroll_runs SET status = 'FINALIZED', finalized_by = @actor, finalized_at = @at
+WHERE id = @id AND status = 'APPROVED';
+
+-- name: FinalizePeriod :exec
+-- [2] Periode FINALIZED: PeriodGuard aplikasi + trigger guard_period_* menolak semua penulis input (PI-14).
+UPDATE payroll_periods SET status = 'FINALIZED', finalized_run_id = @final_run, finalized_at = @at
+WHERE id = @id AND status <> 'FINALIZED';
+
+-- name: DeleteOldVersionItems :execrows
+-- Job payroll.cleanup_versions (Step 12 R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
+-- transaksi finalize yang memegang lock periode. Line + snapshot ikut (CASCADE); trigger PI-04 mengizinkan
+-- DELETE versi < calc_version run final.
+DELETE FROM payroll_items WHERE id IN (
+  SELECT old.id FROM payroll_items old WHERE old.run_id = @run_id AND old.calc_version < @keep_version LIMIT 1000);

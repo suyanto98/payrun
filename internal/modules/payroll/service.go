@@ -97,6 +97,8 @@ type Run struct {
 	SubmittedAt       *time.Time  `json:"submitted_at"`
 	ApprovedBy        *uuid.UUID  `json:"approved_by"`
 	ApprovedAt        *time.Time  `json:"approved_at"`
+	FinalizedBy       *uuid.UUID  `json:"finalized_by"`
+	FinalizedAt       *time.Time  `json:"finalized_at"`
 	Period            string      `json:"period"`
 	Status            string      `json:"status"`
 	CalcVersion       int32       `json:"calc_version"`
@@ -120,7 +122,8 @@ func toRun(r store.GetRunRow) Run {
 		Counts:        Counts{OK: r.ItemOkCount, Error: r.ItemErrorCount, Excluded: r.ItemExcludedCount, Warnings: r.WarningCount},
 		FailureReason: r.FailureReason, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, CalcStartedAt: r.CalcStartedAt,
 		CalculatedAt: r.CalculatedAt, CancelReason: r.CancelReason, ApprovalRequestID: r.ApprovalRequestID,
-		SubmittedBy: r.SubmittedBy, SubmittedAt: r.SubmittedAt, ApprovedBy: r.ApprovedBy, ApprovedAt: r.ApprovedAt}
+		SubmittedBy: r.SubmittedBy, SubmittedAt: r.SubmittedAt, ApprovedBy: r.ApprovedBy, ApprovedAt: r.ApprovedAt,
+		FinalizedBy: r.FinalizedBy, FinalizedAt: r.FinalizedAt}
 	if g, d, n := toDec(r.TotalGross), toDec(r.TotalDeductions), toDec(r.TotalNet); g != nil && d != nil && n != nil {
 		out.Totals = &Totals{Gross: g.StringFixed(2), Deductions: d.StringFixed(2), Net: n.StringFixed(2)}
 	}
@@ -249,6 +252,9 @@ func (s *Service) CalculateTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.
 	}
 	if _, err := q.LockPeriod(ctx, run.PeriodID); err != nil {
 		return Run{}, db.MapError(err)
+	}
+	if cur.Status == "FINALIZED" {
+		return Run{}, apperr.ErrRunFinalized
 	}
 	ver, err := q.StartCalculation(ctx, runID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -519,6 +525,9 @@ func (s *Service) Exclude(ctx context.Context, actor, runID, itemID uuid.UUID, r
 		if err != nil {
 			return err
 		}
+		if run.Status == "FINALIZED" {
+			return apperr.ErrRunFinalized // Demo C: item run final tidak bisa diubah
+		}
 		if run.Status != "CALCULATED" || item.Status != "ERROR" {
 			return apperr.ErrInvalidState.WithDetail("Only ERROR items of a CALCULATED run can be excluded")
 		}
@@ -557,6 +566,9 @@ func (s *Service) Cancel(ctx context.Context, actor, runID uuid.UUID, reason str
 		}
 		if _, err := q.LockPeriod(ctx, run.PeriodID); err != nil { // [2] → [3]
 			return err
+		}
+		if cur.Status == "FINALIZED" {
+			return apperr.ErrRunFinalized
 		}
 		periodID, err := q.CancelRun(ctx, store.CancelRunParams{Actor: &actor, Reason: &reason, ID: runID})
 		if errors.Is(err, pgx.ErrNoRows) {

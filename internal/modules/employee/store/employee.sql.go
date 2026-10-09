@@ -167,6 +167,85 @@ func (q *Queries) CreateSpan(ctx context.Context, arg CreateSpanParams) error {
 	return err
 }
 
+const directReportIDs = `-- name: DirectReportIDs :many
+SELECT id FROM employees WHERE manager_employee_id = $1 ORDER BY id
+`
+
+// [tenant] Bawahan langsung saat ini (scope 👥 MANAGER, file 17).
+func (q *Queries) DirectReportIDs(ctx context.Context, managerID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, directReportIDs, managerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const employeeActiveOn = `-- name: EmployeeActiveOn :one
+SELECT EXISTS (SELECT 1 FROM employment_spans s WHERE s.employee_id = $1 AND s.span @> $2::date) AS active,
+       EXISTS (SELECT 1 FROM employees e WHERE e.id = $1) AS found
+`
+
+type EmployeeActiveOnParams struct {
+	EmployeeID uuid.UUID
+	OnDate     time.Time
+}
+
+type EmployeeActiveOnRow struct {
+	Active bool
+	Found  bool
+}
+
+// [tenant] Employee ada di tenant ini dan aktif pada tanggal itu.
+func (q *Queries) EmployeeActiveOn(ctx context.Context, arg EmployeeActiveOnParams) (EmployeeActiveOnRow, error) {
+	row := q.db.QueryRow(ctx, employeeActiveOn, arg.EmployeeID, arg.OnDate)
+	var i EmployeeActiveOnRow
+	err := row.Scan(&i.Active, &i.Found)
+	return i, err
+}
+
+const employeeSelf = `-- name: EmployeeSelf :one
+
+SELECT e.id, m.user_id AS manager_user_id,
+       EXISTS (SELECT 1 FROM employment_spans s WHERE s.tenant_id = e.tenant_id AND s.employee_id = e.id
+               AND s.span @> $1::date) AS active
+FROM employees e
+LEFT JOIN employees m ON m.tenant_id = e.tenant_id AND m.id = e.manager_employee_id
+WHERE e.user_id = $2
+`
+
+type EmployeeSelfParams struct {
+	OnDate time.Time
+	UserID *uuid.UUID
+}
+
+type EmployeeSelfRow struct {
+	ID            uuid.UUID
+	ManagerUserID *uuid.UUID
+	Active        bool
+}
+
+// ---------------------------------------------------------------- dipakai modul input (S6)
+// [tenant] Employee milik user + apakah aktif pada tanggal itu + user atasan langsung saat ini (S14:
+// kolom manager_employee_id, bukan effective-dated). Approver cuti/lembur = atasan ini (ADR-P09).
+func (q *Queries) EmployeeSelf(ctx context.Context, arg EmployeeSelfParams) (EmployeeSelfRow, error) {
+	row := q.db.QueryRow(ctx, employeeSelf, arg.OnDate, arg.UserID)
+	var i EmployeeSelfRow
+	err := row.Scan(&i.ID, &i.ManagerUserID, &i.Active)
+	return i, err
+}
+
 const getCurrentOrg = `-- name: GetCurrentOrg :one
 SELECT oa.id, lower(oa.valid_during)::date AS valid_from, d.id AS department_id, d.name AS department_name,
        p.id AS position_id, p.name AS position_name

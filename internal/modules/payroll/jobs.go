@@ -62,11 +62,12 @@ func NewJobs(pool *pgxpool.Pool, ids idgen.Generator, chunkSize int) *Jobs {
 	return &Jobs{pool: pool, ids: ids, chunkSize: chunkSize}
 }
 
-// Kinds: payroll.plan dan payroll.calc_chunk. Gagal permanen (dead) → run FAILED (PFS-05).
+// Kinds: payroll.plan, payroll.calc_chunk (gagal permanen → run FAILED, PFS-05), payroll.cleanup_versions.
 func (j *Jobs) Kinds() []jobs.Kind {
 	return []jobs.Kind{
 		{Name: KindPlan, Handler: j.plan, MaxAttempts: 5, Timeout: 30 * time.Second, OnDead: j.onDead},
 		{Name: KindChunk, Handler: j.chunk, MaxAttempts: 5, Timeout: 60 * time.Second, OnDead: j.onDead},
+		{Name: KindCleanupVersions, Handler: j.cleanupVersions, MaxAttempts: 5, Timeout: 5 * time.Minute, Heartbeat: true},
 	}
 }
 

@@ -17,7 +17,11 @@
 #                         holiday | component    → libur / komponen tenant (FIXED) yang dibuat OWNER
 #                         member_plain           → member ACTIVE baru dengan role EMPLOYEE
 #                         member_admin           → member ACTIVE baru dengan role PAYROLL_ADMIN
+#                         attendance_other/_self → catatan absensi INCOMPLETE milik empOther / empSelf
+#                         leave_own / overtime_own → cuti / lembur PENDING milik EMPLOYEE
+#                         approval_leave         → approval cuti EMPLOYEE (approver = MANAGER)
 #                         run_calculated         → run CALCULATED tanpa item ERROR (periode lampau)
+#                         run_approved           → run APPROVED (submit PAYROLL_ADMIN, approve OWNER)
 #                         approval_run           → approval PAYROLL_RUN, requester PAYROLL_ADMIN, approver OWNER
 #                         run                    → payroll run DRAFT (periode 2025 ke bawah, unik per run)
 #                         run_item               → run CALCULATED (2026) + satu item ERROR ({item_id})
@@ -25,7 +29,9 @@
 #           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik,
 #                       {date} = tanggal unik, {period} = periode payroll unik (YYYY-MM),
 #                       {dept}/{pos}/{comp} = departemen/posisi/komponen fixture,
-#                       {owner_user}/{payroll_user} = user OWNER / PAYROLL_ADMIN fixture
+#                       {owner_user}/{payroll_user} = user OWNER / PAYROLL_ADMIN fixture,
+#                       {workday}/{ot_date}/{ot_start}/{ot_end} = hari kerja unik 2027 (sama dalam satu body),
+#                       {leave_annual} = jenis cuti ANNUAL
 #           if_match  : kirim If-Match: "1"
 #           idempotency: kirim Idempotency-Key acak
 #           expect    : status per role (O H P M E); role yang tidak disebut tidak diuji di case itu
@@ -321,6 +327,12 @@ routes:
     cases:   # approver eksplisit (tenant matriks punya beberapa admin); memilih diri sendiri → 403
       - {target: run_calculated, body: {approver_user_id: "{owner_user}"}, expect: {O: 403, H: 403, P: 200, M: 404, E: 404}}
       - {target: run_calculated, body: {approver_user_id: "{payroll_user}"}, expect: {O: 200, P: 403}}
+  - id: Y11
+    route: "POST /payroll-runs/{id}/finalize"
+    access: tenant
+    audit: payroll_run.finalized
+    cases:
+      - {target: run_approved, idempotency: true, expect: {O: 200, H: 403, P: 200, M: 404, E: 404}}
   - id: Y12
     route: "POST /payroll-runs/{id}/cancel"
     access: tenant
@@ -342,9 +354,89 @@ routes:
     audit: approval.approved
     cases:
       - {target: approval_run, expect: {O: 200, H: 404, P: 403, M: 404, E: 404}}
+      - {target: approval_leave, expect: {M: 200, E: 403, H: 200, O: 404, P: 404}}   # cuti EMPLOYEE → atasan langsung; HR override
   - id: R3
     route: "POST /approvals/{id}/reject"
     access: tenant
     audit: approval.rejected
     cases:
       - {target: approval_run, body: {note: "Data lembur belum lengkap"}, expect: {O: 200, H: 404, P: 403, M: 404, E: 404}}
+      - {target: approval_leave, body: {note: "Bentrok jadwal"}, expect: {M: 200, E: 403, H: 200, O: 404, P: 404}}
+
+  # ---------------------------------------------------------------- absensi (D1–D4, S6)
+  # 👤 = untuk diri sendiri, role apa pun yang tertaut ke employee. Di fixture hanya EMPLOYEE dan MANAGER
+  # yang tertaut; OWNER/HR_ADMIN/PAYROLL_ADMIN tanpa employee → 422 EMPLOYEE_NOT_ACTIVE (file 17).
+  - id: D1
+    route: "POST /attendance/clock-in"
+    access: tenant
+    cases:
+      - expect: {O: 422, H: 422, P: 422, M: 201, E: 201}
+  - id: D2
+    route: "POST /attendance/clock-out"
+    access: tenant
+    cases:
+      - expect: {O: 422, H: 422, P: 422, M: 200, E: 200}
+  - id: D3
+    route: "GET /attendance"
+    access: tenant
+    cases:   # MANAGER/EMPLOYEE: hasil dibatasi scope
+      - {query: "period=2026-10", expect: {O: 200, H: 200, P: 200, M: 200, E: 200}}
+  - id: D4
+    route: "PATCH /attendance/{id}"
+    access: tenant
+    audit: attendance.corrected
+    cases:
+      - {target: attendance_other, if_match: true, body: {clock_out_at: "2026-01-01T09:00:00Z", correction_reason: "Lupa clock out"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
+      - {target: attendance_self, if_match: true, body: {clock_out_at: "2026-01-01T09:00:00Z", correction_reason: "Lupa clock out"}, expect: {M: 403, E: 403}}
+
+  # ---------------------------------------------------------------- cuti (L1–L5, S6)
+  - id: L1
+    route: "GET /leave-types"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+  - id: L2
+    route: "GET /me/leave-balances"
+    access: tenant
+    cases:
+      - {query: "year=2027", expect: {O: 422, H: 422, P: 422, M: 200, E: 200}}
+  - id: L3
+    route: "POST /leave-requests"
+    access: tenant
+    audit: leave.requested
+    cases:
+      - idempotency: true
+        body: {leave_type_id: "{leave_annual}", start_date: "{workday}", end_date: "{workday}", reason: "Urusan keluarga"}
+        expect: {O: 422, H: 422, P: 422, M: 201, E: 201}
+  - id: L4
+    route: "POST /leave-requests/{id}/cancel"
+    access: tenant
+    audit: leave.cancelled
+    cases:   # hanya pengaju (EMPLOYEE); orang lain → 404
+      - {target: leave_own, expect: {E: 200, O: 404, H: 404, P: 404, M: 404}}
+  - id: L5
+    route: "GET /leave-requests"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+
+  # ---------------------------------------------------------------- lembur (V1–V3, S6)
+  - id: V1
+    route: "POST /overtime-requests"
+    access: tenant
+    audit: overtime.requested
+    cases:
+      - idempotency: true
+        body: {work_date: "{ot_date}", start_at: "{ot_start}", end_at: "{ot_end}", reason: "Stok opname"}
+        expect: {O: 422, H: 422, P: 422, M: 201, E: 201}
+  - id: V2
+    route: "POST /overtime-requests/{id}/cancel"
+    access: tenant
+    audit: overtime.cancelled
+    cases:
+      - {target: overtime_own, expect: {E: 200, O: 404, H: 404, P: 404, M: 404}}
+  - id: V3
+    route: "GET /overtime-requests"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}

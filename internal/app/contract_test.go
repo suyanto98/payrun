@@ -185,3 +185,47 @@ func TestContract_S4ResponsesMatchSpec(t *testing.T) {
 		t.Errorf("unknown field in CreatePayrollRunRequest: want 400, got %d %v", r.StatusCode, b)
 	}
 }
+
+// TestContract_S6ResponsesMatchSpec: respons absensi, cuti, dan lembur terhadap skemanya.
+func TestContract_S6ResponsesMatchSpec(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	emp, mgr, hr := f.tokens[roleE], f.tokens[roleM], f.tokens[roleH]
+	r, in := e.do(t, http.MethodPost, "/api/v1/attendance/clock-in", emp, nil)
+	if r.StatusCode != http.StatusCreated {
+		t.Fatalf("clock-in: %d %v", r.StatusCode, in)
+	}
+	assertMatchesSpec(t, "attendance (clock-in)", in, &gen.AttendanceRecord{})
+	_, again := e.do(t, http.MethodPost, "/api/v1/attendance/clock-in", emp, nil)
+	assertMatchesSpec(t, "attendance (repeat)", again, &gen.AttendanceRecord{})
+	_, list := e.do(t, http.MethodGet, "/api/v1/attendance?period=2026-10&employee_id="+f.empSelf.String(), hr, nil)
+	assertMatchesSpec(t, "attendance list + summary", list, &gen.AttendanceList{})
+	_, fixed := e.doH(t, http.MethodPatch, "/api/v1/attendance/"+in["id"].(string), hr, map[string]string{"If-Match": `"1"`},
+		map[string]any{"clock_out_at": "2026-10-06T10:00:00Z", "correction_reason": "Lupa clock out"})
+	assertMatchesSpec(t, "attendance (corrected)", fixed, &gen.AttendanceRecord{})
+
+	_, types := e.do(t, http.MethodGet, "/api/v1/leave-types", emp, nil)
+	assertMatchesSpec(t, "leave types", types, &gen.LeaveTypeList{})
+	_, bal := e.do(t, http.MethodGet, "/api/v1/me/leave-balances?year=2026", emp, nil)
+	assertMatchesSpec(t, "leave balances", bal, &gen.LeaveBalanceList{})
+	_, lv := e.submitLeave(t, emp, e.leaveTypeID(t, f.id, "ANNUAL"), "2026-10-12", "2026-10-13")
+	assertMatchesSpec(t, "leave request", lv, &gen.LeaveRequest{})
+	_, dec := e.approve(t, mgr, approvalOf(t, lv))
+	assertMatchesSpec(t, "decision (leave)", dec, &gen.ApprovalDecision{})
+	assertMatchesSpec(t, "decision.subject (leave)", dec["subject"].(map[string]any), &gen.LeaveRequest{})
+	_, lvs := e.do(t, http.MethodGet, "/api/v1/leave-requests", hr, nil)
+	assertMatchesSpec(t, "leave requests", lvs, &gen.LeaveRequestList{})
+	_, pend := e.submitLeave(t, emp, e.leaveTypeID(t, f.id, "SICK"), "2026-10-20", "2026-10-20")
+	_, cancelled := e.do(t, http.MethodPost, "/api/v1/leave-requests/"+pend["id"].(string)+"/cancel", emp, map[string]any{})
+	assertMatchesSpec(t, "leave (cancelled)", cancelled, &gen.LeaveRequest{})
+
+	_, ot := e.submitOvertime(t, emp, "2026-10-14", "17:00", "22:00")
+	assertMatchesSpec(t, "overtime (with warning)", ot, &gen.OvertimeRequest{})
+	_, odec := e.approve(t, mgr, approvalOf(t, ot))
+	assertMatchesSpec(t, "decision.subject (overtime)", odec["subject"].(map[string]any), &gen.OvertimeRequest{})
+	_, ots := e.do(t, http.MethodGet, "/api/v1/overtime-requests", hr, nil)
+	assertMatchesSpec(t, "overtime requests", ots, &gen.OvertimeRequestList{})
+	_, short := e.submitLeave(t, emp, e.leaveTypeID(t, f.id, "ANNUAL"), "2026-11-02", "2026-11-20")
+	_, prob := e.approve(t, mgr, approvalOf(t, short))
+	assertMatchesSpec(t, "problem (insufficient balance)", prob, &gen.Problem{})
+}

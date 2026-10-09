@@ -82,6 +82,33 @@ func (q *Queries) ActiveMemberEmailExists(ctx context.Context, email string) (bo
 	return exists, err
 }
 
+const activeUsersWithRole = `-- name: ActiveUsersWithRole :many
+SELECT user_id::uuid AS user_id FROM memberships
+WHERE status = 'ACTIVE' AND $1::text = ANY (roles)
+ORDER BY created_at, user_id
+`
+
+// [tenant] Fallback approver cuti/lembur (ADR-P09: atasan → HR_ADMIN → OWNER): urutan deterministik.
+func (q *Queries) ActiveUsersWithRole(ctx context.Context, role string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, activeUsersWithRole, role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const actorRoles = `-- name: ActorRoles :one
 SELECT roles FROM memberships WHERE user_id = $1 AND status = 'ACTIVE'
 `

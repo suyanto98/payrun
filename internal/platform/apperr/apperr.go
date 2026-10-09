@@ -31,7 +31,8 @@ type Error struct {
 	ChangedCount     *int
 	ApprovalStatus   string
 	ErrorCount       *int
-	cause            error // tidak pernah dikirim ke client; hanya untuk log
+	Balance          string // INSUFFICIENT_LEAVE_BALANCE: saldo saat ini (desimal string)
+	cause            error  // tidak pernah dikirim ke client; hanya untuk log
 }
 
 // StaleEmployee: satu karyawan yang membuat run stale (RUN_STALE.employees_changed).
@@ -53,6 +54,13 @@ func (e *Error) WithStale(employees []StaleEmployee, changed int) *Error {
 func (e *Error) WithApprovalStatus(status string) *Error {
 	c := *e
 	c.ApprovalStatus = status
+	return &c
+}
+
+// WithBalance: INSUFFICIENT_LEAVE_BALANCE menyebut saldo saat ini.
+func (e *Error) WithBalance(balance string) *Error {
+	c := *e
+	c.Balance = balance
 	return &c
 }
 
@@ -176,6 +184,12 @@ var (
 	ErrDecisionNoteRequired = def(http.StatusUnprocessableEntity, "DECISION_NOTE_REQUIRED", "A note is required to reject")
 	ErrSelfApprovalReason   = def(http.StatusUnprocessableEntity, "SELF_APPROVAL_REASON_REQUIRED", "No other admin can approve; a self-approval reason is required")
 	ErrSelfApproval         = def(http.StatusForbidden, "SELF_APPROVAL_FORBIDDEN", "You cannot approve your own request")
+	// Sprint 6: absensi, cuti, lembur (katalog §3).
+	ErrOverlappingLeave    = def(http.StatusConflict, "OVERLAPPING_LEAVE", "The dates overlap another pending or approved leave")
+	ErrInsufficientBalance = def(http.StatusUnprocessableEntity, "INSUFFICIENT_LEAVE_BALANCE", "Not enough leave balance")
+	ErrEmployeeNotActive   = def(http.StatusUnprocessableEntity, "EMPLOYEE_NOT_ACTIVE", "Your account is not linked to an employee active on this date")
+	ErrClockOutWithoutIn   = def(http.StatusUnprocessableEntity, "CLOCK_OUT_WITHOUT_CLOCK_IN", "Clock in first")
+	ErrNoApproverAvailable = def(http.StatusUnprocessableEntity, "NO_APPROVER_AVAILABLE", "Nobody else in this company can approve the request")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

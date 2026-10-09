@@ -1016,3 +1016,44 @@ func (s *Service) CountAssignedTodayTx(ctx context.Context, tx pgx.Tx, departmen
 	n, err := store.New(tx).CountAssignedToday(ctx, store.CountAssignedTodayParams{AsOf: s.today(), DepartmentID: departmentID, PositionID: positionID})
 	return n, db.MapError(err)
 }
+
+// ---------------------------------------------------------------- dipakai modul input (S6)
+
+// Self: employee milik user di tenant transaksi.
+type Self struct {
+	EmployeeID    uuid.UUID
+	ManagerUserID *uuid.UUID // user atasan langsung saat ini (nil: tanpa atasan / atasan belum punya akun)
+	ActiveOn      bool       // employment span mencakup tanggal yang ditanyakan
+}
+
+// SelfTx: employee milik user + status aktif pada tanggal `on`. Tidak tertaut → ok=false. Dipakai modul
+// attendance/leave/overtime lewat interface di composition root (ADR-001).
+func (s *Service) SelfTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, on time.Time) (Self, bool, error) {
+	r, err := store.New(tx).EmployeeSelf(ctx, store.EmployeeSelfParams{UserID: &userID, OnDate: on})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Self{}, false, nil
+	}
+	if err != nil {
+		return Self{}, false, err
+	}
+	return Self{EmployeeID: r.ID, ManagerUserID: r.ManagerUserID, ActiveOn: r.Active}, true, nil
+}
+
+// ActiveOnTx: employee ada di tenant ini (found) dan aktif pada tanggal `on`.
+func (s *Service) ActiveOnTx(ctx context.Context, tx pgx.Tx, employeeID uuid.UUID, on time.Time) (found, active bool, err error) {
+	r, err := store.New(tx).EmployeeActiveOn(ctx, store.EmployeeActiveOnParams{EmployeeID: employeeID, OnDate: on})
+	return r.Found, r.Active, err
+}
+
+// DirectReportsTx: bawahan langsung employee milik user (scope 👥 MANAGER). Tanpa employee → kosong.
+func (s *Service) DirectReportsTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]uuid.UUID, error) {
+	q := store.New(tx)
+	self, err := q.GetEmployeeIDByUser(ctx, &userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return q.DirectReportIDs(ctx, &self)
+}

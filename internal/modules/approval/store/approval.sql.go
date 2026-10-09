@@ -12,6 +12,73 @@ import (
 	"github.com/google/uuid"
 )
 
+const approvalsBySubjects = `-- name: ApprovalsBySubjects :many
+SELECT DISTINCT ON (a.subject_id) a.subject_id, a.id, a.approver_id, au.display_name AS approver_name, a.status
+FROM approval_requests a LEFT JOIN users au ON au.id = a.approver_id
+WHERE a.subject_type = $1 AND a.subject_id = ANY ($2::uuid[])
+ORDER BY a.subject_id, a.created_at DESC
+`
+
+type ApprovalsBySubjectsParams struct {
+	SubjectType string
+	SubjectIds  []uuid.UUID
+}
+
+type ApprovalsBySubjectsRow struct {
+	SubjectID    uuid.UUID
+	ID           uuid.UUID
+	ApproverID   uuid.UUID
+	ApproverName *string
+	Status       string
+}
+
+// Approval terbaru per subjek (respons LeaveRequest/OvertimeRequest.approval).
+func (q *Queries) ApprovalsBySubjects(ctx context.Context, arg ApprovalsBySubjectsParams) ([]ApprovalsBySubjectsRow, error) {
+	rows, err := q.db.Query(ctx, approvalsBySubjects, arg.SubjectType, arg.SubjectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ApprovalsBySubjectsRow
+	for rows.Next() {
+		var i ApprovalsBySubjectsRow
+		if err := rows.Scan(
+			&i.SubjectID,
+			&i.ID,
+			&i.ApproverID,
+			&i.ApproverName,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const cancelPendingApproval = `-- name: CancelPendingApproval :execrows
+UPDATE approval_requests SET status = 'CANCELLED', decided_by = $1, decided_at = clock_timestamp()
+WHERE subject_type = $2 AND subject_id = $3 AND status = 'PENDING' AND requester_id = $1
+`
+
+type CancelPendingApprovalParams struct {
+	Actor       *uuid.UUID
+	SubjectType string
+	SubjectID   uuid.UUID
+}
+
+// Requester membatalkan request miliknya selama PENDING (ADR-P09): 0 baris → sudah diputuskan / bukan miliknya.
+func (q *Queries) CancelPendingApproval(ctx context.Context, arg CancelPendingApprovalParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelPendingApproval, arg.Actor, arg.SubjectType, arg.SubjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createApproval = `-- name: CreateApproval :exec
 
 INSERT INTO approval_requests (tenant_id, id, subject_type, subject_id, requester_id, approver_id, self_approved, self_approval_reason)
@@ -64,6 +131,34 @@ type DecideApprovalParams struct {
 // lain menang lebih dulu (approve vs reject, PFS-08).
 func (q *Queries) DecideApproval(ctx context.Context, arg DecideApprovalParams) (int64, error) {
 	result, err := q.db.Exec(ctx, decideApproval,
+		arg.Status,
+		arg.Note,
+		arg.Actor,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const decideApprovalOverride = `-- name: DecideApprovalOverride :execrows
+UPDATE approval_requests
+SET status = $1, decision_note = $2, decided_by = $3, decided_at = clock_timestamp(), is_override = true
+WHERE id = $4 AND status = 'PENDING' AND subject_type IN ('LEAVE_REQUEST', 'OVERTIME_REQUEST') AND approver_id <> $3
+`
+
+type DecideApprovalOverrideParams struct {
+	Status string
+	Note   *string
+	Actor  *uuid.UUID
+	ID     uuid.UUID
+}
+
+// [4] HR_ADMIN memutuskan menggantikan approver (hanya cuti/lembur, file 17 §3.3): is_override = true,
+// decided_by ≠ approver_id (ck_approval_requests_override). Guard PENDING sama dengan keputusan biasa.
+func (q *Queries) DecideApprovalOverride(ctx context.Context, arg DecideApprovalOverrideParams) (int64, error) {
+	result, err := q.db.Exec(ctx, decideApprovalOverride,
 		arg.Status,
 		arg.Note,
 		arg.Actor,

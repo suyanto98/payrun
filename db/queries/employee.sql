@@ -176,3 +176,24 @@ WHERE valid_during @> @as_of::date AND (department_id = sqlc.narg(department_id)
 -- audit employee.pii_viewed.
 SELECT tenant_id, nik_enc, npwp_enc, bank_name, bank_account_enc, bank_account_holder
 FROM employees WHERE id = @id;
+
+-- ---------------------------------------------------------------- dipakai modul input (S6)
+
+-- name: EmployeeSelf :one
+-- [tenant] Employee milik user + apakah aktif pada tanggal itu + user atasan langsung saat ini (S14:
+-- kolom manager_employee_id, bukan effective-dated). Approver cuti/lembur = atasan ini (ADR-P09).
+SELECT e.id, m.user_id AS manager_user_id,
+       EXISTS (SELECT 1 FROM employment_spans s WHERE s.tenant_id = e.tenant_id AND s.employee_id = e.id
+               AND s.span @> @on_date::date) AS active
+FROM employees e
+LEFT JOIN employees m ON m.tenant_id = e.tenant_id AND m.id = e.manager_employee_id
+WHERE e.user_id = @user_id;
+
+-- name: EmployeeActiveOn :one
+-- [tenant] Employee ada di tenant ini dan aktif pada tanggal itu.
+SELECT EXISTS (SELECT 1 FROM employment_spans s WHERE s.employee_id = @employee_id AND s.span @> @on_date::date) AS active,
+       EXISTS (SELECT 1 FROM employees e WHERE e.id = @employee_id) AS found;
+
+-- name: DirectReportIDs :many
+-- [tenant] Bawahan langsung saat ini (scope 👥 MANAGER, file 17).
+SELECT id FROM employees WHERE manager_employee_id = @manager_id ORDER BY id;

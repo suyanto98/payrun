@@ -45,7 +45,7 @@ func hidden(next http.Handler) http.Handler {
 
 // Routes: heavy = rate limit tier heavy-calculate per tenant (Y5, 16-api). Dipasang SETELAH cek role,
 // supaya request yang ditolak (MANAGER/EMPLOYEE) tidak menghabiskan kuota kalkulasi tenant.
-func (h *Handler) Routes(read, write chi.Router, heavy func(http.Handler) http.Handler) {
+func (h *Handler) Routes(read, write chi.Router, heavy, heavyFinalize func(http.Handler) http.Handler) {
 	read.With(auth.RequireAnyRole(readers...)).Get("/payroll-runs", h.list)
 	write.With(auth.RequireAnyRole(runners...)).Post("/payroll-runs", h.create)
 	read.With(hidden).Get("/payroll-runs/{id}", h.get)
@@ -55,6 +55,35 @@ func (h *Handler) Routes(read, write chi.Router, heavy func(http.Handler) http.H
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/items/{item_id}/exclude", h.exclude)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/cancel", h.cancel)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/submit", h.submit)
+	write.With(hidden, auth.RequireAnyRole(runners...), heavyFinalize).Post("/payroll-runs/{id}/finalize", h.finalize)
+}
+
+// finalize (Y11): Idempotency-Key wajib; replay (contoh respons COMMIT yang hilang) → 200 yang sama.
+func (h *Handler) finalize(w http.ResponseWriter, r *http.Request) {
+	id, err := ids(r, "id")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	req, err := idempotency.FromHTTP(r, p.UserID, "POST /payroll-runs/{id}/finalize")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	meta := reqmeta.From(r)
+	resp, err := h.idem.Execute(r, req, func(ctx context.Context, tx pgx.Tx) (idempotency.Outcome, error) {
+		run, err := h.svc.FinalizeTx(ctx, tx, p.UserID, id[0], meta)
+		if err != nil {
+			return idempotency.Outcome{}, err
+		}
+		return idempotency.Outcome{Status: http.StatusOK, Body: run, ResourceType: "payroll_run", ResourceID: &run.ID}, nil
+	})
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	idempotency.Write(w, resp)
 }
 
 // submit (Y10): approver dipilih server; idempoten secara natural (guard CALCULATED).

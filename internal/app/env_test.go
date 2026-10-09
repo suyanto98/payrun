@@ -264,6 +264,9 @@ func (e env) createTenant(t *testing.T, slug string, owner uuid.UUID) uuid.UUID 
 		if _, err := tx.Exec(ctx, `SELECT seed_system_components($1, $2)`, id, owner); err != nil { // seed O6, sama dengan signup
 			return err
 		}
+		if _, err := tx.Exec(ctx, `SELECT seed_leave_types($1, $2)`, id, owner); err != nil { // jenis cuti default (S6)
+			return err
+		}
 		return addMember(ctx, tx, id, owner, "OWNER")
 	}); err != nil {
 		t.Fatal(err)

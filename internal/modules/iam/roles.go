@@ -95,6 +95,11 @@ func (s *Service) ActiveAdminsTx(ctx context.Context, tx pgx.Tx) ([]uuid.UUID, e
 	return store.New(tx).ActiveAdmins(ctx)
 }
 
+// ActiveUsersWithRoleTx: user dengan membership ACTIVE ber-role tertentu (fallback approver cuti/lembur).
+func (s *Service) ActiveUsersWithRoleTx(ctx context.Context, tx pgx.Tx, role string) ([]uuid.UUID, error) {
+	return store.New(tx).ActiveUsersWithRole(ctx, role)
+}
+
 func (s *Service) getMember(ctx context.Context, q *store.Queries, id uuid.UUID) (Member, error) {
 	r, err := q.GetMember(ctx, id)
 	if err != nil {

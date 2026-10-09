@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 // txRead chunk (REPEATABLE READ READ ONLY → satu snapshot konsisten untuk seluruh chunk). Query per
 // jenis data, untuk seluruh employee chunk sekaligus (tanpa N+1).
 //
-// Belum diisi (sumbernya dibuat di sprint berikutnya): absensi, cuti, lembur (S6), adjustment (S7).
+// Absensi, cuti, lembur: loadDailyInput (S6). Belum diisi: adjustment (S7).
 // Engine menganggap hari kerja aktif tanpa catatan = hadir.
 
 const snapshotVersion = 1
@@ -205,7 +206,83 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 			Range: dateRange(c.FromDate, c.OpenEnded, c.ToDate)})
 		out.inputs[c.EmployeeID] = in
 	}
+	if err := loadDailyInput(ctx, q, out.inputs, year, month, ids); err != nil {
+		return chunkData{}, err
+	}
 	return out, nil
+}
+
+// loadDailyInput (S6): status harian dan lembur ke engine. Hari kerja aktif tanpa entri = hadir (engine);
+// yang dicantumkan hanya hari yang BUKAN hadir normal. Cuti APPROVED ≤ cut-off menimpa catatan absensi
+// pada hari yang sama. Urutan deterministik (tanggal naik) karena input ikut fingerprint.
+func loadDailyInput(ctx context.Context, q *store.Queries, inputs map[uuid.UUID]engine.Input, year, month int, ids []uuid.UUID) error {
+	from, to := monthRange(year, month)
+	cutoff, err := q.PeriodCutoff(ctx, store.PeriodCutoffParams{Year: int16(year), Month: int16(month)}) //nolint:gosec // G115
+	if err != nil {
+		return err
+	}
+	days := map[uuid.UUID]map[time.Time]engine.AttendanceStatus{}
+	set := func(emp uuid.UUID, d time.Time, st engine.AttendanceStatus) {
+		if days[emp] == nil {
+			days[emp] = map[time.Time]engine.AttendanceStatus{}
+		}
+		days[emp][d] = st
+	}
+	inc, err := q.InputIncomplete(ctx, store.InputIncompleteParams{Ids: ids, FromDate: from, ToDate: to})
+	if err != nil {
+		return err
+	}
+	for _, r := range inc {
+		set(r.EmployeeID, r.WorkDate, engine.IncompleteRecord)
+	}
+	leaves, err := q.InputLeaves(ctx, store.InputLeavesParams{Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
+	if err != nil {
+		return err
+	}
+	for _, l := range leaves {
+		st := engine.PaidLeave
+		if !l.IsPaid {
+			st = engine.UnpaidLeave
+		}
+		for d := maxTime(l.StartDate, from); d.Before(l.EndExclusive) && d.Before(to); d = d.AddDate(0, 0, 1) {
+			set(l.EmployeeID, d, st)
+		}
+	}
+	for emp, byDay := range days {
+		in, ok := inputs[emp]
+		if !ok {
+			continue
+		}
+		dates := make([]time.Time, 0, len(byDay))
+		for d := range byDay {
+			dates = append(dates, d)
+		}
+		slices.SortFunc(dates, func(a, b time.Time) int { return a.Compare(b) })
+		for _, d := range dates {
+			in.Attendance = append(in.Attendance, engine.DayStatus{Date: date(d), Status: byDay[d]})
+		}
+		inputs[emp] = in
+	}
+	ot, err := q.InputOvertime(ctx, store.InputOvertimeParams{Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
+	if err != nil {
+		return err
+	}
+	for _, o := range ot {
+		in, ok := inputs[o.EmployeeID]
+		if !ok {
+			continue
+		}
+		in.Overtime = append(in.Overtime, engine.OvertimeEntry{Date: date(o.WorkDate), Hours: *toDec(o.Hours)})
+		inputs[o.EmployeeID] = in
+	}
+	return nil
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // fingerprint (ADR-P07): SHA-256(canonical_json(input) || ruleset). json.Marshal atas struct engine

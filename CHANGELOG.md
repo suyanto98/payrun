@@ -5,6 +5,10 @@
 Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, bukan dibagi sebagai module
 (docs/design/32-repository-structure.md). Setiap perubahan skeleton dicatat di sini dan harus di-port ke repo lain.
 
+### 0.0.8 — PayRun Sprint 6 (belum di-port ke LedgerPay)
+- `apperr`: `OVERLAPPING_LEAVE`, `INSUFFICIENT_LEAVE_BALANCE` (+ extension `Balance`), `EMPLOYEE_NOT_ACTIVE`, `CLOCK_OUT_WITHOUT_CLOCK_IN`, `NO_APPROVER_AVAILABLE`; `httpx.Problem` menulis `balance`.
+- `db.MapError`: `ex_leave_requests_no_overlap` → `OVERLAPPING_LEAVE`, `ex_overtime_requests_no_overlap` → `OVERLAPPING_PERIOD`, `ck_leave_balances_min` → `INSUFFICIENT_LEAVE_BALANCE`.
+
 ### 0.0.7 — PayRun Sprint 5 (belum di-port ke LedgerPay)
 - `apperr`: extension per code (`EmployeesChanged`, `ChangedCount`, `ApprovalStatus`, `ErrorCount`) + kode `RUN_STALE`, `APPROVAL_ALREADY_DECIDED`, `RUN_HAS_ERRORS`, `DECISION_NOTE_REQUIRED`, `SELF_APPROVAL_REASON_REQUIRED`, `SELF_APPROVAL_FORBIDDEN`; `httpx.Problem` menulisnya (`approval_status`, bukan `status`).
 - `db.MapError`: `P0002` (trigger PeriodGuard) → `PERIOD_LOCKED`.

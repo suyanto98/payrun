@@ -902,3 +902,37 @@ Kontrak: `api/openapi.yaml` (respons approval/run dicek di `TestApproval_SubmitA
 | PeriodGuard | penulis salary/komponen/org/employment | Salary (W9), komponen (W10, C3/C4), employment (W2, W5), PTKP (W4), libur (T5/T6). **Org (W7) tidak** | Departemen hanya kolom denormalisasi item, bukan input engine; perubahan org tidak mengubah fingerprint |
 | PeriodGuard PTKP / definisi komponen | — | Tidak effective-dated: periode `FINALIZED` tidak memblokir (hasil final tetap dari snapshot); semua periode non-final dicatat | Nilai tanpa tanggal berlaku |
 | Notifikasi | outbox `payroll_run.submitted/approved` | Belum (hanya audit); inbox di UI cukup untuk MVP (ADR-P09) | Belum ada konsumen notifikasi |
+
+## Catatan implementasi (Sprint 6, bagian 1: absensi, cuti, lembur → engine)
+
+Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `api/authz_matrix.yaml` (D1–D4, L1–L5, V1–V3, R2/R3 cuti, lintas tenant).
+
+| Topik | Desain | Implementasi S6 | Alasan |
+|---|---|---|---|
+| D1/D2 role | Ringkasan "E (self)" | Role apa pun yang tertaut ke employee (file 17 👤); tanpa employee aktif → `422 EMPLOYEE_NOT_ACTIVE`. Tanpa body | Admin juga karyawan |
+| D1 | `201` / `200` | Sama; tap ganda tidak mengambil lock dan tidak menulis change log | Natural idempotency |
+| D3 | `summary` | `summary {present_days, incomplete_days, working_days}` hanya dengan `employee_id` + `period`; `working_days` = hari kerja mingguan − libur | — |
+| D4 | `{clock_in_at, clock_out_at, correction_reason}` | Field yang tidak dikirim mempertahankan nilai saat ini | Koreksi umum = "lupa clock out" |
+| `attendance_records.import_id` | FK ke `attendance_imports` | **Tidak ada** | PF-21 (import CSV) = P2 (Step 12 S10) |
+| Hari tanpa catatan absensi | PF-08 AC4 `ABSENT` | **Tetap hadir** (default engine). `ABSENT_UNEXCUSED` belum dihasilkan di S6 | Menandai absen otomatis memotong gaji tenant yang tidak memakai clock-in. Penandaan absen eksplisit oleh HR menyusul |
+| Status harian ke engine | `PRESENT/ABSENT/LEAVE/HOLIDAY/WEEKEND` | `INCOMPLETE` (catatan tanpa clock-out), `PAID_LEAVE`/`UNPAID_LEAVE` (cuti APPROVED ≤ cut-off, menimpa absensi hari itu); libur/akhir pekan dari kalender | Tipe engine (§14) otoritatif |
+| `leave_balances` | Tidak ada jalur pembuatan | Dibuat **lazy saat approve pertama** dengan kuota tahunan penuh, `min_allowed_days = −max_negative_days`. Jenis tanpa kuota (SICK, UNPAID) tanpa saldo | Akrual PF-26 = P2 |
+| L3 | — | Rentang melewati pergantian tahun → `400 CROSSES_YEAR`; tanpa hari kerja → `400 NO_WORKING_DAYS`; jenis tidak dikenal/nonaktif → `400` | Saldo per tahun |
+| L3/V1 PeriodGuard | Katalog tx tanpa lock periode | PeriodGuard dipanggil (periode final → `409 PERIOD_LOCKED`), tanpa change log | Input payroll baru berubah saat approve |
+| Approver | Atasan → HR_ADMIN → OWNER | Sama (atasan = `employees.manager_employee_id` saat ini, S14). Tidak ada siapa pun selain pengaju → **`422 NO_APPROVER_AVAILABLE`** (kode baru) | Self-approval cuti/lembur dilarang CHECK DB |
+| `approved_at` | Salinan `decided_at` | Jam **aplikasi** (bukan `clock_timestamp()` DB), dibandingkan dengan `cutoff_at` periode (PI-08, `≤`) | Satu sumber waktu bisnis; test deterministik |
+| `INSUFFICIENT_LEAVE_BALANCE` | extension `balance` | Sama (`balance` desimal 1 angka); approval tetap `PENDING` (rollback penuh) | — |
+| L4 cuti APPROVED | Pembatalan oleh HR, saldo kembali (P1) | **Belum** | P1 |
+| HR override cuti/lembur | `is_override` | **Belum** (S6 bagian 2) | — |
+| V1 | ≤ 12 jam | Jam dibulatkan 0,25 (aritmetika integer); `work_date` harus tanggal lokal `start_at`; batas harian tenant → warning `OVERTIME_OVER_LIMIT` (dihitung terhadap batas saat ini) | PF-10 AC3 |
+
+## Catatan implementasi (Sprint 6, bagian 2: HR override, finalize, UI)
+
+| Topik | Desain | Implementasi S6 | Alasan |
+|---|---|---|---|
+| R2/R3 override HR | `H` override cuti/lembur, `is_override` | Role HR_ADMIN dibaca ulang dari DB; `is_override = true`, `decided_by` = HR; audit `approval.overridden` + `approval.approved/rejected`. `PAYROLL_RUN` → `404`; request milik HR sendiri → `403 SELF_APPROVAL_FORBIDDEN`. Inbox HR `?scope=all` | File 17 §3.3 |
+| Y11 respons | `PayrollRun` + `payslips: {pending}` | `PayrollRun` (`FINALIZED`, `finalized_by`, `finalized_at`). **Tanpa** `payslips` dan adjustment `APPLIED` | Payslip dan adjustment dibuat di S7, di transaksi finalize yang sama |
+| Y11 | Cek stale ulang | Sama dengan approve (kandidat change log, D6, > 200 → `RUN_STALE`); run tetap `APPROVED` | Step 7 `22` §3.4 |
+| Aksi pada run final | `409 INVALID_STATE_TRANSITION` / `RUN_FINALIZED` | calculate, cancel, exclude, submit, finalize ulang pada run `FINALIZED` → **`409 RUN_FINALIZED`** | Demo C bagian 3 ("ubah item → RUN_FINALIZED") |
+| Versi lama | Dibersihkan setelah finalize (R3-2) | Job `payroll.cleanup_versions` (batch 1.000, idempoten) di-enqueue di transaksi finalize bila `calc_version > 1` | Tidak menghapus sambil memegang lock periode |
+| Retensi `payroll_input_changes` | Hapus > 90 hari setelah finalize | **Belum** | Job cleanup bersama retensi lain (S8) |

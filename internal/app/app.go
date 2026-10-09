@@ -21,10 +21,13 @@ import (
 
 	"payrun/db/migrations"
 	"payrun/internal/modules/approval"
+	"payrun/internal/modules/attendance"
 	"payrun/internal/modules/compensation"
 	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
+	"payrun/internal/modules/leave"
 	"payrun/internal/modules/org"
+	"payrun/internal/modules/overtime"
 	"payrun/internal/modules/payroll"
 	"payrun/internal/modules/tenancy"
 	"payrun/internal/platform/apperr"
@@ -126,6 +129,16 @@ func APIRouter(d Deps) http.Handler {
 	approvalSvc.Register(approval.SubjectPayrollRun, payrollSvc) // efek approve/reject run (ADR-P09)
 	payrollSvc.SetApprovals(runApprovals{approvalSvc})
 	approvalH := approval.NewHandler(approvalSvc)
+	approvalSvc.SetMemberships(iamSvc) // approver cuti/lembur: atasan → HR_ADMIN → OWNER (ADR-P09)
+	// Input domain (S6): penulis lewat PeriodGuard; approval cuti/lembur lewat mesin approval yang sama.
+	attendanceSvc := attendance.NewService(d.Pool, d.Clock, d.IDs, attendanceEmployees{employeeSvc}, tenancySvc, payroll.PeriodGuard{})
+	attendanceH := attendance.NewHandler(attendanceSvc)
+	leaveSvc := leave.NewService(d.Pool, d.Clock, d.IDs, leaveEmployees{employeeSvc}, tenancySvc, payroll.PeriodGuard{}, leaveApprovals{approvalSvc}, iamSvc)
+	leaveH := leave.NewHandler(leaveSvc, idem)
+	overtimeSvc := overtime.NewService(d.Pool, d.Clock, d.IDs, overtimeEmployees{employeeSvc}, tenancySvc, payroll.PeriodGuard{}, overtimeApprovals{approvalSvc}, iamSvc)
+	overtimeH := overtime.NewHandler(overtimeSvc, idem)
+	approvalSvc.Register(approval.SubjectLeave, leaveSvc)
+	approvalSvc.Register(approval.SubjectOvertime, overtimeSvc)
 	// Ketergantungan lintas modul lewat interface (ADR-001): modul tidak saling meng-import.
 	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
 	employeeSvc.Wire(orgSvc, compSvc)     // W2/W7: departemen/posisi aktif; gaji awal
@@ -153,8 +166,11 @@ func APIRouter(d Deps) http.Handler {
 		orgH.Routes(tenantRead, tenantWrite)
 		employeeH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.PIIView, byUser))
 		compH.Routes(tenantRead, tenantWrite)
-		payrollH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.HeavyCalculate, byTenant))
+		payrollH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.HeavyCalculate, byTenant), limiter.Middleware(tiers.HeavyFinalize, byTenant))
 		approvalH.Routes(tenantRead, tenantWrite)
+		attendanceH.Routes(tenantRead, tenantWrite)
+		leaveH.Routes(tenantRead, tenantWrite)
+		overtimeH.Routes(tenantRead, tenantWrite)
 	})
 	return r
 }
@@ -224,6 +240,55 @@ type runApprovals struct{ svc *approval.Service }
 func (a runApprovals) CreateRunApprovalTx(ctx context.Context, tx pgx.Tx, runID, requester, approver uuid.UUID, self bool, reason *string, meta reqmeta.Meta) (uuid.UUID, error) {
 	return a.svc.CreateTx(ctx, tx, approval.NewRequest{SubjectType: approval.SubjectPayrollRun, SubjectID: runID,
 		Requester: requester, Approver: approver, SelfApproved: self, SelfApprovalReason: reason}, meta)
+}
+
+// Adapter employee.Self → tipe lokal tiap modul input (modul tidak saling meng-import, ADR-001).
+type attendanceEmployees struct{ *employee.Service }
+
+func (a attendanceEmployees) SelfTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, on time.Time) (attendance.EmployeeSelf, bool, error) {
+	me, ok, err := a.Service.SelfTx(ctx, tx, userID, on)
+	return attendance.EmployeeSelf{EmployeeID: me.EmployeeID, Active: me.ActiveOn}, ok, err
+}
+
+type leaveEmployees struct{ *employee.Service }
+
+func (a leaveEmployees) SelfTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, on time.Time) (leave.EmployeeSelf, bool, error) {
+	me, ok, err := a.Service.SelfTx(ctx, tx, userID, on)
+	return leave.EmployeeSelf{EmployeeID: me.EmployeeID, ManagerUserID: me.ManagerUserID, Active: me.ActiveOn}, ok, err
+}
+
+type overtimeEmployees struct{ *employee.Service }
+
+func (a overtimeEmployees) SelfTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, on time.Time) (overtime.EmployeeSelf, bool, error) {
+	me, ok, err := a.Service.SelfTx(ctx, tx, userID, on)
+	return overtime.EmployeeSelf{EmployeeID: me.EmployeeID, ManagerUserID: me.ManagerUserID, Active: me.ActiveOn}, ok, err
+}
+
+// Adapter approval.Service → kebutuhan modul leave/overtime.
+type leaveApprovals struct{ *approval.Service }
+
+func (a leaveApprovals) BriefsTx(ctx context.Context, tx pgx.Tx, subjectType string, ids []uuid.UUID) (map[uuid.UUID]leave.ApprovalBrief, error) {
+	bs, err := a.Service.BriefsTx(ctx, tx, subjectType, ids)
+	out := make(map[uuid.UUID]leave.ApprovalBrief, len(bs))
+	for id, b := range bs {
+		v := leave.ApprovalBrief{ID: b.ID, Status: b.Status}
+		v.Approver.ID, v.Approver.DisplayName = b.Approver.ID, b.Approver.DisplayName
+		out[id] = v
+	}
+	return out, err
+}
+
+type overtimeApprovals struct{ *approval.Service }
+
+func (a overtimeApprovals) BriefsTx(ctx context.Context, tx pgx.Tx, subjectType string, ids []uuid.UUID) (map[uuid.UUID]overtime.ApprovalBrief, error) {
+	bs, err := a.Service.BriefsTx(ctx, tx, subjectType, ids)
+	out := make(map[uuid.UUID]overtime.ApprovalBrief, len(bs))
+	for id, b := range bs {
+		v := overtime.ApprovalBrief{ID: b.ID, Status: b.Status}
+		v.Approver.ID, v.Approver.DisplayName = b.Approver.ID, b.Approver.DisplayName
+		out[id] = v
+	}
+	return out, err
 }
 
 // employeeAccess mengadaptasi employee.Service.AccessTx ke interface compensation.Employees.

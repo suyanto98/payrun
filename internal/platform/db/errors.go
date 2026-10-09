@@ -34,6 +34,11 @@ var constraintErrors = map[string]*apperr.Error{
 	"ex_employment_spans_no_overlap":    apperr.ErrOverlappingPeriod,
 	"uq_component_definitions_code":     apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "code", Code: "DUPLICATE"}),
 	"uq_holidays_date":                  apperr.ErrDuplicateCode.WithFields(apperr.FieldError{Field: "date", Code: "DUPLICATE"}),
+	// Sprint 6: cuti/lembur tumpang tindih; saldo cuti di bawah batas (backstop, layanan memeriksa lebih
+	// dulu dan menyertakan saldo).
+	"ex_leave_requests_no_overlap":    apperr.ErrOverlappingLeave,
+	"ex_overtime_requests_no_overlap": apperr.ErrOverlappingPeriod,
+	"ck_leave_balances_min":           apperr.ErrInsufficientBalance,
 	// Berikutnya bersama tabelnya, contoh uq_payroll_runs_active_per_period → ACTIVE_RUN_EXISTS (S4).
 	// Pelanggaran yang berarti BUG (RLS WITH CHECK 42501, trigger immutability run final) sengaja
 	// TIDAK dipetakan → 500 + alert.

@@ -56,8 +56,8 @@ test: ## Unit test (tanpa Docker), dengan race detector
 test-integration: ## Integration test (butuh Docker), termasuk test interleaving (build tag testhooks)
 	go test -race -count=1 -tags testhooks ./...
 
-demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (recompute dari snapshot) secara headless
-	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected' ./internal/app/
+demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (final immutable + recompute dari snapshot) secara headless
+	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected|TestDemoC_FinalizedPayrollIsImmutable' ./internal/app/
 
 cover: ## Laporan coverage (indikatif, bukan gate) → build/coverage.html
 	mkdir -p build && go test -tags testhooks -coverprofile=build/coverage.out ./internal/... >/dev/null && \

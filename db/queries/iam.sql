@@ -264,3 +264,9 @@ RETURNING tenant_id, roles, status;
 SELECT user_id::uuid AS user_id FROM memberships
 WHERE status = 'ACTIVE' AND roles && ARRAY['OWNER', 'PAYROLL_ADMIN']::text[]
 ORDER BY user_id;
+
+-- name: ActiveUsersWithRole :many
+-- [tenant] Fallback approver cuti/lembur (ADR-P09: atasan → HR_ADMIN → OWNER): urutan deterministik.
+SELECT user_id::uuid AS user_id FROM memberships
+WHERE status = 'ACTIVE' AND @role::text = ANY (roles)
+ORDER BY created_at, user_id;

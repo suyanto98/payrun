@@ -215,6 +215,9 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 		if err := q.SeedSystemComponents(ctx, store.SeedSystemComponentsParams{TenantID: tenantID, Actor: userID}); err != nil {
 			return err
 		}
+		if err := q.SeedLeaveTypes(ctx, store.SeedLeaveTypesParams{TenantID: tenantID, Actor: userID}); err != nil {
+			return err
+		}
 		if err := s.accounts.AddOwnerTx(ctx, tx, tenantID, userID); err != nil {
 			return err
 		}

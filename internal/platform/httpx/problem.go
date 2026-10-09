@@ -28,6 +28,7 @@ type Problem struct {
 	ChangedCount     *int                   `json:"changed_count,omitempty"`
 	ApprovalStatus   string                 `json:"approval_status,omitempty"`
 	ErrorCount       *int                   `json:"error_count,omitempty"`
+	Balance          string                 `json:"balance,omitempty"`
 }
 
 const problemTypeBase = "https://payrun.dev/errors/"
@@ -71,6 +72,7 @@ func NewProblem(r *http.Request, err error) Problem {
 		ChangedCount:       e.ChangedCount,
 		ApprovalStatus:     e.ApprovalStatus,
 		ErrorCount:         e.ErrorCount,
+		Balance:            e.Balance,
 	}
 }
 

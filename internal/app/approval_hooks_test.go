@@ -4,6 +4,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -177,5 +178,39 @@ func TestCreateRun_WaitsForInputWriterOfMissingPeriod(t *testing.T) {
 	apID := e.submitRun(t, f.tokens[roleP], uuidMust(run), map[string]any{})
 	if r, b := e.approve(t, f.tokens[roleO], apID); r.StatusCode != http.StatusOK {
 		t.Fatalf("no stale input: approve want 200, got %d %v", r.StatusCode, b)
+	}
+}
+
+// TestFinalize_RetryAfterUnknownCommit_Idempotent (DoD S6, PFS-04/FS-03): COMMIT finalize berhasil tetapi
+// respons tidak sampai (hook db.after_commit). Klien mengulang dengan Idempotency-Key yang sama → replay 200
+// yang identik, tanpa efek kedua; key baru → 409 RUN_FINALIZED.
+func TestFinalize_RetryAfterUnknownCommit_Idempotent(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	run := e.approvedRun(t, f)
+	var fired atomic.Bool
+	t.Cleanup(testhook.Set("db.after_commit", func(context.Context) error {
+		if fired.CompareAndSwap(false, true) {
+			return errors.New("injected: connection lost after COMMIT")
+		}
+		return nil
+	}))
+	k := newID().String()
+	r1, b1 := e.finalize(t, f.tokens[roleP], run, k)
+	if r1.StatusCode < 500 {
+		t.Fatalf("lost response: want 5xx, got %d %v", r1.StatusCode, b1)
+	}
+	if st, _ := e.periodStatus(t, f.id, run); st != "FINALIZED" {
+		t.Fatalf("the commit happened: period must be FINALIZED, got %s", st)
+	}
+	r2, b2 := e.finalize(t, f.tokens[roleP], run, k)
+	if r2.StatusCode != http.StatusOK || r2.Header.Get("Idempotent-Replayed") != "true" || b2["status"] != "FINALIZED" {
+		t.Fatalf("retry with the same key: want replayed 200, got %d %v %v", r2.StatusCode, r2.Header, b2)
+	}
+	if n := e.auditCount(t, f.id, "payroll_run.finalized"); n != 1 {
+		t.Fatalf("exactly one finalize effect, got %d audit rows", n)
+	}
+	if r3, b3 := e.finalize(t, f.tokens[roleP], run, newID().String()); r3.StatusCode != http.StatusConflict || b3["code"] != "RUN_FINALIZED" {
+		t.Fatalf("new key: want 409 RUN_FINALIZED, got %d %v", r3.StatusCode, b3)
 	}
 }

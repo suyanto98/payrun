@@ -30,6 +30,23 @@ type ApprovalRequest struct {
 	UpdatedAt          time.Time
 }
 
+type AttendanceRecord struct {
+	TenantID         uuid.UUID
+	ID               uuid.UUID
+	EmployeeID       uuid.UUID
+	WorkDate         time.Time
+	ClockInAt        *time.Time
+	ClockOutAt       *time.Time
+	Status           string
+	Source           string
+	CorrectionReason *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CreatedBy        *uuid.UUID
+	UpdatedBy        *uuid.UUID
+	Version          int32
+}
+
 type AuditLog struct {
 	ID            uuid.UUID
 	TenantID      *uuid.UUID
@@ -214,6 +231,52 @@ type Job struct {
 	CompletedAt   *time.Time
 }
 
+type LeaveBalance struct {
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	EmployeeID     uuid.UUID
+	LeaveTypeID    uuid.UUID
+	Year           int16
+	BalanceDays    pgtype.Numeric
+	MinAllowedDays pgtype.Numeric
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type LeaveRequest struct {
+	TenantID         uuid.UUID
+	ID               uuid.UUID
+	EmployeeID       uuid.UUID
+	LeaveTypeID      uuid.UUID
+	Dates            pgtype.Range[pgtype.Date]
+	Days             pgtype.Numeric
+	Reason           *string
+	Status           string
+	ApprovedAt       *time.Time
+	CancelsRequestID *uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CreatedBy        *uuid.UUID
+	UpdatedBy        *uuid.UUID
+	Version          int32
+}
+
+type LeaveType struct {
+	TenantID        uuid.UUID
+	ID              uuid.UUID
+	Code            string
+	Name            string
+	IsPaid          bool
+	AnnualQuotaDays pgtype.Numeric
+	MaxNegativeDays pgtype.Numeric
+	Status          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	CreatedBy       *uuid.UUID
+	UpdatedBy       *uuid.UUID
+	Version         int32
+}
+
 type Membership struct {
 	TenantID     uuid.UUID
 	ID           uuid.UUID
@@ -243,6 +306,24 @@ type OrgAssignment struct {
 	CreatedBy    *uuid.UUID
 	UpdatedBy    *uuid.UUID
 	Version      int32
+}
+
+type OvertimeRequest struct {
+	TenantID   uuid.UUID
+	ID         uuid.UUID
+	EmployeeID uuid.UUID
+	WorkDate   time.Time
+	StartAt    time.Time
+	EndAt      time.Time
+	Hours      pgtype.Numeric
+	Reason     string
+	Status     string
+	ApprovedAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	CreatedBy  *uuid.UUID
+	UpdatedBy  *uuid.UUID
+	Version    int32
 }
 
 type PayrollInputChange struct {
