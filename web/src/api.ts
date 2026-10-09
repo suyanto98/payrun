@@ -3,7 +3,14 @@
 import { useAuth } from './stores/auth'
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string, public fields: { field: string; code: string; message?: string }[] = []) {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+    public fields: { field: string; code: string; message?: string }[] = [],
+    /** Extension problem per code (katalog §3): employees_changed, error_count, approval_status, … */
+    public extra: Record<string, unknown> = {},
+  ) {
     super(message)
   }
 }
@@ -29,7 +36,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
   }
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, data.code ?? 'UNKNOWN', data.detail ?? data.title ?? res.statusText, data.errors)
+  if (!res.ok) throw new ApiError(res.status, data.code ?? 'UNKNOWN', data.detail ?? data.title ?? res.statusText, data.errors, data)
   return data as T
 }
 

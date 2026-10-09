@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './components/AppIcon.vue'
-import { canListEmployees, rolesText } from './access'
+import { canListEmployees, canReadPayroll, rolesText } from './access'
 import { useAuth } from './stores/auth'
 
 const auth = useAuth()
@@ -40,6 +40,12 @@ async function logout() {
         <nav class="nav" aria-label="Menu utama">
           <RouterLink v-if="employeesLink" :to="employeesLink" class="nav-link" :class="{ active: route.path.startsWith('/employees') }">
             <AppIcon name="users" />{{ canListEmployees(auth.roles) ? 'Karyawan' : 'Profil saya' }}
+          </RouterLink>
+          <RouterLink v-if="canReadPayroll(auth.roles)" to="/payroll" class="nav-link" :class="{ active: route.path.startsWith('/payroll') }">
+            <AppIcon name="bank" />Payroll
+          </RouterLink>
+          <RouterLink v-if="auth.tenant" to="/approvals" class="nav-link" :class="{ active: route.path === '/approvals' }">
+            <AppIcon name="check" />Approval
           </RouterLink>
           <RouterLink to="/select-tenant" class="nav-link" :class="{ active: route.path === '/select-tenant' }">
             <AppIcon name="building" />Ganti perusahaan

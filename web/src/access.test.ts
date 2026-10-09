@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canEditEmployees, canListEmployees, formatDate, formatMoney } from './access'
+import { canEditEmployees, canListEmployees, canReadPayroll, canRunPayroll, formatDate, formatMoney, formatPeriod, runActions } from './access'
 
 describe('access', () => {
   it('mirrors W1/W2 of the authorization matrix', () => {
@@ -18,5 +18,20 @@ describe('access', () => {
     expect(formatMoney('6600000.00')).toBe('Rp6.600.000')
     expect(formatMoney('20000.50')).toBe('Rp20.000,50')
     expect(formatMoney(null)).toBe('—')
+  })
+  it('mirrors Y3/Y5 of the authorization matrix (HR reads payroll, does not run it)', () => {
+    expect(canReadPayroll(['HR_ADMIN'])).toBe(true)
+    expect(canRunPayroll(['HR_ADMIN'])).toBe(false)
+    expect(canRunPayroll(['PAYROLL_ADMIN'])).toBe(true)
+    expect(canReadPayroll(['MANAGER', 'EMPLOYEE'])).toBe(false)
+  })
+  it('offers only the transitions the run state machine allows', () => {
+    expect(runActions('CALCULATED')).toEqual({ calculate: true, submit: true, cancel: true })
+    expect(runActions('PENDING_APPROVAL')).toEqual({ calculate: false, submit: false, cancel: false })
+    expect(runActions('CALCULATING')).toEqual({ calculate: false, submit: false, cancel: false })
+    expect(runActions('DRAFT')).toEqual({ calculate: true, submit: false, cancel: true })
+  })
+  it('formats payroll periods', () => {
+    expect(formatPeriod('2026-03')).toBe('Maret 2026')
   })
 })

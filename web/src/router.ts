@@ -1,11 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { canListEmployees } from './access'
+import { canListEmployees, canReadPayroll } from './access'
 import { useAuth } from './stores/auth'
 import LoginView from './pages/LoginView.vue'
 import SelectTenantView from './pages/SelectTenantView.vue'
 import EmployeesView from './pages/EmployeesView.vue'
 import EmployeeDetailView from './pages/EmployeeDetailView.vue'
 import InviteView from './pages/InviteView.vue'
+import PayrollRunsView from './pages/PayrollRunsView.vue'
+import PayrollRunView from './pages/PayrollRunView.vue'
+import ApprovalsView from './pages/ApprovalsView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -27,6 +30,9 @@ export const router = createRouter({
     { path: '/', redirect: '/employees' },
     { path: '/employees', component: EmployeesView, meta: { tenant: true, title: 'Karyawan' } },
     { path: '/employees/:id', component: EmployeeDetailView, meta: { tenant: true, title: 'Detail karyawan' } },
+    { path: '/payroll', component: PayrollRunsView, meta: { tenant: true, title: 'Payroll' } },
+    { path: '/payroll/:id', component: PayrollRunView, meta: { tenant: true, title: 'Payroll run' } },
+    { path: '/approvals', component: ApprovalsView, meta: { tenant: true, title: 'Approval' } },
   ],
 })
 
@@ -51,6 +57,8 @@ router.beforeEach(async (to) => {
   if (to.path === '/employees' && auth.tenant && !canListEmployees(auth.roles)) {
     return auth.employeeId ? `/employees/${auth.employeeId}` : '/select-tenant'
   }
+  // Payroll hanya untuk OWNER/HR_ADMIN/PAYROLL_ADMIN (Y3 → 403, Y4 → 404 untuk role lain).
+  if (to.path.startsWith('/payroll') && auth.tenant && !canReadPayroll(auth.roles)) return '/'
 })
 
 /** Hanya path internal ("/x"), bukan "//host" atau URL absolut (open redirect). */

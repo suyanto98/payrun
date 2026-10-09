@@ -19,6 +19,7 @@ export class AuthError extends Error {}
 export const useAuth = defineStore('auth', {
   state: () => ({
     token: '' as string,
+    userId: '' as string,
     email: '' as string,
     displayName: '' as string,
     emailVerified: true,
@@ -57,6 +58,7 @@ export const useAuth = defineStore('auth', {
       const res = await fetch('/api/v1/me', { headers: { Authorization: `Bearer ${this.token}` } })
       if (!res.ok) return
       const me = await res.json()
+      this.userId = me.id
       this.email = me.email
       this.displayName = me.display_name
       this.emailVerified = me.email_verified

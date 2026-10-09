@@ -38,3 +38,41 @@ export function formatMoney(v: string | null | undefined): string {
   return 'Rp' + grouped + (frac && /[1-9]/.test(frac) ? ',' + frac : '')
 }
 
+
+/** Y3/Y4/Y6: OWNER, HR_ADMIN (baca), PAYROLL_ADMIN. */
+export function canReadPayroll(roles: Role[]): boolean {
+  return roles.some((r) => r === 'OWNER' || r === 'HR_ADMIN' || r === 'PAYROLL_ADMIN')
+}
+
+/** Y2/Y5/Y8/Y10/Y12: hanya OWNER dan PAYROLL_ADMIN (HR_ADMIN membaca saja, pemisahan tugas). */
+export function canRunPayroll(roles: Role[]): boolean {
+  return roles.includes('OWNER') || roles.includes('PAYROLL_ADMIN')
+}
+
+export const runStatusLabel: Record<string, string> = {
+  DRAFT: 'Draf', CALCULATING: 'Menghitung', CALCULATED: 'Terhitung', PENDING_APPROVAL: 'Menunggu approval',
+  APPROVED: 'Disetujui', FINALIZED: 'Final', FAILED: 'Gagal', CANCELLED: 'Dibatalkan',
+}
+export const runStatusPill: Record<string, string> = {
+  DRAFT: '', CALCULATING: 'warn', CALCULATED: 'ok', PENDING_APPROVAL: 'warn', APPROVED: 'ok', FINALIZED: 'ok', FAILED: 'bad', CANCELLED: 'bad',
+}
+
+/** Aksi yang tersedia untuk status run (Step 3 `08`: state machine ADR-P05). */
+export function runActions(status: string): { calculate: boolean; submit: boolean; cancel: boolean } {
+  return {
+    calculate: status === 'DRAFT' || status === 'CALCULATED' || status === 'FAILED',
+    submit: status === 'CALCULATED',
+    cancel: status === 'DRAFT' || status === 'CALCULATED' || status === 'FAILED',
+  }
+}
+
+export const staleReasonLabel: Record<string, string> = {
+  INPUT_CHANGED: 'input berubah', NEWLY_ELIGIBLE: 'baru masuk periode', NO_LONGER_ELIGIBLE: 'tidak lagi bekerja di periode',
+}
+
+/** "2026-03" → "Maret 2026". */
+export function formatPeriod(p: string): string {
+  const [y, m] = p.split('-').map(Number)
+  const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+  return `${months[m - 1]} ${y}`
+}
