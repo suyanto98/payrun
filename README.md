@@ -2,7 +2,7 @@
 
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
-**Status:** Sprint 3 (compensation + payroll engine). On top of Sprint 2 (tenancy, IAM, invitations, employees with encrypted PII, authorization matrix): effective-dated salary and component assignments, department/position placements with a cycle-free manager chain, tenant holidays, versioned rulesets, and a pure payroll engine verified by 31 golden cases (worked example: Tono, March 2026 = Rp6.888.609), a 10,000-iteration property test, and snapshot recompute ([roadmap](docs/design/30-roadmap.md)).
+**Status:** Sprint 5 (approval + stale detection). Sprint 4 selesai: payroll run asinkron per chunk lewat `payrun worker` (resumable, fencing lease, guard `calc_version`), role change/revoke dengan penjaga owner terakhir, full view PII ter-audit; di atas Sprint 1–3 (tenancy, IAM, RLS, employee + PII terenkripsi, kompensasi effective-dated, payroll engine dengan 31 golden case, contoh Tono Maret 2026 = Rp6.888.609) ([roadmap](docs/design/30-roadmap.md)).
 
 ## Quick start
 
@@ -10,7 +10,7 @@ Requirements: Go (version in `go.mod`), Docker, Node 22 + Yarn (SPA and `make li
 
 ```bash
 make tools        # sqlc, goose, oapi-codegen, golangci-lint, actionlint, govulncheck
-make up           # postgres + migrate + api; waits until /readyz is green
+make up           # postgres + migrate + api + worker; waits until /readyz is green
 curl -s localhost:9190/readyz   # ops port (health/metrics), localhost only
 make test         # unit tests (no Docker)
 make test-integration           # Postgres via testcontainers, incl. interleaving tests
@@ -26,7 +26,7 @@ Dev ports: API `127.0.0.1:8081`, ops `127.0.0.1:9190`, Postgres `127.0.0.1:55433
 
 | Path | Content |
 |---|---|
-| `cmd/payrun` | Single binary: `api`, `migrate up`, `healthcheck` |
+| `cmd/payrun` | Single binary: `api`, `worker`, `migrate up`, `healthcheck` |
 | `internal/platform` | Skeleton shared in spirit with LedgerPay (db, auth, httpx, ratelimit, crypto, metrics, tracing); see `CHANGELOG.md` |
 | `internal/app` | Composition root (routers, wiring) |
 | `db/migrations` | goose migrations, embedded in the binary; run as `payrun_owner` |
