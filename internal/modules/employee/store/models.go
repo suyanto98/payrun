@@ -227,6 +227,112 @@ type OrgAssignment struct {
 	Version      int32
 }
 
+type PayrollItem struct {
+	TenantID         uuid.UUID
+	ID               uuid.UUID
+	RunID            uuid.UUID
+	EmployeeID       uuid.UUID
+	CalcVersion      int32
+	Status           string
+	Gross            pgtype.Numeric
+	Deductions       pgtype.Numeric
+	Net              pgtype.Numeric
+	ErrorCodes       []string
+	WarningCodes     []string
+	Issues           []byte
+	InputFingerprint []byte
+	EmployeeNo       string
+	EmployeeName     string
+	DepartmentID     *uuid.UUID
+	ExcludedReason   *string
+	ExcludedBy       *uuid.UUID
+	ExcludedAt       *time.Time
+	CreatedAt        time.Time
+}
+
+type PayrollItemSnapshot struct {
+	TenantID         uuid.UUID
+	ItemID           uuid.UUID
+	RunID            uuid.UUID
+	CalcVersion      int32
+	SnapshotVersion  int16
+	Input            []byte
+	RulesetCode      string
+	RulesetVersion   string
+	InputFingerprint []byte
+	CreatedAt        time.Time
+}
+
+type PayrollLine struct {
+	TenantID     uuid.UUID
+	ID           uuid.UUID
+	RunID        uuid.UUID
+	CalcVersion  int32
+	ItemID       uuid.UUID
+	SortOrder    int16
+	Code         string
+	Name         string
+	Category     string
+	Stage        string
+	Amount       pgtype.Numeric
+	Basis        []byte
+	Explanation  string
+	Taxable      bool
+	Rounding     string
+	AdjustmentID *uuid.UUID
+	CreatedAt    time.Time
+}
+
+type PayrollPeriod struct {
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	Year           int16
+	Month          int16
+	PeriodRange    pgtype.Range[pgtype.Date]
+	CutoffAt       time.Time
+	Status         string
+	FinalizedRunID *uuid.UUID
+	FinalizedAt    *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type PayrollRun struct {
+	TenantID          uuid.UUID
+	ID                uuid.UUID
+	PeriodID          uuid.UUID
+	Status            string
+	CalcVersion       int32
+	ChunksTotal       int32
+	ChunksDone        int32
+	EligibleCount     *int32
+	InputFingerprint  []byte
+	RulesetCode       *string
+	RulesetVersion    *string
+	TotalGross        pgtype.Numeric
+	TotalDeductions   pgtype.Numeric
+	TotalNet          pgtype.Numeric
+	ItemOkCount       *int32
+	ItemErrorCount    *int32
+	ItemExcludedCount *int32
+	WarningCount      *int32
+	FailureReason     *string
+	CalcStartedAt     *time.Time
+	CalculatedAt      *time.Time
+	SubmittedBy       *uuid.UUID
+	SubmittedAt       *time.Time
+	ApprovedBy        *uuid.UUID
+	ApprovedAt        *time.Time
+	FinalizedBy       *uuid.UUID
+	FinalizedAt       *time.Time
+	CancelledBy       *uuid.UUID
+	CancelledAt       *time.Time
+	CancelReason      *string
+	CreatedBy         *uuid.UUID
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type PlatformIdempotencyKey struct {
 	ID             uuid.UUID
 	Endpoint       string

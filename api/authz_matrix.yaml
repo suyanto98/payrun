@@ -15,9 +15,12 @@
 #                         employee_self          → employee fixture yang tertaut ke user EMPLOYEE (baca saja)
 #                         employee_report        → employee yang sama: bawahan langsung user MANAGER (S3)
 #                         holiday | component    → libur / komponen tenant (FIXED) yang dibuat OWNER
+#                         run                    → payroll run DRAFT (periode 2025 ke bawah, unik per run)
+#                         run_item               → run CALCULATED (2026) + satu item ERROR ({item_id})
 #           query     : query string (tanpa "?")
 #           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik,
-#                       {date} = tanggal unik, {dept}/{pos}/{comp} = departemen/posisi/komponen fixture
+#                       {date} = tanggal unik, {period} = periode payroll unik (YYYY-MM),
+#                       {dept}/{pos}/{comp} = departemen/posisi/komponen fixture
 #           if_match  : kirim If-Match: "1"
 #           idempotency: kirim Idempotency-Key acak
 #           expect    : status per role (O H P M E); role yang tidak disebut tidak diuji di case itu
@@ -241,3 +244,52 @@ routes:
     audit: component.deactivated
     cases:
       - {target: component, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+
+  # ---------------------------------------------------------------- payroll run (Y2–Y8, Y12; S4)
+  # Run: OWNER/PAYROLL_ADMIN menjalankan, HR_ADMIN membaca (ᴬ). Bagi MANAGER/EMPLOYEE resource run
+  # tidak terlihat → 404; koleksi → 403. Y1 (GET /payroll-periods) belum ada rutenya.
+  - id: Y2
+    route: "POST /payroll-runs"
+    access: tenant
+    audit: payroll_run.created
+    cases:
+      - {idempotency: true, body: {period: "{period}"}, expect: {O: 201, H: 403, P: 201, M: 403, E: 403}}
+  - id: Y3
+    route: "GET /payroll-runs"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 403, E: 403}
+  - id: Y4
+    route: "GET /payroll-runs/{id}"
+    access: tenant
+    cases:
+      - {target: run, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+  - id: Y5
+    route: "POST /payroll-runs/{id}/calculate"
+    access: tenant
+    audit: payroll_run.calculate_requested
+    cases:
+      - {target: run, idempotency: true, expect: {O: 202, H: 403, P: 202, M: 404, E: 404}}
+  - id: Y6
+    route: "GET /payroll-runs/{id}/items"
+    access: tenant
+    audit: payroll.bulk_read   # SETIAP request, semua role (Step 12 R2-6)
+    cases:
+      - {target: run_item, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+  - id: Y7
+    route: "GET /payroll-runs/{id}/items/{item_id}"
+    access: tenant
+    cases:   # audit payroll_item.read hanya untuk HR_ADMIN (ᴬ), diuji di payroll_test.go
+      - {target: run_item, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+  - id: Y8
+    route: "POST /payroll-runs/{id}/items/{item_id}/exclude"
+    access: tenant
+    audit: payroll_item.excluded
+    cases:
+      - {target: run_item, body: {reason: "Data gaji belum lengkap"}, expect: {O: 200, H: 403, P: 200, M: 404, E: 404}}
+  - id: Y12
+    route: "POST /payroll-runs/{id}/cancel"
+    access: tenant
+    audit: payroll_run.cancelled
+    cases:
+      - {target: run, body: {reason: "Salah periode"}, expect: {O: 200, H: 403, P: 200, M: 404, E: 404}}

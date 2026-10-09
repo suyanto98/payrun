@@ -18,7 +18,7 @@ import (
 func relaxedTiers() *ratelimit.Tiers {
 	t := ratelimit.DefaultTiers()
 	loose := []ratelimit.Rule{{Events: 100000, Per: time.Minute}}
-	t.AuthStrict.Rules, t.AuthIP.Rules, t.Read.Rules, t.Write.Rules = loose, loose, loose, loose
+	t.AuthStrict.Rules, t.AuthIP.Rules, t.Read.Rules, t.Write.Rules, t.HeavyCalculate.Rules = loose, loose, loose, loose, loose
 	return &t
 }
 

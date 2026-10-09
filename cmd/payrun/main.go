@@ -1,11 +1,12 @@
 // Command payrun adalah satu binary dengan beberapa subcommand (ADR-001):
 //
 //	payrun api           # server API publik (:8080) + ops (:9090)
+//	payrun worker        # job runner: kalkulasi payroll async, maintenance (+ ops :9090)
 //	payrun migrate up    # jalankan migrasi (role payrun_owner)
 //	payrun healthcheck   # dipakai HEALTHCHECK container (image distroless tidak punya curl)
 //
-// Subcommand lain ditambahkan saat pertama kali dibutuhkan: `worker` (Sprint 4, kalkulasi async),
-// `seed` (data demo), `verify-run` (recompute dari snapshot, bukti PI-12).
+// Subcommand lain ditambahkan saat pertama kali dibutuhkan: `seed` (data demo), `verify-run`
+// (recompute dari snapshot, bukti PI-12).
 package main
 
 import (
@@ -21,6 +22,8 @@ import (
 	"syscall"
 	"time"
 	_ "time/tzdata" // validasi timezone IANA (signup, settings) tidak bergantung pada zoneinfo image
+
+	"github.com/google/uuid"
 
 	"payrun/db/migrations"
 	"payrun/internal/app"
@@ -39,13 +42,15 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: payrun <api|migrate up|healthcheck>")
+		fmt.Fprintln(os.Stderr, "usage: payrun <api|worker|migrate up|healthcheck>")
 		os.Exit(2)
 	}
 	var err error
 	switch os.Args[1] {
 	case "api":
 		err = runAPI()
+	case "worker":
+		err = runWorker()
 	case "migrate":
 		err = runMigrate(os.Args[2:])
 	case "healthcheck":
@@ -142,6 +147,70 @@ func runAPI() error {
 	_ = api.Shutdown(shutdownCtx)
 	_ = ops.Shutdown(shutdownCtx)
 	return err
+}
+
+func runWorker() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if err := cfg.ValidateWorker(); err != nil {
+		return err
+	}
+	logger := observability.NewLogger(os.Stdout, cfg.LogLevel, "worker", cfg.AppEnv, cfg.Version)
+	slog.SetDefault(logger)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	shutdownTracing, err := tracing.Setup(ctx, "payrun-worker", cfg.Version, cfg.OTLPEndpoint)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+	metrics.SetBuildInfo("worker", cfg.Version)
+	// Pool worker 10 (Step 7 `01` §6); lock_timeout 5 dtk: chunk menunggu lock run lebih lama dari API.
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL, db.Options{
+		MaxConns: 10, StatementTimeout: cfg.DBStatementTimeout, LockTimeout: 5 * time.Second, IdleInTxTimeout: cfg.DBIdleInTxTimeout,
+	})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	metrics.RegisterPool("worker", pool)
+	startCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	rc, err := db.CheckAppRole(startCtx, pool) // worker juga tunduk pada RLS (handler membuka tx tenant)
+	cancel()
+	if err != nil {
+		return err
+	}
+	logger.Info("db.role_check_passed", "role", rc.Role)
+
+	deps := app.Deps{Logger: logger, Pool: pool, Clock: clock.System{}, IDs: idgen.V7{}}
+	if err := deps.ValidateWorker(); err != nil {
+		return err
+	}
+	if !cfg.PayrollCalcEnabled {
+		logger.Warn("worker.kill_switch", "payroll_calc_disabled", true)
+	}
+	workerID := cfg.WorkerID
+	if workerID == "" {
+		workerID, _ = os.Hostname()
+	}
+	// ID unik per START (hostname:pid:uuid): worker yang restart tidak pernah dianggap pemilik lease lamanya.
+	id := fmt.Sprintf("%s:%d:%s", workerID, os.Getpid(), uuid.NewString()[:8])
+	w := app.NewWorker(deps, app.WorkerConfig{ID: id, ChunkSize: cfg.PayrollChunkSize, DisablePayrollCalc: !cfg.PayrollCalcEnabled})
+	ops := &http.Server{Addr: cfg.OpsAddr, Handler: withPprof(cfg.PprofEnabled, app.WorkerOpsRouter(w, cfg.WorkerPollInterval)), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := serve(ops); err != nil {
+			logger.Error("worker.ops_failed", "err", err.Error())
+			stop()
+		}
+	}()
+	defer func() { _ = ops.Shutdown(context.Background()) }()
+	logger.Info("worker.started", "worker_id", id, "ops_addr", cfg.OpsAddr, "chunk_size", cfg.PayrollChunkSize)
+	w.Run(observability.WithLogger(ctx, logger), cfg.WorkerPollInterval)
+	logger.Info("worker.stopped")
+	return nil
 }
 
 func serve(s *http.Server) error {

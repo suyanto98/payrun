@@ -45,6 +45,10 @@ type env struct {
 	tdb    dbtest.TestDB // akses superuser untuk menyiapkan state yang tidak bisa dicapai lewat API
 	// handler adalah router API (dipakai test matriks untuk chi.Walk).
 	handler http.Handler
+	// worker: lane yang sama dengan `payrun worker`, dijalankan sinkron lewat drainJobs (chunk kecil
+	// supaya run beberapa karyawan sudah melewati lebih dari satu chunk).
+	worker *app.Worker
+	deps   app.Deps
 }
 
 // fakeMailer merekam email alih-alih mengirim; fail = simulasi SMTP mati.
@@ -126,9 +130,16 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 		t.Fatal(err)
 	}
 	h := app.APIRouter(deps)
-	e := env{srv: httptest.NewServer(h), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb, handler: h}
+	e := env{srv: httptest.NewServer(h), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb, handler: h,
+		worker: app.NewWorker(deps, app.WorkerConfig{ID: "test:" + newID().String()[:8], ChunkSize: 2}), deps: deps}
 	t.Cleanup(e.srv.Close)
 	return e
+}
+
+// withWorker: worker kedua (proses lain) dengan kill switch kalkulasi payroll on/off.
+func (e env) withWorker(t *testing.T, disablePayroll bool) *app.Worker {
+	t.Helper()
+	return app.NewWorker(e.deps, app.WorkerConfig{ID: "test:" + newID().String()[:8], ChunkSize: 2, DisablePayrollCalc: disablePayroll})
 }
 
 type result struct {

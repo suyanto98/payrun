@@ -41,6 +41,22 @@ func WithTenantTxFor(ctx context.Context, b Beginner, tenantID uuid.UUID, fn fun
 	})
 }
 
+// WithTenantTxForOptions sama dengan WithTenantTxFor dengan isolation/akses pilihan. Dipakai txRead
+// chunk payroll (REPEATABLE READ READ ONLY, Step 7 `22` §3.2): satu snapshot konsisten untuk semua
+// input chunk. set_config adalah statement pertama dan tidak membaca tabel, jadi snapshot RR baru
+// diambil pada query data pertama (`22` §2).
+func WithTenantTxForOptions(ctx context.Context, b Beginner, tenantID uuid.UUID, opts pgx.TxOptions, fn func(tx pgx.Tx) error) error {
+	if tenantID == uuid.Nil {
+		return ErrNoTenantContext
+	}
+	return WithTxOptions(ctx, b, opts, func(tx pgx.Tx) error {
+		if err := SetTenant(ctx, tx, tenantID); err != nil {
+			return err
+		}
+		return fn(tx)
+	})
+}
+
 // WithPlatformTx menjalankan fn dengan app.user_id = userID saja (mode platform): yang terlihat hanya
 // users (diri sendiri), memberships milik user (baca), dan tenants tempat user anggota ACTIVE.
 // Hanya modul iam/tenancy yang boleh memakainya (depguard).

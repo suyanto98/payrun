@@ -79,6 +79,10 @@ func MapError(err error) error {
 		return apperr.ErrNotFound.WithCause(err)
 	case "P0005": // trigger PI-19 forbid_manager_cycle
 		return apperr.ErrManagerCycle.WithCause(err)
+	case "P0001": // trigger PI-04: run/periode final immutable
+		return apperr.ErrRunFinalized.WithCause(err)
+	case "P0004": // trigger PI-16: owner terakhir
+		return apperr.ErrLastOwner.WithCause(err)
 	}
 	return err
 }

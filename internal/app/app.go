@@ -24,6 +24,7 @@ import (
 	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
 	"payrun/internal/modules/org"
+	"payrun/internal/modules/payroll"
 	"payrun/internal/modules/tenancy"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/auth"
@@ -118,12 +119,15 @@ func APIRouter(d Deps) http.Handler {
 	employeeH := employee.NewHandler(employeeSvc, idem)
 	compSvc := compensation.NewService(d.Pool, employeeAccess{employeeSvc}, d.Clock, d.IDs)
 	compH := compensation.NewHandler(compSvc, idem)
+	payrollH := payroll.NewHandler(payroll.NewService(d.Pool, d.Clock, d.IDs), idem)
 	// Ketergantungan lintas modul lewat interface (ADR-001): modul tidak saling meng-import.
 	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
 	employeeSvc.Wire(orgSvc, compSvc)     // W2/W7: departemen/posisi aktif; gaji awal
 	orgSvc.Wire(employeeSvc)              // G4: masih dipakai penempatan hari ini
 
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
+	// Tier heavy dikunci per TENANT: satu tenant tidak bisa membanjiri worker bersama (PF-29).
+	byTenant := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.TenantID.String() }
 	r.Route("/api/v1", func(v1 chi.Router) {
 		authed := v1.With(auth.RequireUser(d.Tokens))
 		read := authed.With(limiter.Middleware(tiers.Read, byUser))
@@ -137,6 +141,7 @@ func APIRouter(d Deps) http.Handler {
 		orgH.Routes(tenantRead, tenantWrite)
 		employeeH.Routes(tenantRead, tenantWrite)
 		compH.Routes(tenantRead, tenantWrite)
+		payrollH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.HeavyCalculate, byTenant))
 	})
 	return r
 }

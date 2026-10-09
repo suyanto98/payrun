@@ -203,6 +203,11 @@ var appGrantMatrix = map[string]string{
 	"salary_assignments":        "INSERT,SELECT,UPDATE",
 	"employee_components":       "INSERT,SELECT,UPDATE",
 	"org_assignments":           "INSERT,SELECT,UPDATE",
+	"payroll_periods":           "INSERT,SELECT,UPDATE",
+	"payroll_runs":              "INSERT,SELECT,UPDATE",
+	"payroll_items":             "DELETE,INSERT,SELECT,UPDATE",
+	"payroll_lines":             "DELETE,INSERT,SELECT",
+	"payroll_item_snapshots":    "DELETE,INSERT,SELECT",
 }
 
 func TestCatalog_AppGrantsMatchMatrix(t *testing.T) {

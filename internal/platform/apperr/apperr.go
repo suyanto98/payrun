@@ -130,6 +130,11 @@ var (
 	ErrManagerCycle       = def(http.StatusUnprocessableEntity, "MANAGER_CYCLE", "Manager assignment would create a cycle")
 	ErrComponentCycle     = def(http.StatusUnprocessableEntity, "COMPONENT_CYCLE", "Component references form a cycle")
 	ErrInvalidComponentRf = def(http.StatusUnprocessableEntity, "INVALID_COMPONENT_REFERENCE", "Invalid component reference")
+	// Sprint 4: payroll run, member (katalog §3).
+	ErrActiveRunExists = def(http.StatusConflict, "ACTIVE_RUN_EXISTS", "An active payroll run already exists for this period")
+	ErrPeriodLocked    = def(http.StatusConflict, "PERIOD_LOCKED", "The payroll period is finalized")
+	ErrRunFinalized    = def(http.StatusConflict, "RUN_FINALIZED", "The payroll run is finalized")
+	ErrLastOwner       = def(http.StatusConflict, "LAST_OWNER", "The tenant must keep at least one active owner")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

@@ -24,8 +24,8 @@ tools: ## Pasang toolchain Go (sqlc, goose, oapi-codegen, golangci-lint, actionl
 	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
 # ------------------------------------------------------------------ local stack
-up: ## Jalankan postgres + migrate + api (build ulang image), tunggu sampai /readyz hijau
-	$(COMPOSE) up -d --build --wait api
+up: ## Jalankan postgres + migrate + api + worker (build ulang image), tunggu sampai /readyz hijau
+	$(COMPOSE) up -d --build --wait api worker
 
 up-storage: ## Object storage S3 (SeaweedFS) + buat bucket private payrun-private
 	$(COMPOSE) --profile storage up -d --wait storage

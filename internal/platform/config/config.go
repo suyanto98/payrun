@@ -58,6 +58,10 @@ type Config struct {
 	// tanpa build ulang. Dipakai worker mulai Sprint 4 (kalkulasi) dan Sprint 7 (render PDF).
 	PayrollCalcEnabled   bool `env:"PR_PAYROLL_CALC_ENABLED" envDefault:"true"`
 	PayslipRenderEnabled bool `env:"PR_PAYSLIP_RENDER_ENABLED" envDefault:"true"`
+	// Worker (Sprint 4): ID unik per proses diturunkan dari WORKER_ID (default hostname) + pid + acak.
+	WorkerID           string        `env:"WORKER_ID"` // default: hostname
+	WorkerPollInterval time.Duration `env:"WORKER_POLL_INTERVAL" envDefault:"500ms"`
+	PayrollChunkSize   int           `env:"PAYROLL_CHUNK_SIZE" envDefault:"50"` // demo: 10 (O5)
 	// Mode demo (O15): endpoint /api/v1/demo/* HANYA di binary build tag `demo` DAN kalau DEMO_MODE=true;
 	// setiap request wajib header X-Demo-Token. DEMO_MODE=true tanpa token (≥ 24 karakter) = gagal start.
 	DemoMode  bool   `env:"DEMO_MODE"`
@@ -97,7 +101,7 @@ type Config struct {
 // Dev melaporkan apakah environment adalah dev/test (pagar untuk fitur yang tidak aman di produksi).
 func (c *Config) Dev() bool { return c.AppEnv == "dev" || c.AppEnv == "test" }
 
-// validateShared: keyring PII dan pagar mode demo/perf, dipakai api dan (nanti) worker.
+// validateShared: keyring PII dan pagar mode demo/perf, dipakai api dan worker.
 func (c *Config) validateShared() []error {
 	var errs []error
 	kr, err := crypto.ParseKeyring(c.PIIKeyringJSON, c.PIIActiveVersion)
@@ -119,7 +123,7 @@ func (c *Config) validateShared() []error {
 	return errs
 }
 
-// Load membaca env. Validasi per subcommand ada di ValidateAPI.
+// Load membaca env. Validasi per subcommand ada di ValidateAPI dan ValidateWorker.
 func Load() (Config, error) {
 	var c Config
 	if err := env.Parse(&c); err != nil {
@@ -199,6 +203,23 @@ func isLoopbackHost(h string) bool {
 	}
 	a, err := netip.ParseAddr(h)
 	return err == nil && a.IsLoopback()
+}
+
+// ValidateWorker memastikan semua yang dibutuhkan subcommand `worker` tersedia. Keyring PII ikut wajib:
+// kalkulasi tidak mendekripsi PII hari ini, tetapi payslip (S7) akan, dan config worker sama dengan api.
+func (c *Config) ValidateWorker() error {
+	var errs []error
+	if c.DatabaseURL == "" {
+		errs = append(errs, errors.New("DATABASE_URL wajib"))
+	}
+	if c.PayrollChunkSize < 1 || c.PayrollChunkSize > 500 {
+		errs = append(errs, fmt.Errorf("PAYROLL_CHUNK_SIZE (%d) harus 1..500", c.PayrollChunkSize))
+	}
+	if c.WorkerPollInterval <= 0 {
+		errs = append(errs, errors.New("WORKER_POLL_INTERVAL harus > 0"))
+	}
+	errs = append(errs, c.validateShared()...)
+	return errors.Join(errs...)
 }
 
 func parseKeys(raw string) (map[string][]byte, error) {

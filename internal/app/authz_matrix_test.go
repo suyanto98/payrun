@@ -104,12 +104,29 @@ func TestAuthzMatrix_CoversEveryRoute(t *testing.T) {
 
 // matrixRunner menjalankan case di atas fixture Alpha.
 type matrixRunner struct {
-	e   env
-	f   *tenantFx
-	seq atomic.Int64
+	e    env
+	f    *tenantFx
+	seq  atomic.Int64
+	past atomic.Int64 // periode run unik: 2025-12, 2025-11, … (tanpa employee eligible → cepat)
+	cur  atomic.Int64 // periode run_item: 2026-01 … 2026-11 (employee fixture eligible)
+	// items: run → item ERROR miliknya, untuk {item_id}. run/runItem: target baca bersama.
+	items       map[uuid.UUID]uuid.UUID
+	run, runItm uuid.UUID
 }
 
 func (m *matrixRunner) next() int64 { return m.seq.Add(1) }
+
+func (m *matrixRunner) pastPeriod() string {
+	return time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC).AddDate(0, -int(m.past.Add(1)-1), 0).Format("2006-01")
+}
+
+func (m *matrixRunner) currentPeriod(t *testing.T) string {
+	n := m.cur.Add(1)
+	if n > 11 { // jam fake 2026-10-06: periode paling jauh 2026-11
+		t.Fatal("matrix: out of 2026 periods for run_item targets")
+	}
+	return fmt.Sprintf("2026-%02d", n)
+}
 
 func (m *matrixRunner) fill(t *testing.T, v any) any {
 	switch x := v.(type) {
@@ -122,6 +139,9 @@ func (m *matrixRunner) fill(t *testing.T, v any) any {
 		x = strings.ReplaceAll(x, "{dept}", m.f.dept.String())
 		x = strings.ReplaceAll(x, "{pos}", m.f.pos.String())
 		x = strings.ReplaceAll(x, "{comp}", m.f.comp.String())
+		if strings.Contains(x, "{period}") {
+			x = strings.ReplaceAll(x, "{period}", m.pastPeriod())
+		}
 		return x
 	case map[string]any:
 		out := map[string]any{}
@@ -173,6 +193,25 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 		}
 		return m.e.mustCreate(t, owner, "/api/v1/component-definitions", map[string]any{
 			"code": fmt.Sprintf("T%d", m.next()), "name": "Target", "category": "EARNING", "calc_type": "FIXED", "default_amount": "1000.00"})
+	case "run":
+		if !fresh && m.run != uuid.Nil {
+			return m.run
+		}
+		id := m.e.createRun(t, owner, m.pastPeriod())
+		if !fresh {
+			m.run = id
+		}
+		return id
+	case "run_item":
+		if !fresh && m.runItm != uuid.Nil {
+			return m.runItm
+		}
+		run, item := m.e.errorItem(t, owner, m.currentPeriod(t))
+		m.items[run] = item
+		if !fresh {
+			m.runItm = run
+		}
+		return run
 	}
 	t.Fatalf("unknown target %q", kind)
 	return uuid.Nil
@@ -183,6 +222,9 @@ func (m *matrixRunner) call(t *testing.T, row matrixRoute, c matrixCase, token s
 	method, path, _ := strings.Cut(row.Route, " ")
 	if id != uuid.Nil {
 		path = strings.Replace(path, "{id}", id.String(), 1)
+		if item, ok := m.items[id]; ok {
+			path = strings.Replace(path, "{item_id}", item.String(), 1)
+		}
 	}
 	if c.Query != "" {
 		path += "?" + c.Query
@@ -207,7 +249,7 @@ func (m *matrixRunner) call(t *testing.T, row matrixRoute, c matrixCase, token s
 // ber-audit menambah tepat satu baris audit_log dengan action yang benar.
 func TestAuthzMatrix(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())
-	m := &matrixRunner{e: e, f: e.newTenantFx(t, "alpha")}
+	m := &matrixRunner{e: e, f: e.newTenantFx(t, "alpha"), items: map[uuid.UUID]uuid.UUID{}}
 	for _, row := range loadMatrix(t) {
 		for ci, c := range row.Cases {
 			cols := make([]string, 0, len(c.Expect))
@@ -255,9 +297,10 @@ func TestCrossTenant(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())
 	alpha := e.newTenantFx(t, "alpha")
 	beta := e.newTenantFx(t, "beta")
-	m := &matrixRunner{e: e, f: beta}
+	alphaRun, alphaItem := e.errorItem(t, alpha.tokens[roleO], "2026-01")
+	m := &matrixRunner{e: e, f: beta, items: map[uuid.UUID]uuid.UUID{alphaRun: alphaItem}}
 	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
-		"/holidays": alpha.holiday, "/component-definitions": alpha.comp}
+		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {
@@ -297,10 +340,11 @@ func TestCrossTenant(t *testing.T) {
 		t.Fatal("no cross-tenant case ran")
 	}
 	for _, path := range []string{"/departments", "/departments?status=INACTIVE", "/positions", "/employees", "/members", "/tenant",
-		"/holidays?year=2026", "/component-definitions"} {
+		"/holidays?year=2026", "/component-definitions", "/payroll-runs"} {
 		r, b := e.do(t, http.MethodGet, "/api/v1"+path, beta.tokens[roleO], nil)
 		raw, _ := json.Marshal(b)
-		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO]} {
+		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO],
+			alphaRun, alphaItem} {
 			if strings.Contains(string(raw), id.String()) {
 				t.Errorf("LEAK: Beta GET %s (%d) contains Alpha id %s", path, r.StatusCode, id)
 			}
