@@ -1,7 +1,7 @@
 // Package employee: data karyawan (PF-06) dengan PII terenkripsi (PF-20, ADR-P08).
 //
 // Scope baca (file 17 §1.2, §2.2):
-//   - OWNER, HR_ADMIN, PAYROLL_ADMIN: seluruh tenant (PII selalu ter-mask; full view W6 masuk S4);
+//   - OWNER, HR_ADMIN, PAYROLL_ADMIN: seluruh tenant (PII selalu ter-mask; full view hanya W6, pii.go);
 //   - MANAGER: bawahan langsung hari ini. org_assignments baru ada di S3, jadi di S2 himpunan
 //     bawahan selalu kosong (list kosong, detail 404);
 //   - EMPLOYEE: dirinya sendiri (employees.user_id = principal), versi dasar tanpa PII/PTKP.
@@ -115,6 +115,7 @@ type Service struct {
 	ids      idgen.Generator
 	orgUnits OrgUnits
 	salaries Salaries
+	members  Memberships
 }
 
 func NewService(pool *pgxpool.Pool, pii PII, c clock.Clock, ids idgen.Generator) *Service {

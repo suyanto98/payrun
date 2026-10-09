@@ -1282,6 +1282,17 @@ type EmployeeListItem struct {
 // EmployeeListItemStatus defines model for EmployeeListItem.Status.
 type EmployeeListItemStatus string
 
+// EmployeePII Full values (W6). Fields never set are null. PAYROLL_ADMIN and MANAGER (on direct reports) get 403.
+type EmployeePII struct {
+	Bank *struct {
+		AccountNumber *string `json:"account_number"`
+		Holder        *string `json:"holder"`
+		Name          *string `json:"name"`
+	} `json:"bank"`
+	Nik  *string `json:"nik"`
+	Npwp *string `json:"npwp"`
+}
+
 // EmployeeUpdate Partial update; `employee_no`, `hire_date` and status cannot be changed here.
 type EmployeeUpdate struct {
 	Bank       *BankInput                `json:"bank,omitempty"`

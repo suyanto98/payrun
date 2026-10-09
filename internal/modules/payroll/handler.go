@@ -196,9 +196,9 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := auth.PrincipalFrom(r.Context())
-	// ᴬ (file 17): HR_ADMIN tanpa role runner membaca hasil payroll → setiap akses detail diaudit.
-	auditRead := !p.HasAnyRole(runners...)
-	it, err := h.svc.GetItem(r.Context(), p.UserID, auditRead, id[0], id[1], reqmeta.From(r))
+	// ᴬ (file 17): HR_ADMIN tanpa role runner membaca hasil payroll → setiap akses detail diaudit
+	// (diputuskan service dari role di DB, bukan token).
+	it, err := h.svc.GetItem(r.Context(), p.UserID, id[0], id[1], reqmeta.From(r))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

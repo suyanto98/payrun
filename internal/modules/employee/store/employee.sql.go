@@ -321,6 +321,36 @@ func (q *Queries) GetEmployeeLinkForUpdate(ctx context.Context, id uuid.UUID) (G
 	return i, err
 }
 
+const getEmployeePII = `-- name: GetEmployeePII :one
+SELECT tenant_id, nik_enc, npwp_enc, bank_name, bank_account_enc, bank_account_holder
+FROM employees WHERE id = $1
+`
+
+type GetEmployeePIIRow struct {
+	TenantID          uuid.UUID
+	NikEnc            []byte
+	NpwpEnc           []byte
+	BankName          *string
+	BankAccountEnc    []byte
+	BankAccountHolder *string
+}
+
+// [tenant] Ciphertext PII untuk full view W6 (Sprint 4); hanya dibaca di transaksi yang juga menulis
+// audit employee.pii_viewed.
+func (q *Queries) GetEmployeePII(ctx context.Context, id uuid.UUID) (GetEmployeePIIRow, error) {
+	row := q.db.QueryRow(ctx, getEmployeePII, id)
+	var i GetEmployeePIIRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.NikEnc,
+		&i.NpwpEnc,
+		&i.BankName,
+		&i.BankAccountEnc,
+		&i.BankAccountHolder,
+	)
+	return i, err
+}
+
 const getManagerRef = `-- name: GetManagerRef :one
 SELECT m.id, m.full_name FROM employees e JOIN employees m ON m.tenant_id = e.tenant_id AND m.id = e.manager_employee_id
 WHERE e.id = $1

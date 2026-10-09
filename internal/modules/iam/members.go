@@ -227,12 +227,36 @@ func (s *Service) AcceptInvitation(ctx context.Context, userID uuid.UUID, token 
 		if st, err := q.GetTenantStatus(ctx, tid); err != nil || st != "ACTIVE" {
 			return apperr.ErrInvitationInvalid // tenant belum aktif / ditangguhkan: undangan tidak bisa dipakai
 		}
-		m, err := q.AcceptMembership(ctx, store.AcceptMembershipParams{UserID: &userID, Now: &now, ID: inv.MembershipID})
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apperr.ErrInvitationInvalid
-		}
-		if err != nil {
-			return err // uq_memberships_user → 409 MEMBERSHIP_EXISTS
+		// Re-invite member yang pernah dicabut (S4): baris lamanya diaktifkan ulang dengan role undangan,
+		// baris undangan ditutup. Satu baris per (tenant, user), riwayat tidak terpecah.
+		target, action := inv.MembershipID, "membership.accepted"
+		var m store.AcceptMembershipRow
+		old, err := q.GetRevokedMembershipByUser(ctx, &userID)
+		switch {
+		case err == nil:
+			roles, err := q.CloseInvitedMembership(ctx, store.CloseInvitedMembershipParams{Now: &now, Actor: &userID, ID: inv.MembershipID})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apperr.ErrInvitationInvalid
+			}
+			if err != nil {
+				return err
+			}
+			r, err := q.ReactivateMembership(ctx, store.ReactivateMembershipParams{Roles: roles, Now: &now, Actor: &userID, ID: old})
+			if err != nil {
+				return err
+			}
+			m = store.AcceptMembershipRow(r)
+			target, action = old, "membership.reactivated"
+		case errors.Is(err, pgx.ErrNoRows):
+			m, err = q.AcceptMembership(ctx, store.AcceptMembershipParams{UserID: &userID, Now: &now, ID: inv.MembershipID})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return apperr.ErrInvitationInvalid
+			}
+			if err != nil {
+				return err // uq_memberships_user (sudah ACTIVE) → 409 MEMBERSHIP_EXISTS
+			}
+		default:
+			return err
 		}
 		if err := q.MarkInvitationAccepted(ctx, store.MarkInvitationAcceptedParams{Now: &now, ID: inv.ID}); err != nil {
 			return err
@@ -246,8 +270,12 @@ func (s *Service) AcceptInvitation(ctx context.Context, userID uuid.UUID, token 
 			}
 		}
 		out = AcceptedMembership{TenantID: m.TenantID, Roles: m.Roles, Status: m.Status}
-		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: userID, Action: "membership.accepted",
-			TargetType: "membership", TargetID: inv.MembershipID}, meta)
+		var diff map[string]any
+		if target != inv.MembershipID {
+			diff = map[string]any{"invitation_membership_id": inv.MembershipID.String(), "roles": m.Roles}
+		}
+		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: userID, Action: action,
+			TargetType: "membership", TargetID: target, Diff: diff}, meta)
 	})
 	if err != nil {
 		return AcceptedMembership{}, db.MapError(err)

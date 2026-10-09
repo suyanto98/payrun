@@ -188,6 +188,13 @@ routes:
     cases:
       - {target: employee_other, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
       - {target: employee_self, if_match: true, body: {type: RESIGNED, end_date: "2026-03-20"}, expect: {E: 403, M: 403}}
+  - id: W6
+    route: "GET /employees/{id}/pii"
+    access: tenant
+    audit: employee.pii_viewed   # SETIAP 200 (T-PR-10)
+    cases:
+      - {target: employee_other, expect: {O: 200, H: 200, P: 403, M: 404, E: 404}}
+      - {target: employee_self, expect: {E: 200, M: 403}}   # diri sendiri boleh; MANAGER atas bawahan → 403
 
   # ---------------------------------------------------------------- org assignment, gaji, komponen (S3)
   - id: W7

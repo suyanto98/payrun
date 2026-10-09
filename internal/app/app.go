@@ -119,10 +119,11 @@ func APIRouter(d Deps) http.Handler {
 	employeeH := employee.NewHandler(employeeSvc, idem)
 	compSvc := compensation.NewService(d.Pool, employeeAccess{employeeSvc}, d.Clock, d.IDs)
 	compH := compensation.NewHandler(compSvc, idem)
-	payrollH := payroll.NewHandler(payroll.NewService(d.Pool, d.Clock, d.IDs), idem)
+	payrollH := payroll.NewHandler(payroll.NewService(d.Pool, d.Clock, d.IDs, iamSvc), idem)
 	// Ketergantungan lintas modul lewat interface (ADR-001): modul tidak saling meng-import.
 	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
 	employeeSvc.Wire(orgSvc, compSvc)     // W2/W7: departemen/posisi aktif; gaji awal
+	employeeSvc.SetMemberships(iamSvc)    // W6: role dibaca ulang dari DB (ADR-P02)
 	orgSvc.Wire(employeeSvc)              // G4: masih dipakai penempatan hari ini
 
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
@@ -139,7 +140,7 @@ func APIRouter(d Deps) http.Handler {
 		iamH.TenantRoutes(tenantRead, tenantWrite)
 		tenancyH.Routes(v1.With(limiter.Middleware(tiers.AuthIP, ratelimit.ByIP)), tenantRead, tenantWrite)
 		orgH.Routes(tenantRead, tenantWrite)
-		employeeH.Routes(tenantRead, tenantWrite)
+		employeeH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.PIIView, byUser))
 		compH.Routes(tenantRead, tenantWrite)
 		payrollH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.HeavyCalculate, byTenant))
 	})

@@ -170,3 +170,9 @@ SELECT tenant_id, status FROM employees WHERE id = @id;
 -- G4: departemen/posisi yang masih dipakai assignment yang berlaku hari ini tidak boleh dinonaktifkan.
 SELECT count(*) FROM org_assignments
 WHERE valid_during @> @as_of::date AND (department_id = sqlc.narg(department_id) OR position_id = sqlc.narg(position_id));
+
+-- name: GetEmployeePII :one
+-- [tenant] Ciphertext PII untuk full view W6 (Sprint 4); hanya dibaca di transaksi yang juga menulis
+-- audit employee.pii_viewed.
+SELECT tenant_id, nik_enc, npwp_enc, bank_name, bank_account_enc, bank_account_holder
+FROM employees WHERE id = @id;

@@ -20,6 +20,7 @@ import (
 	"payrun/internal/modules/payroll/store"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/audit"
+	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/httpx"
@@ -30,13 +31,34 @@ import (
 )
 
 type Service struct {
-	pool  *pgxpool.Pool
-	clock clock.Clock
-	ids   idgen.Generator
+	pool    *pgxpool.Pool
+	clock   clock.Clock
+	ids     idgen.Generator
+	members Memberships
 }
 
-func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator) *Service {
-	return &Service{pool: pool, clock: c, ids: ids}
+func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator, members Memberships) *Service {
+	return &Service{pool: pool, clock: c, ids: ids, members: members}
+}
+
+// Memberships: role dibaca ulang dari DB untuk pembacaan hasil payroll (Y6/Y7, Step 12 R2-6: operasi
+// sensitif, role di token bisa basi ≤ 15 menit). Diimplementasikan modul iam (ADR-001).
+type Memberships interface {
+	ActiveRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]string, error)
+}
+
+// readerRolesTx: role pemanggil dari DB. Bukan lagi pembaca hasil payroll → 404 (resource run tidak
+// terlihat, sama dengan middleware hidden). runner = OWNER/PAYROLL_ADMIN (tanpa audit baca detail).
+func (s *Service) readerRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) (runner bool, err error) {
+	roles, err := s.members.ActiveRolesTx(ctx, tx, userID)
+	if err != nil {
+		return false, err
+	}
+	p := auth.Principal{UserID: userID, Roles: roles}
+	if !p.HasAnyRole(readers...) {
+		return false, apperr.ErrNotFound
+	}
+	return p.HasAnyRole(runners...), nil
 }
 
 // ---------------------------------------------------------------- model API (16-api §16 PayrollRun)
@@ -381,6 +403,9 @@ func (s *Service) ListItems(ctx context.Context, actor, runID uuid.UUID, iq Item
 	}
 	out := []Item{}
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := s.readerRolesTx(ctx, tx, actor); err != nil {
+			return err
+		}
 		q := store.New(tx)
 		run, err := s.loadRun(ctx, q, runID)
 		if err != nil {
@@ -414,12 +439,17 @@ func (s *Service) ListItems(ctx context.Context, actor, runID uuid.UUID, iq Item
 	return out, page, nil
 }
 
-// GetItem (Y7): item versi terkini + baris + issues; item versi lama → 404. Dibaca HR_ADMIN → audit
-// (file 17 ᴬ: HR boleh membaca hasil payroll, setiap akses detail tercatat).
-func (s *Service) GetItem(ctx context.Context, actor uuid.UUID, auditRead bool, runID, itemID uuid.UUID, meta reqmeta.Meta) (ItemDetail, error) {
+// GetItem (Y7): item versi terkini + baris + issues; item versi lama → 404. Dibaca HR_ADMIN tanpa role
+// runner (menurut DB) → audit (file 17 ᴬ: HR boleh membaca hasil payroll, setiap akses detail tercatat).
+func (s *Service) GetItem(ctx context.Context, actor uuid.UUID, runID, itemID uuid.UUID, meta reqmeta.Meta) (ItemDetail, error) {
 	tid, _ := tenantctx.From(ctx)
 	var out ItemDetail
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
+		runner, err := s.readerRolesTx(ctx, tx, actor)
+		if err != nil {
+			return err
+		}
+		auditRead := !runner
 		q := store.New(tx)
 		r, err := q.GetItem(ctx, store.GetItemParams{ID: itemID, RunID: runID})
 		if err != nil {
@@ -495,7 +525,7 @@ func (s *Service) Exclude(ctx context.Context, actor, runID, itemID uuid.UUID, r
 	if err != nil {
 		return ItemDetail{}, db.MapError(err)
 	}
-	return s.GetItem(ctx, actor, false, runID, itemID, meta)
+	return s.GetItem(ctx, actor, runID, itemID, meta)
 }
 
 // Cancel (Y12): dari DRAFT/CALCULATED/FAILED. Periode kembali OPEN (run batal membebaskan slot unik).

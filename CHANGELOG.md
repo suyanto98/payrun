@@ -11,6 +11,7 @@ Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, buka
 - `app.Worker` + `WorkerOpsRouter`: lane `payroll` dan `maintenance`, readiness per lane, kill switch per kind.
 - `config`: `ValidateWorker`, `WORKER_ID`, `WORKER_POLL_INTERVAL`, `PAYROLL_CHUNK_SIZE`.
 - `apperr`: `ACTIVE_RUN_EXISTS`, `PERIOD_LOCKED`, `RUN_FINALIZED`, `LAST_OWNER`; `db.MapError`: `P0001` → `RUN_FINALIZED`, `P0004` → `LAST_OWNER`.
+- `ratelimit`: tier `PIIView` (`pii-view`, 30/jam), ikut dilonggarkan `Unlimited()`.
 - Khusus PayRun: `db.WithTenantTxForOptions` (txRead chunk REPEATABLE READ READ ONLY).
 
 ### 0.0.5 — PayRun Sprint 3 (belum di-port ke LedgerPay)

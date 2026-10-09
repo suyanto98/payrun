@@ -90,6 +90,27 @@ func (q *Queries) AddOwnerMembership(ctx context.Context, arg AddOwnerMembership
 	return err
 }
 
+const closeInvitedMembership = `-- name: CloseInvitedMembership :one
+UPDATE memberships SET status = 'REVOKED', revoked_at = $1, updated_by = $2, version = version + 1
+WHERE id = $3 AND status = 'INVITED'
+RETURNING roles
+`
+
+type CloseInvitedMembershipParams struct {
+	Now   *time.Time
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+// [tenant] Baris undangan yang dipakai untuk mengaktifkan ulang baris lama ditutup (REVOKED tanpa user,
+// migrasi 00008). Rolenya pindah ke baris lama.
+func (q *Queries) CloseInvitedMembership(ctx context.Context, arg CloseInvitedMembershipParams) ([]string, error) {
+	row := q.db.QueryRow(ctx, closeInvitedMembership, arg.Now, arg.Actor, arg.ID)
+	var roles []string
+	err := row.Scan(&roles)
+	return roles, err
+}
+
 const createEmailVerification = `-- name: CreateEmailVerification :exec
 INSERT INTO email_verifications (id, user_id, token_hash, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -495,6 +516,19 @@ func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, tokenHash []byte
 	return i, err
 }
 
+const getRevokedMembershipByUser = `-- name: GetRevokedMembershipByUser :one
+SELECT id FROM memberships WHERE user_id = $1 AND status = 'REVOKED' FOR UPDATE
+`
+
+// [tenant] Re-invite member yang pernah dicabut (S4): baris lama diaktifkan ulang saat accept, bukan
+// baris baru (uq_memberships_user (tenant_id, user_id); riwayat tetap di satu baris).
+func (q *Queries) GetRevokedMembershipByUser(ctx context.Context, userID *uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getRevokedMembershipByUser, userID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getTenantStatus = `-- name: GetTenantStatus :one
 SELECT status FROM tenants WHERE id = $1
 `
@@ -779,6 +813,40 @@ type MarkRefreshTokenUsedParams struct {
 func (q *Queries) MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshTokenUsedParams) error {
 	_, err := q.db.Exec(ctx, markRefreshTokenUsed, arg.Now, arg.ReplacedBy, arg.ID)
 	return err
+}
+
+const reactivateMembership = `-- name: ReactivateMembership :one
+UPDATE memberships
+SET status = 'ACTIVE', roles = $1, accepted_at = $2, revoked_at = NULL, revoked_by = NULL,
+    updated_by = $3, version = version + 1
+WHERE id = $4 AND status = 'REVOKED'
+RETURNING tenant_id, roles, status
+`
+
+type ReactivateMembershipParams struct {
+	Roles []string
+	Now   *time.Time
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+type ReactivateMembershipRow struct {
+	TenantID uuid.UUID
+	Roles    []string
+	Status   string
+}
+
+// [tenant]
+func (q *Queries) ReactivateMembership(ctx context.Context, arg ReactivateMembershipParams) (ReactivateMembershipRow, error) {
+	row := q.db.QueryRow(ctx, reactivateMembership,
+		arg.Roles,
+		arg.Now,
+		arg.Actor,
+		arg.ID,
+	)
+	var i ReactivateMembershipRow
+	err := row.Scan(&i.TenantID, &i.Roles, &i.Status)
+	return i, err
 }
 
 const reclaimUnverifiedUser = `-- name: ReclaimUnverifiedUser :execrows

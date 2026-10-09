@@ -918,20 +918,21 @@ paths:
       x-endpoint: W6
       x-feature: PF-20
       x-roles: "O, H; E (self)"
-      x-rate-tier: read
+      x-rate-tier: pii-view
       x-priority: P1
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
-          description: OK. Body model `EmployeePII` (docs/design/16-api-endpoints.md §16).
+          description: "OK. `Cache-Control: no-store`. Every 200 writes audit `employee.pii_viewed` (fields read) in the same transaction as the decryption; if the audit cannot be written the request fails with 503 and no PII is sent. Rate limit: 30/hour per user."
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/EmployeePII' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /employees/{id}/org-assignments:
     post:
       tags: [employees]
@@ -2602,6 +2603,22 @@ components:
       required: [reason]
       properties:
         reason: { type: string, minLength: 3, maxLength: 200 }
+    EmployeePII:
+      type: object
+      description: Full values (W6). Fields never set are null. PAYROLL_ADMIN and MANAGER (on direct reports) get 403.
+      required: [nik, npwp, bank]
+      properties:
+        nik: { type: [string, 'null'], pattern: '^[0-9]{16}$' }
+        npwp: { type: [string, 'null'], pattern: '^[0-9]{15,16}$' }
+        bank:
+          oneOf:
+            - type: object
+              required: [name, account_number, holder]
+              properties:
+                name: { type: [string, 'null'] }
+                account_number: { type: [string, 'null'], pattern: '^[0-9]{6,20}$' }
+                holder: { type: [string, 'null'] }
+            - type: 'null'
     InvitationRequest:
       type: object
       additionalProperties: false

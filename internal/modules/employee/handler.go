@@ -26,13 +26,32 @@ func NewHandler(svc *Service, idem *idempotency.Service) *Handler {
 
 // Routes (file 17 §2.2): W1 O/H/P + M (bawahan), E → 403 (di service, karena M butuh logika scope);
 // W2 O/H; W3 semua role dengan scope; W4/W5 O/H, role lain 403/404 tergantung visibilitas (service).
-func (h *Handler) Routes(read, write chi.Router) {
+// Routes: piiLimit = tier pii-view per user (30/jam) khusus W6, di atas tier read.
+func (h *Handler) Routes(read, write chi.Router, piiLimit func(http.Handler) http.Handler) {
 	read.Get("/employees", h.list)
+	read.With(piiLimit).Get("/employees/{id}/pii", h.viewPII)
 	write.With(auth.RequireAnyRole(auth.RoleOwner, auth.RoleHRAdmin)).Post("/employees", h.create)
 	read.Get("/employees/{id}", h.get)
 	write.Patch("/employees/{id}", h.update)
 	write.Post("/employees/{id}/terminate", h.terminate)
 	write.Post("/employees/{id}/org-assignments", h.assignOrg)
+}
+
+// viewPII (W6): nilai penuh tidak boleh tersimpan di cache mana pun.
+func (h *Handler) viewPII(w http.ResponseWriter, r *http.Request) {
+	id, err := httpx.ParseID(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	out, err := h.svc.ViewPII(r.Context(), p, id, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
 // assignOrg (W7): Idempotency-Key wajib.

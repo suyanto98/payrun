@@ -78,6 +78,17 @@ func lockAndAuthorize(ctx context.Context, q *store.Queries, tid uuid.UUID, p au
 	return actor, target, nil
 }
 
+// ActiveRolesTx: role membership ACTIVE user di tenant transaksi (nil kalau bukan anggota aktif).
+// Dipakai modul lain lewat interface di composition root untuk operasi sensitif (ADR-P02): role di
+// token bisa basi ≤ 15 menit.
+func (s *Service) ActiveRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]string, error) {
+	roles, err := store.New(tx).ActorRoles(ctx, &userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return roles, err
+}
+
 func (s *Service) getMember(ctx context.Context, q *store.Queries, id uuid.UUID) (Member, error) {
 	r, err := q.GetMember(ctx, id)
 	if err != nil {

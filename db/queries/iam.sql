@@ -238,3 +238,23 @@ SELECT m.tenant_id, m.id, m.user_id, u.email AS user_email, u.display_name AS us
 FROM memberships m
 LEFT JOIN users u ON u.id = m.user_id
 WHERE m.id = @id;
+
+-- name: GetRevokedMembershipByUser :one
+-- [tenant] Re-invite member yang pernah dicabut (S4): baris lama diaktifkan ulang saat accept, bukan
+-- baris baru (uq_memberships_user (tenant_id, user_id); riwayat tetap di satu baris).
+SELECT id FROM memberships WHERE user_id = @user_id AND status = 'REVOKED' FOR UPDATE;
+
+-- name: CloseInvitedMembership :one
+-- [tenant] Baris undangan yang dipakai untuk mengaktifkan ulang baris lama ditutup (REVOKED tanpa user,
+-- migrasi 00008). Rolenya pindah ke baris lama.
+UPDATE memberships SET status = 'REVOKED', revoked_at = @now, updated_by = @actor, version = version + 1
+WHERE id = @id AND status = 'INVITED'
+RETURNING roles;
+
+-- name: ReactivateMembership :one
+-- [tenant]
+UPDATE memberships
+SET status = 'ACTIVE', roles = @roles, accepted_at = @now, revoked_at = NULL, revoked_by = NULL,
+    updated_by = @actor, version = version + 1
+WHERE id = @id AND status = 'REVOKED'
+RETURNING tenant_id, roles, status;
