@@ -228,7 +228,7 @@ Hindari istilah RLS, chunk, idempotent, dan fingerprint. Kalau ditanya "pakai te
 | Masalah | Cadangan |
 |---|---|
 | VM publik down / jaringan lambat | `make demo` di laptop (compose lokal, data seed yang sama) |
-| Toolbar demo belum ada (sebelum PayRun Sprint 8) atau fault tidak menyala | Demo B lewat test subprocess: `go test ./internal/modules/payroll/... -run TestPayrollRun_CrashAndResume -count=1 -v`. Output menunjukkan worker subprocess keluar di chunk 4, worker kedua melanjutkan, `items=100`, tanpa duplikat |
+| Toolbar demo belum ada (sebelum PayRun Sprint 8) atau fault tidak menyala | Demo B lewat test subprocess: `go test -tags testhooks ./internal/app/ -run TestPayrollRun_CrashAndResume -count=1 -v` (atau `make demo-verify`: Demo A + B + recompute). Worker subprocess keluar sebelum commit chunk 4 (run `CALCULATING`, 3/10 chunk, 30 item), worker kedua melanjutkan setelah lease habis, `items=100`, tanpa duplikat, total = Σ item, lalu run ganda → `201` + `409 ACTIVE_RUN_EXISTS` |
 | Resume lebih lama dari perkiraan | Lanjutkan bicara tentang fencing dan lease (±30 dtk), lalu kembali ke layar |
 | Grafana/Jaeger tidak memuat | Tunjukkan log terminal 2 + query SQL §3.4 |
 | Semua gagal | Video rekaman (§7), diputar dengan narasi langsung |

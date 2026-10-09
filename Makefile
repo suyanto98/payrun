@@ -10,7 +10,7 @@ REDOCLY := npx --yes @redocly/cli@1
 TRIVY_FS := docker run --rm -v "$$PWD:/src:ro" aquasec/trivy:0.65.0 fs --no-progress --scanners vuln,misconfig \
 	--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --skip-dirs docs /src
 
-.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
+.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration demo-verify lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
 
 help: ## Tampilkan daftar target
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -55,6 +55,9 @@ test: ## Unit test (tanpa Docker), dengan race detector
 
 test-integration: ## Integration test (butuh Docker), termasuk test interleaving (build tag testhooks)
 	go test -race -count=1 -tags testhooks ./...
+
+demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (recompute dari snapshot) secara headless
+	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected' ./internal/app/
 
 cover: ## Laporan coverage (indikatif, bukan gate) → build/coverage.html
 	mkdir -p build && go test -tags testhooks -coverprofile=build/coverage.out ./internal/... >/dev/null && \

@@ -3,14 +3,15 @@
 //	payrun api           # server API publik (:8080) + ops (:9090)
 //	payrun worker        # job runner: kalkulasi payroll async, maintenance (+ ops :9090)
 //	payrun migrate up    # jalankan migrasi (role payrun_owner)
+//	payrun verify-run <tenant-id> <run-id>  # recompute dari snapshot (PI-12); exit 1 bila ada perbedaan
 //	payrun healthcheck   # dipakai HEALTHCHECK container (image distroless tidak punya curl)
 //
-// Subcommand lain ditambahkan saat pertama kali dibutuhkan: `seed` (data demo), `verify-run`
-// (recompute dari snapshot, bukti PI-12).
+// Subcommand lain ditambahkan saat pertama kali dibutuhkan: `seed` (data demo).
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,6 +29,7 @@ import (
 	"payrun/db/migrations"
 	"payrun/internal/app"
 	"payrun/internal/modules/iam"
+	"payrun/internal/modules/payroll"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/config"
@@ -42,7 +44,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: payrun <api|worker|migrate up|healthcheck>")
+		fmt.Fprintln(os.Stderr, "usage: payrun <api|worker|migrate up|verify-run|healthcheck>")
 		os.Exit(2)
 	}
 	var err error
@@ -51,6 +53,8 @@ func main() {
 		err = runAPI()
 	case "worker":
 		err = runWorker()
+	case "verify-run":
+		err = runVerify(os.Args[2:])
 	case "migrate":
 		err = runMigrate(os.Args[2:])
 	case "healthcheck":
@@ -216,6 +220,52 @@ func runWorker() error {
 func serve(s *http.Server) error {
 	if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
+	}
+	return nil
+}
+
+// runVerify: recompute setiap item run dari snapshot-nya (ADR-P07, Demo C). Berjalan sebagai payrun_app
+// di bawah RLS tenant yang disebut; laporan JSON ke stdout.
+func runVerify(args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: payrun verify-run <tenant-id> <run-id>")
+	}
+	tid, err := uuid.Parse(args[0])
+	if err != nil {
+		return fmt.Errorf("tenant-id: %w", err)
+	}
+	rid, err := uuid.Parse(args[1])
+	if err != nil {
+		return fmt.Errorf("run-id: %w", err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.DatabaseURL == "" {
+		return errors.New("DATABASE_URL wajib (role payrun_app)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL, db.Options{MaxConns: 2, StatementTimeout: time.Minute, LockTimeout: cfg.DBLockTimeout, IdleInTxTimeout: time.Minute})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	if _, err := db.CheckAppRole(ctx, pool); err != nil {
+		return err
+	}
+	rep, err := payroll.NewService(pool, clock.System{}, idgen.V7{}, nil).VerifyRun(ctx, tid, rid)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(rep); err != nil {
+		return err
+	}
+	if !rep.OK() {
+		return fmt.Errorf("%d of %d items differ from their snapshot", len(rep.Mismatches), rep.ItemsChecked)
 	}
 	return nil
 }

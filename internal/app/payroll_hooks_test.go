@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,11 +28,24 @@ import (
 // Exit code proses worker yang "di-kill" di tengah txWrite chunk.
 const killedExitCode = 3
 
+// Env proses anak: chunk ke berapa yang dibunuh (default 2) dan ukuran chunk (default 2).
+const (
+	helperKillChunk = "PAYRUN_TEST_HELPER_KILL_CHUNK"
+	helperChunkSize = "PAYRUN_TEST_HELPER_CHUNK_SIZE"
+)
+
+func envInt(name string, def int) int {
+	if n, err := strconv.Atoi(os.Getenv(name)); err == nil && n > 0 {
+		return n
+	}
+	return def
+}
+
 func init() { helperProcess = runKilledWorker }
 
 // runKilledWorker berjalan di proses anak (binary test yang sama, lihat TestMain). Worker sungguhan
-// dengan lease 1 dtk mengerjakan plan dan chunk 1; di chunk 2 proses keluar dengan os.Exit tepat
-// sebelum COMMIT txWrite: koneksi putus, Postgres me-rollback, dan job chunk 2 tetap `running`
+// dengan lease 1 dtk mengerjakan plan dan chunk sebelum chunk ke-K; di chunk ke-K (default 2) proses
+// keluar dengan os.Exit tepat sebelum COMMIT txWrite: koneksi putus, Postgres me-rollback, dan job chunk 2 tetap `running`
 // dengan lease milik proses yang sudah mati. Persis worker yang di-kill (SIGKILL / OOM).
 func runKilledWorker() int {
 	ctx := context.Background()
@@ -40,10 +54,11 @@ func runKilledWorker() int {
 		return 2
 	}
 	defer pool.Close()
+	killAt := int32(envInt(helperKillChunk, 2)) //nolint:gosec // G115: nilai kecil dari test
 	var chunks atomic.Int32
 	var armed atomic.Bool
 	testhook.Set("payroll.calc_chunk.before_write", func(context.Context) error {
-		if chunks.Add(1) == 2 {
+		if chunks.Add(1) == killAt {
 			armed.Store(true) // commit berikutnya di goroutine ini = txWrite chunk 2
 		}
 		return nil
@@ -55,8 +70,10 @@ func runKilledWorker() int {
 		return nil
 	})
 	deps := app.Deps{Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Pool: pool, Clock: clock.System{}, IDs: idgen.V7{}}
-	w := app.NewWorker(deps, app.WorkerConfig{ID: "victim:" + uuid.NewString()[:8], Lease: time.Second, ChunkSize: 2})
-	for range 20 {
+	// Konkurensi 1: chunk dikerjakan berurutan, sehingga "chunk ke-K" deterministik.
+	w := app.NewWorker(deps, app.WorkerConfig{ID: "victim:" + uuid.NewString()[:8], Lease: time.Second,
+		ChunkSize: envInt(helperChunkSize, 2), PayrollConcurrency: 1})
+	for range 200 {
 		if n, err := w.RunOnce(ctx); err != nil || n == 0 {
 			break
 		}
