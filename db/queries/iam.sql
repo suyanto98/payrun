@@ -204,3 +204,37 @@ SELECT EXISTS (SELECT 1 FROM invitations
 -- name: GetTenantStatus :one
 -- [tenant] Accept undangan hanya untuk tenant ACTIVE.
 SELECT status FROM tenants WHERE id = @id;
+
+-- ---------------------------------------------------------------- role change & revoke (Sprint 4)
+
+-- name: LockTenantOwners :exec
+-- [tenant] PI-16: perubahan role/status membership diserialkan per tenant SEBELUM membaca baris apa
+-- pun (22-tx §1 catatan): dua OWNER yang saling mencabut tidak bisa sama-sama lolos trigger deferred.
+SELECT pg_advisory_xact_lock(hashtextextended('owners:' || @tenant_id::text, 0));
+
+-- name: ActorRoles :one
+-- [tenant] Role pemanggil dibaca ulang dari DB (ADR-P02): role di access token bisa basi ≤ 15 menit.
+SELECT roles FROM memberships WHERE user_id = @user_id AND status = 'ACTIVE';
+
+-- name: GetMembershipForUpdate :one
+-- [tenant] [6] membership target FOR UPDATE (22-tx §1).
+SELECT tenant_id, id, user_id, roles, status, version FROM memberships WHERE id = @id FOR UPDATE;
+
+-- name: SetMembershipRoles :exec
+-- [tenant]
+UPDATE memberships SET roles = @roles, updated_by = @actor, version = version + 1
+WHERE id = @id AND status = 'ACTIVE';
+
+-- name: RevokeMembership :exec
+-- [tenant] ACTIVE atau INVITED (membatalkan undangan) → REVOKED.
+UPDATE memberships
+SET status = 'REVOKED', revoked_at = @now, revoked_by = @actor, updated_by = @actor, version = version + 1
+WHERE id = @id AND status IN ('ACTIVE', 'INVITED');
+
+-- name: GetMember :one
+-- [tenant] Satu member dengan bentuk yang sama seperti ListMembers (respons U4/U5).
+SELECT m.tenant_id, m.id, m.user_id, u.email AS user_email, u.display_name AS user_display_name,
+       m.invited_email, m.roles, m.status, m.accepted_at, m.version
+FROM memberships m
+LEFT JOIN users u ON u.id = m.user_id
+WHERE m.id = @id;

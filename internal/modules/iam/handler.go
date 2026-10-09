@@ -66,6 +66,57 @@ func (h *Handler) TenantRoutes(read, write chi.Router) {
 	admin := auth.RequireAnyRole(auth.RoleOwner, auth.RoleHRAdmin)
 	read.With(admin).Get("/members", h.listMembers)
 	write.With(admin).Post("/invitations", h.invite)
+	write.With(admin).Patch("/members/{id}/roles", h.changeRoles)
+	write.With(admin).Post("/members/{id}/revoke", h.revoke)
+}
+
+// changeRoles (U4): If-Match wajib, tetapi 428/412 baru dilaporkan sesudah otorisasi lolos.
+func (h *Handler) changeRoles(w http.ResponseWriter, r *http.Request) {
+	id, err := httpx.ParseID(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	v, perr := httpx.IfMatchVersion(r)
+	var in struct {
+		Roles []string `json:"roles"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	m, err := h.svc.ChangeRoles(r.Context(), p, id, Precondition{Version: v, Err: perr}, in.Roles, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.SetETag(w, m.Version)
+	httpx.WriteJSON(w, http.StatusOK, m)
+}
+
+// revoke (U5): idempoten secara natural (yang kedua → 409 INVALID_STATE_TRANSITION).
+func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
+	id, err := httpx.ParseID(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	var in struct {
+		Reason string `json:"reason"`
+	}
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	m, err := h.svc.Revoke(r.Context(), p, id, in.Reason, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.SetETag(w, m.Version)
+	httpx.WriteJSON(w, http.StatusOK, m)
 }
 
 func (h *Handler) listMembers(w http.ResponseWriter, r *http.Request) {

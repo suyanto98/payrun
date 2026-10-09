@@ -360,9 +360,13 @@ func TestInvitation_RulesAndBadTokens(t *testing.T) {
 	e.verifyUser(t, z)
 	zTok, _, _ := e.login(t, "z@alpha.test")
 	_, secret, _ := bytes.Cut([]byte(token), []byte("."))
+	last := "A" // karakter terakhir pengganti harus BERBEDA (secret acak berakhiran "A" 1 dari 64 kali)
+	if secret[42] == 'A' {
+		last = "B"
+	}
 	for name, bad := range map[string]string{
 		"secret under another tenant": beta.id.String() + "." + string(secret),
-		"tampered secret":             f.id.String() + "." + string(secret[:42]) + "A",
+		"tampered secret":             f.id.String() + "." + string(secret[:42]) + last,
 		"garbage":                     "not-a-token",
 	} {
 		if r, b := e.do(t, http.MethodPost, "/api/v1/invitations/accept", zTok, map[string]string{"token": bad}); r.StatusCode != http.StatusGone || b["code"] != "INVITATION_INVALID" {

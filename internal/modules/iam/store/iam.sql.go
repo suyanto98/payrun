@@ -55,6 +55,18 @@ func (q *Queries) ActiveMemberEmailExists(ctx context.Context, email string) (bo
 	return exists, err
 }
 
+const actorRoles = `-- name: ActorRoles :one
+SELECT roles FROM memberships WHERE user_id = $1 AND status = 'ACTIVE'
+`
+
+// [tenant] Role pemanggil dibaca ulang dari DB (ADR-P02): role di access token bisa basi ≤ 15 menit.
+func (q *Queries) ActorRoles(ctx context.Context, userID *uuid.UUID) ([]string, error) {
+	row := q.db.QueryRow(ctx, actorRoles, userID)
+	var roles []string
+	err := row.Scan(&roles)
+	return roles, err
+}
+
 const addOwnerMembership = `-- name: AddOwnerMembership :exec
 INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by)
 VALUES ($1, $2, $3, ARRAY['OWNER'], 'ACTIVE', $4, $3)
@@ -361,6 +373,74 @@ func (q *Queries) GetInvitationForUpdate(ctx context.Context, tokenHash []byte) 
 	return i, err
 }
 
+const getMember = `-- name: GetMember :one
+SELECT m.tenant_id, m.id, m.user_id, u.email AS user_email, u.display_name AS user_display_name,
+       m.invited_email, m.roles, m.status, m.accepted_at, m.version
+FROM memberships m
+LEFT JOIN users u ON u.id = m.user_id
+WHERE m.id = $1
+`
+
+type GetMemberRow struct {
+	TenantID        uuid.UUID
+	ID              uuid.UUID
+	UserID          *uuid.UUID
+	UserEmail       *string
+	UserDisplayName *string
+	InvitedEmail    *string
+	Roles           []string
+	Status          string
+	AcceptedAt      *time.Time
+	Version         int32
+}
+
+// [tenant] Satu member dengan bentuk yang sama seperti ListMembers (respons U4/U5).
+func (q *Queries) GetMember(ctx context.Context, id uuid.UUID) (GetMemberRow, error) {
+	row := q.db.QueryRow(ctx, getMember, id)
+	var i GetMemberRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.UserID,
+		&i.UserEmail,
+		&i.UserDisplayName,
+		&i.InvitedEmail,
+		&i.Roles,
+		&i.Status,
+		&i.AcceptedAt,
+		&i.Version,
+	)
+	return i, err
+}
+
+const getMembershipForUpdate = `-- name: GetMembershipForUpdate :one
+SELECT tenant_id, id, user_id, roles, status, version FROM memberships WHERE id = $1 FOR UPDATE
+`
+
+type GetMembershipForUpdateRow struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	UserID   *uuid.UUID
+	Roles    []string
+	Status   string
+	Version  int32
+}
+
+// [tenant] [6] membership target FOR UPDATE (22-tx §1).
+func (q *Queries) GetMembershipForUpdate(ctx context.Context, id uuid.UUID) (GetMembershipForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getMembershipForUpdate, id)
+	var i GetMembershipForUpdateRow
+	err := row.Scan(
+		&i.TenantID,
+		&i.ID,
+		&i.UserID,
+		&i.Roles,
+		&i.Status,
+		&i.Version,
+	)
+	return i, err
+}
+
 const getPendingMembershipByEmail = `-- name: GetPendingMembershipByEmail :one
 SELECT id, roles FROM memberships
 WHERE status = 'INVITED' AND lower(invited_email) = lower($1)
@@ -624,6 +704,19 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 	return items, nil
 }
 
+const lockTenantOwners = `-- name: LockTenantOwners :exec
+
+SELECT pg_advisory_xact_lock(hashtextextended('owners:' || $1::text, 0))
+`
+
+// ---------------------------------------------------------------- role change & revoke (Sprint 4)
+// [tenant] PI-16: perubahan role/status membership diserialkan per tenant SEBELUM membaca baris apa
+// pun (22-tx §1 catatan): dua OWNER yang saling mencabut tidak bisa sama-sama lolos trigger deferred.
+func (q *Queries) LockTenantOwners(ctx context.Context, tenantID string) error {
+	_, err := q.db.Exec(ctx, lockTenantOwners, tenantID)
+	return err
+}
+
 const markEmailVerificationUsed = `-- name: MarkEmailVerificationUsed :exec
 UPDATE email_verifications SET used_at = $1 WHERE id = $2
 `
@@ -799,6 +892,24 @@ func (q *Queries) RevokeFamily(ctx context.Context, arg RevokeFamilyParams) (int
 	return result.RowsAffected(), nil
 }
 
+const revokeMembership = `-- name: RevokeMembership :exec
+UPDATE memberships
+SET status = 'REVOKED', revoked_at = $1, revoked_by = $2, updated_by = $2, version = version + 1
+WHERE id = $3 AND status IN ('ACTIVE', 'INVITED')
+`
+
+type RevokeMembershipParams struct {
+	Now   *time.Time
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+// [tenant] ACTIVE atau INVITED (membatalkan undangan) → REVOKED.
+func (q *Queries) RevokeMembership(ctx context.Context, arg RevokeMembershipParams) error {
+	_, err := q.db.Exec(ctx, revokeMembership, arg.Now, arg.Actor, arg.ID)
+	return err
+}
+
 const revokePendingInvitations = `-- name: RevokePendingInvitations :exec
 UPDATE invitations SET revoked_at = $1
 WHERE membership_id = $2 AND accepted_at IS NULL AND revoked_at IS NULL
@@ -829,6 +940,23 @@ type RevokeUserRefreshTokensParams struct {
 // [none] Semua sesi user dicabut (kredensial berganti).
 func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) error {
 	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.Now, arg.Reason, arg.UserID)
+	return err
+}
+
+const setMembershipRoles = `-- name: SetMembershipRoles :exec
+UPDATE memberships SET roles = $1, updated_by = $2, version = version + 1
+WHERE id = $3 AND status = 'ACTIVE'
+`
+
+type SetMembershipRolesParams struct {
+	Roles []string
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+// [tenant]
+func (q *Queries) SetMembershipRoles(ctx context.Context, arg SetMembershipRolesParams) error {
+	_, err := q.db.Exec(ctx, setMembershipRoles, arg.Roles, arg.Actor, arg.ID)
 	return err
 }
 

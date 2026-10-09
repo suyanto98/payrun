@@ -103,7 +103,7 @@ Spesifikasi di [`01-shared-tables.md`](01-shared-tables.md). Dari sisi PayRun: g
   - `uq_memberships_invited_email` unique index `(tenant_id, lower(invited_email)) WHERE status = 'INVITED'`.
   - `ck_memberships_status CHECK (status IN ('INVITED','ACTIVE','REVOKED'))`.
   - `ck_memberships_roles CHECK (cardinality(roles) >= 1 AND roles <@ ARRAY['OWNER','HR_ADMIN','PAYROLL_ADMIN','MANAGER','EMPLOYEE'])`.
-  - `ck_memberships_user_when_active CHECK (status = 'INVITED' OR user_id IS NOT NULL)`.
+  - `ck_memberships_user_when_active CHECK (status <> 'ACTIVE' OR user_id IS NOT NULL)` (migrasi 00008, S4: undangan yang dicabut menjadi REVOKED tanpa user).
   - `ck_memberships_invite_target CHECK (user_id IS NOT NULL OR invited_email IS NOT NULL)`.
 - **Index:** `ix_memberships_user (user_id) WHERE status = 'ACTIVE'`, untuk login dan daftar tenant milik user (jalur `WithPlatformTx`).
 - **Trigger:** `memberships_owner_guard`, constraint trigger deferred (PI-16):

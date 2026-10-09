@@ -193,6 +193,13 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 		}
 		return m.e.mustCreate(t, owner, "/api/v1/component-definitions", map[string]any{
 			"code": fmt.Sprintf("T%d", m.next()), "name": "Target", "category": "EARNING", "calc_type": "FIXED", "default_amount": "1000.00"})
+	case "member_plain", "member_admin": // member ACTIVE baru: EMPLOYEE, atau PAYROLL_ADMIN (role admin)
+		role := roleE
+		if kind == "member_admin" {
+			role = roleP
+		}
+		n := m.next()
+		return m.e.newMember(t, m.f.id, fmt.Sprintf("member%d@%s.test", n, m.f.slug), role)
 	case "run":
 		if !fresh && m.run != uuid.Nil {
 			return m.run
@@ -299,8 +306,9 @@ func TestCrossTenant(t *testing.T) {
 	beta := e.newTenantFx(t, "beta")
 	alphaRun, alphaItem := e.errorItem(t, alpha.tokens[roleO], "2026-01")
 	m := &matrixRunner{e: e, f: beta, items: map[uuid.UUID]uuid.UUID{alphaRun: alphaItem}}
+	alphaMember := e.newMember(t, alpha.id, "member@alpha.test", roleE)
 	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
-		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun}
+		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun, "/members": alphaMember}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {
@@ -344,7 +352,7 @@ func TestCrossTenant(t *testing.T) {
 		r, b := e.do(t, http.MethodGet, "/api/v1"+path, beta.tokens[roleO], nil)
 		raw, _ := json.Marshal(b)
 		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO],
-			alphaRun, alphaItem} {
+			alphaRun, alphaItem, alphaMember} {
 			if strings.Contains(string(raw), id.String()) {
 				t.Errorf("LEAK: Beta GET %s (%d) contains Alpha id %s", path, r.StatusCode, id)
 			}

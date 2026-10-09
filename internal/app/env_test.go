@@ -287,6 +287,19 @@ func (e env) addMember(t *testing.T, tenant, user uuid.UUID, roles ...string) {
 }
 
 // inTenant menjalankan SQL di bawah RLS tenant (contoh: mencabut membership, membaca audit tenant).
+// newMember: user terverifikasi baru + membership ACTIVE di tenant; mengembalikan id membership.
+func (e env) newMember(t *testing.T, tenant uuid.UUID, email string, roles ...string) uuid.UUID {
+	t.Helper()
+	u := e.createUser(t, email)
+	e.verifyUser(t, u)
+	e.addMember(t, tenant, u, roles...)
+	var id uuid.UUID
+	e.inTenant(t, tenant, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT id FROM memberships WHERE user_id = $1`, u).Scan(&id)
+	})
+	return id
+}
+
 func (e env) inTenant(t *testing.T, tenant uuid.UUID, fn func(tx pgx.Tx) error) {
 	t.Helper()
 	if err := db.WithTenantTxFor(context.Background(), e.pool, tenant, fn); err != nil {

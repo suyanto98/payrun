@@ -15,6 +15,8 @@
 #                         employee_self          → employee fixture yang tertaut ke user EMPLOYEE (baca saja)
 #                         employee_report        → employee yang sama: bawahan langsung user MANAGER (S3)
 #                         holiday | component    → libur / komponen tenant (FIXED) yang dibuat OWNER
+#                         member_plain           → member ACTIVE baru dengan role EMPLOYEE
+#                         member_admin           → member ACTIVE baru dengan role PAYROLL_ADMIN
 #                         run                    → payroll run DRAFT (periode 2025 ke bawah, unik per run)
 #                         run_item               → run CALCULATED (2026) + satu item ERROR ({item_id})
 #           query     : query string (tanpa "?")
@@ -67,7 +69,7 @@ routes:
     cases:
       - {target: holiday, expect: {O: 204, H: 204, P: 403, M: 403, E: 403}}
 
-  # ---------------------------------------------------------------- members (S2; U4/U5 di S4)
+  # ---------------------------------------------------------------- members (U1–U3 S2; U4/U5 S4)
   - id: U1
     route: "GET /members"
     access: tenant
@@ -85,6 +87,21 @@ routes:
         expect: {O: 201, H: 403}
 
   - {id: U3, route: "POST /invitations/accept", access: user}
+  - id: U4
+    route: "PATCH /members/{id}/roles"
+    access: tenant
+    audit: membership.roles_changed
+    cases:
+      - {target: member_plain, if_match: true, body: {roles: [MANAGER, EMPLOYEE]}, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+      - {target: member_plain, if_match: true, body: {roles: [PAYROLL_ADMIN]}, expect: {O: 200, H: 403}}   # HR tidak memberi role admin
+      - {target: member_admin, if_match: true, body: {roles: [EMPLOYEE]}, expect: {O: 200, H: 403}}       # HR tidak menyentuh admin
+  - id: U5
+    route: "POST /members/{id}/revoke"
+    access: tenant
+    audit: membership.revoked
+    cases:
+      - {target: member_plain, body: {reason: Resign}, expect: {O: 200, H: 200, P: 403, M: 403, E: 403}}
+      - {target: member_admin, body: {reason: Resign}, expect: {O: 200, H: 403}}
 
   # ---------------------------------------------------------------- organisasi (G1–G4)
   - id: G1a

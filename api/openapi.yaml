@@ -508,13 +508,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/MemberRolesRequest' }
       responses:
         '200':
-          description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
+          description: OK with `ETag`. New roles take effect in the next access token (refresh, at most 15 minutes).
+          headers:
+            ETag: { schema: { type: string } }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Member' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -538,13 +540,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/RevokeMemberRequest' }
       responses:
         '200':
-          description: OK. Body model `Membership` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` REVOKED). A pending invitation is cancelled the same way. Revoking again is 409 INVALID_STATE_TRANSITION.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Member' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2583,6 +2585,23 @@ components:
           maxItems: 100
           items: { $ref: '#/components/schemas/Member' }
         page: { $ref: '#/components/schemas/Page' }
+    MemberRolesRequest:
+      type: object
+      additionalProperties: false
+      description: Absolute set of roles. HR_ADMIN may only set MANAGER/EMPLOYEE on members without admin roles.
+      required: [roles]
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: { $ref: '#/components/schemas/Role' }
+    RevokeMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 200 }
     InvitationRequest:
       type: object
       additionalProperties: false

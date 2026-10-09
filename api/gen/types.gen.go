@@ -1388,6 +1388,11 @@ type MemberList struct {
 	Page Page     `json:"page"`
 }
 
+// MemberRolesRequest Absolute set of roles. HR_ADMIN may only set MANAGER/EMPLOYEE on members without admin roles.
+type MemberRolesRequest struct {
+	Roles []Role `json:"roles"`
+}
+
 // MemberUser defines model for MemberUser.
 type MemberUser struct {
 	DisplayName string              `json:"display_name"`
@@ -1673,6 +1678,11 @@ type Problem struct {
 type Ref struct {
 	Id   openapi_types.UUID `json:"id"`
 	Name string             `json:"name"`
+}
+
+// RevokeMemberRequest defines model for RevokeMemberRequest.
+type RevokeMemberRequest struct {
+	Reason string `json:"reason"`
 }
 
 // Role defines model for Role.
@@ -2316,10 +2326,10 @@ type CreateLeaveRequestJSONRequestBody = Pending
 type CancelLeaveRequestJSONRequestBody = Pending
 
 // RevokeMemberJSONRequestBody defines body for RevokeMember for application/json ContentType.
-type RevokeMemberJSONRequestBody = Pending
+type RevokeMemberJSONRequestBody = RevokeMemberRequest
 
 // UpdateMemberRolesJSONRequestBody defines body for UpdateMemberRoles for application/json ContentType.
-type UpdateMemberRolesJSONRequestBody = Pending
+type UpdateMemberRolesJSONRequestBody = MemberRolesRequest
 
 // CreateOvertimeRequestJSONRequestBody defines body for CreateOvertimeRequest for application/json ContentType.
 type CreateOvertimeRequestJSONRequestBody = Pending
