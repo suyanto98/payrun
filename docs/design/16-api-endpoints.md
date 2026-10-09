@@ -856,3 +856,20 @@ Kontrak: `api/openapi.yaml` (`TestContract_S3ResponsesMatchSpec`); otorisasi: `a
 | C2/C3 (review S3) | — | Validasi graf diserialkan per tenant (advisory lock `comp:<tenant>`) dan memuat SEMUA definisi; kode base virtual/sistem dicadangkan (`400 RESERVED`); komponen `DEDUCTION` tidak boleh `bpjs_base` | Race siklus; definisi > 200; kode yang membayangi base virtual |
 | Koreksi record effective-dated | "Batalkan perubahan masa depan dulu" | **Belum ada** endpoint batal/koreksi record gaji/komponen/penempatan yang salah (dan app tidak punya grant `DELETE`). Koreksi = record baru dengan `valid_from` lebih akhir | Celah yang diketahui; endpoint koreksi ter-audit direncanakan bersama PeriodGuard (S5/S6) |
 | Modul | ADR-001: modul hanya meng-query tabelnya | Penyimpangan disengaja: query baca employee JOIN `departments`/`positions` (nama untuk tampilan). Semua PENULISAN lintas modul lewat interface di composition root (`OrgUnits`, `Salaries`, `Assignments`, `Employees`) | Menghindari N+1 untuk tampilan |
+
+## Catatan implementasi (Sprint 4)
+
+Kontrak: `api/openapi.yaml` (`TestContract_S4ResponsesMatchSpec`); otorisasi: `api/authz_matrix.yaml` (Y2–Y8, Y12 dengan target `run` / `run_item`, termasuk lintas tenant).
+
+| Endpoint | Desain | Implementasi S4 | Alasan |
+|---|---|---|---|
+| `PayrollRun` | §16: `approval_request_id`, `stale`, `submitted_by`, `approved_by`, `finalized_by`, `finalized_at` | Belum ada di respons; ditambahkan di S5 bersama approval (perubahan aditif, tidak memecah client). Ditambah `created_at` dan `cancel_reason` | Field approval tanpa approval engine hanya akan selalu `null`/`false`; `stale: false` yang selalu false menyesatkan UI |
+| `PayrollItem` | `employee{id, employee_no, full_name, department}`, `run_id`, `calc_version` | Datar: `employee_id`, `employee_no`, `employee_name`, `department_id` (kolom denormalisasi saat kalkulasi, R3-4). `calc_version` hanya di detail (Y7/Y8); `run_id` sudah ada di path | Nested `employee{}` mengesankan data employee terkini, padahal nilainya dibekukan saat run dihitung |
+| `PayrollLine` | `adjustment_id` | Belum ada; ditambahkan di S7 bersama adjustment. Ditambah `name` | — |
+| Y7 `issues[]` | — | `{kind: error\|warning, code, detail}` | — |
+| Y3 | `?period&status&limit&cursor` | Sama (cursor `created_at DESC, id`) | — |
+| Y6 | `?warning=` | Belum ada; `?status`, `?department_id`, `?has_warning` ada. Limit 1..200 (default 50) | Filter per kode warning bersama warning lembur (S6) |
+| Y5/Y11 tanpa body | "tanpa body" | Body kosong diterima: hash idempotency memperlakukan body kosong = `{}` (skeleton 0.0.6). `{}` juga diterima | Sebelumnya body kosong → `400 MALFORMED_JSON` |
+| Y8 respons | `PayrollItem` + total run | Hanya `PayrollItem` (`EXCLUDED`); `counts` run diperbarui di transaksi yang sama, client membaca Y4 | Satu bentuk respons per resource |
+| Y5 rate limit | `heavy` 10/jam per tenant | Sama, tetapi dihitung **setelah** cek role: `MANAGER`/`EMPLOYEE` yang ditolak tidak menghabiskan kuota tenant | Penolakan oleh role rendah tidak boleh memblokir payroll tenant |
+| Y1, Y9–Y11 | — | Belum ada rute (skema tetap `Pending`) | Y1/Y9 di S5–S6, Y10/Y11 bersama approval dan finalize |

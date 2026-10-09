@@ -51,6 +51,21 @@ func TestHash_Canonical(t *testing.T) {
 	}
 }
 
+// Body kosong (endpoint tanpa body) di-hash sama dengan `{}`, bukan MALFORMED_JSON.
+func TestHash_EmptyBodyIsEmptyObject(t *testing.T) {
+	empty, err := Hash("POST", "/x", nil)
+	if err != nil {
+		t.Fatalf("empty body: %v", err)
+	}
+	obj, _ := Hash("POST", "/x", []byte(" {} "))
+	if !bytes.Equal(empty, obj) {
+		t.Error("empty body must hash like {}")
+	}
+	if _, err := Hash("POST", "/x", []byte("{")); !errors.Is(err, apperr.ErrMalformedJSON) {
+		t.Errorf("truncated JSON: want MALFORMED_JSON, got %v", err)
+	}
+}
+
 func TestKeyFrom(t *testing.T) {
 	cases := map[string]error{
 		"":                                     apperr.ErrIdempotencyKeyRequired,

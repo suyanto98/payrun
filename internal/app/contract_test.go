@@ -131,3 +131,57 @@ func TestContract_S3ResponsesMatchSpec(t *testing.T) {
 	_, list := e.do(t, http.MethodGet, "/api/v1/employees", o, nil)
 	assertMatchesSpec(t, "employee list with org", list, &gen.EmployeeList{})
 }
+
+// TestContract_S4ResponsesMatchSpec: respons sukses endpoint payroll run terhadap skemanya, dari run
+// DRAFT (semua nilai hasil null) sampai CALCULATED, item OK dengan lines dan item ERROR dengan issues.
+func TestContract_S4ResponsesMatchSpec(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	p := f.tokens[roleP]
+	e.doH(t, http.MethodPost, "/api/v1/employees/"+f.empOther.String()+"/salary-changes", f.tokens[roleO], key(),
+		map[string]any{"base_salary": "6000000.00", "valid_from": "2026-01-05"})
+
+	_, draft := e.doH(t, http.MethodPost, "/api/v1/payroll-runs", p, key(), map[string]any{"period": "2026-03"})
+	assertMatchesSpec(t, "run (draft)", draft, &gen.PayrollRun{})
+	run := draft["id"].(string)
+	// Y5 tanpa body sama sekali (16-api: "tanpa body").
+	r, calc := e.doH(t, http.MethodPost, "/api/v1/payroll-runs/"+run+"/calculate", p, key(), nil)
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("calculate without body: %d %v", r.StatusCode, calc)
+	}
+	assertMatchesSpec(t, "run (calculating)", calc, &gen.PayrollRun{})
+	e.drainJobs(t)
+	_, done := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run, p, nil)
+	assertMatchesSpec(t, "run (calculated)", done, &gen.PayrollRun{})
+	_, runs := e.do(t, http.MethodGet, "/api/v1/payroll-runs?period=2026-03", p, nil)
+	assertMatchesSpec(t, "runs", runs, &gen.PayrollRunList{})
+
+	_, items := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run+"/items", p, nil)
+	assertMatchesSpec(t, "items", items, &gen.PayrollItemList{})
+	var okItem, errItem string
+	for _, it := range items["data"].([]any) {
+		m := it.(map[string]any)
+		switch m["status"] {
+		case "OK":
+			okItem = m["id"].(string)
+		case "ERROR":
+			errItem = m["id"].(string)
+		}
+	}
+	_, ok := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run+"/items/"+okItem, p, nil)
+	assertMatchesSpec(t, "item (ok, lines)", ok, &gen.PayrollItemDetail{})
+	if lines, _ := ok["lines"].([]any); len(lines) == 0 {
+		t.Errorf("OK item must have lines: %v", ok)
+	}
+	_, bad := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run+"/items/"+errItem, p, nil)
+	assertMatchesSpec(t, "item (error, issues)", bad, &gen.PayrollItemDetail{})
+	_, excl := e.do(t, http.MethodPost, "/api/v1/payroll-runs/"+run+"/items/"+errItem+"/exclude", p, map[string]any{"reason": "Gaji belum diinput HR"})
+	assertMatchesSpec(t, "item (excluded)", excl, &gen.PayrollItemDetail{})
+	_, cancelled := e.do(t, http.MethodPost, "/api/v1/payroll-runs/"+run+"/cancel", p, map[string]any{"reason": "Salah periode"})
+	assertMatchesSpec(t, "run (cancelled)", cancelled, &gen.PayrollRun{})
+
+	// Request body: field di luar skema ditolak (additionalProperties: false).
+	if r, b := e.doH(t, http.MethodPost, "/api/v1/payroll-runs", p, key(), map[string]any{"period": "2026-04", "extra": 1}); r.StatusCode != http.StatusBadRequest {
+		t.Errorf("unknown field in CreatePayrollRunRequest: want 400, got %d %v", r.StatusCode, b)
+	}
+}

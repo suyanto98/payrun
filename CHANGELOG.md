@@ -5,6 +5,14 @@
 Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, bukan dibagi sebagai module
 (docs/design/32-repository-structure.md). Setiap perubahan skeleton dicatat di sini dan harus di-port ke repo lain.
 
+### 0.0.6 — PayRun Sprint 4 (belum di-port ke LedgerPay)
+- `idempotency.Hash`: body kosong di-hash sama dengan `{}` (endpoint tanpa body seperti calculate/finalize tidak lagi `MALFORMED_JSON`).
+- `jobs` (baru di PayRun, dari LedgerPay): ditambah `tenant_id`; enqueue di tx tenant, claim tanpa tenant context, `CompleteInTx` di tx tenant handler.
+- `app.Worker` + `WorkerOpsRouter`: lane `payroll` dan `maintenance`, readiness per lane, kill switch per kind.
+- `config`: `ValidateWorker`, `WORKER_ID`, `WORKER_POLL_INTERVAL`, `PAYROLL_CHUNK_SIZE`.
+- `apperr`: `ACTIVE_RUN_EXISTS`, `PERIOD_LOCKED`, `RUN_FINALIZED`, `LAST_OWNER`; `db.MapError`: `P0001` → `RUN_FINALIZED`, `P0004` → `LAST_OWNER`.
+- Khusus PayRun: `db.WithTenantTxForOptions` (txRead chunk REPEATABLE READ READ ONLY).
+
 ### 0.0.5 — PayRun Sprint 3 (belum di-port ke LedgerPay)
 - `apperr`: `OVERLAPPING_PERIOD`, `MANAGER_CYCLE`, `COMPONENT_CYCLE`, `INVALID_COMPONENT_REFERENCE`.
 - `db.MapError`: `ex_*_no_overlap` (23P01) → `OVERLAPPING_PERIOD`; `P0005` → `MANAGER_CYCLE`.

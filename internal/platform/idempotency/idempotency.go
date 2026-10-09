@@ -85,7 +85,11 @@ func ReadBody(r *http.Request) ([]byte, error) {
 
 // Hash = SHA-256(method, path, canonical JSON body). Canonical: key objek diurutkan dan whitespace
 // dibuang. Angka disalin apa adanya (json.Number) supaya 1.0 dan 1 tidak diam-diam disamakan.
+// Body kosong = `{}`: endpoint tanpa body (calculate, finalize) boleh dipanggil tanpa body sama sekali.
 func Hash(method, path string, body []byte) ([]byte, error) {
+	if len(bytes.TrimSpace(body)) == 0 {
+		body = []byte("{}")
+	}
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	var v any

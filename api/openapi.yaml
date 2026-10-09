@@ -1661,13 +1661,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/CreatePayrollRunRequest' }
       responses:
         '201':
-          description: Created. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: Created (`status` DRAFT, `calc_version` 0). Replay of the same key returns the same 201 with `Idempotent-Replayed`.
+          headers:
+            Location: { schema: { type: string } }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1684,14 +1686,23 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Period' }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/PayrollRunStatus' }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `PayrollRunList` (docs/design/16-api-endpoints.md §16).
+          description: OK. Newest first (`created_at DESC`), including CANCELLED runs.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRunList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1709,10 +1720,10 @@ paths:
         - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
-          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: OK. Poll while `status` is CALCULATING.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1731,16 +1742,19 @@ paths:
         - $ref: '#/components/parameters/ResourceId'
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
-        required: true
+        required: false
+        description: No body; an empty JSON object is accepted.
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '202':
-          description: Accepted; processing continues in the background. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: Accepted (`status` CALCULATING, `calc_version` + 1); processing continues in the background. A replay does not bump `calc_version` again.
+          headers:
+            Location: { schema: { type: string } }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1760,14 +1774,31 @@ paths:
       x-priority: P0
       parameters:
         - $ref: '#/components/parameters/ResourceId'
-        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [OK, ERROR, EXCLUDED] }
+        - name: department_id
+          in: query
+          required: false
+          description: Department at calculation time (denormalized on the item, R3-4).
+          schema: { type: string, format: uuid }
+        - name: has_warning
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `PayrollItemList` (docs/design/16-api-endpoints.md §16).
+          description: "OK. Items of the current `calc_version`, ordered by `employee_no`. Every request writes audit `payroll.bulk_read`. `Cache-Control: no-store`."
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollItemList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1787,10 +1818,10 @@ paths:
         - $ref: '#/components/parameters/ItemId'
       responses:
         '200':
-          description: OK. Body model `PayrollItem` (docs/design/16-api-endpoints.md §16).
+          description: "OK. Lines in pipeline order with explanations. An item of an older `calc_version` is 404. HR_ADMIN reads are audited (`payroll_item.read`). `Cache-Control: no-store`."
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollItemDetail' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1812,13 +1843,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ExcludePayrollItemRequest' }
       responses:
         '200':
-          description: OK. Body model `PayrollItem` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` EXCLUDED). Run counts are updated; fetch the run for the new numbers.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollItemDetail' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1925,13 +1956,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/CancelPayrollRunRequest' }
       responses:
         '200':
-          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` CANCELLED). The period is open again for a new run.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2797,6 +2828,190 @@ components:
         components:
           type: array
           items: { $ref: '#/components/schemas/EmployeeComponent' }
+    PayrollRunStatus:
+      type: string
+      enum: [DRAFT, CALCULATING, CALCULATED, PENDING_APPROVAL, APPROVED, FINALIZED, FAILED, CANCELLED]
+    CreatePayrollRunRequest:
+      type: object
+      additionalProperties: false
+      required: [period]
+      properties:
+        period:
+          allOf: [{ $ref: '#/components/schemas/Period' }]
+          description: At most one month ahead of the current month (tenant timezone).
+    PayrollRunTotals:
+      type: object
+      required: [gross, deductions, net]
+      properties:
+        gross: { $ref: '#/components/schemas/Money' }
+        deductions: { $ref: '#/components/schemas/Money' }
+        net: { $ref: '#/components/schemas/Money' }
+    RulesetRef:
+      type: object
+      required: [code, version]
+      properties:
+        code: { type: string, examples: [ID-SIMPLIFIED] }
+        version: { type: string, examples: ['2026.1'] }
+    PayrollRun:
+      type: object
+      description: >
+        Run of one period (docs/design/16-api-endpoints.md §16, amendment S4). `totals`, `ruleset` and the
+        `counts` values are null until the run is CALCULATED. Approval fields (`approval_request_id`,
+        `stale`, `submitted_by`, …) arrive with Sprint 5.
+      required: [id, period, status, calc_version, progress, totals, counts, ruleset, failure_reason, created_by,
+                 created_at, calc_started_at, calculated_at, cancel_reason]
+      properties:
+        id: { type: string, format: uuid }
+        period: { $ref: '#/components/schemas/Period' }
+        status: { $ref: '#/components/schemas/PayrollRunStatus' }
+        calc_version: { type: integer, format: int32, description: 0 until the first calculate; + 1 per (re)calculation. }
+        progress:
+          type: object
+          required: [chunks_done, chunks_total, eligible_count]
+          properties:
+            chunks_done: { type: integer, format: int32 }
+            chunks_total: { type: integer, format: int32 }
+            eligible_count: { type: [integer, 'null'], format: int32 }
+        totals:
+          oneOf:
+            - $ref: '#/components/schemas/PayrollRunTotals'
+            - type: 'null'
+        counts:
+          type: object
+          required: [ok, error, excluded, warnings]
+          properties:
+            ok: { type: [integer, 'null'], format: int32 }
+            error: { type: [integer, 'null'], format: int32 }
+            excluded: { type: [integer, 'null'], format: int32 }
+            warnings: { type: [integer, 'null'], format: int32 }
+        ruleset:
+          oneOf:
+            - $ref: '#/components/schemas/RulesetRef'
+            - type: 'null'
+        failure_reason: { type: [string, 'null'], description: Set when a job failed permanently (FAILED). }
+        created_by: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        calc_started_at: { type: [string, 'null'], format: date-time }
+        calculated_at: { type: [string, 'null'], format: date-time }
+        cancel_reason: { type: [string, 'null'] }
+    PayrollRunListItem:
+      type: object
+      required: [id, period, status, calc_version, total_net, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        period: { $ref: '#/components/schemas/Period' }
+        status: { $ref: '#/components/schemas/PayrollRunStatus' }
+        calc_version: { type: integer, format: int32 }
+        total_net: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        created_at: { type: string, format: date-time }
+    PayrollRunList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/PayrollRunListItem' }
+        page: { $ref: '#/components/schemas/Page' }
+    PayrollItem:
+      type: object
+      description: >
+        One employee in a run. `employee_no`, `employee_name` and `department_id` are denormalized at
+        calculation time (R3-4), so historical runs keep the values they were paid with. Amounts are null
+        for ERROR items.
+      required: [id, employee_id, employee_no, employee_name, department_id, status, gross, deductions, net,
+                 error_codes, warning_codes, excluded_reason]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        employee_no: { type: string }
+        employee_name: { type: string }
+        department_id: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [OK, ERROR, EXCLUDED] }
+        gross: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        deductions: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        net: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        error_codes:
+          type: array
+          items: { type: string, examples: [NO_SALARY] }
+        warning_codes:
+          type: array
+          items: { type: string }
+        excluded_reason: { type: [string, 'null'] }
+    PayrollItemList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/PayrollItem' }
+        page: { $ref: '#/components/schemas/Page' }
+    PayrollLine:
+      type: object
+      required: [sort_order, code, name, category, stage, amount, basis, explanation, taxable, rounding]
+      properties:
+        sort_order: { type: integer, format: int32 }
+        code: { type: string, examples: [BASE_SALARY] }
+        name: { type: string }
+        category: { type: string, enum: [EARNING, DEDUCTION] }
+        stage: { type: string, enum: [EARNING, OVERTIME, ABSENCE, STATUTORY, TAX, ADJUSTMENT] }
+        amount: { $ref: '#/components/schemas/Money' }
+        basis:
+          type: object
+          additionalProperties: true
+          description: Inputs of this line (days, rates, bases) as decimal strings.
+        explanation: { type: string }
+        taxable: { type: boolean }
+        rounding: { type: string, enum: [HALF_UP, DOWN, UP] }
+    PayrollIssue:
+      type: object
+      required: [kind, code, detail]
+      properties:
+        kind: { type: string, enum: [error, warning] }
+        code: { type: string }
+        detail: { type: string }
+    PayrollItemDetail:
+      type: object
+      description: "`PayrollItem` + `calc_version`, `lines` and `issues`."
+      required: [id, employee_id, employee_no, employee_name, department_id, status, gross, deductions, net,
+                 error_codes, warning_codes, excluded_reason, calc_version, lines, issues]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        employee_no: { type: string }
+        employee_name: { type: string }
+        department_id: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [OK, ERROR, EXCLUDED] }
+        gross: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        deductions: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        net: { type: [string, 'null'], pattern: '^-?[0-9]{1,16}\.[0-9]{2}$' }
+        error_codes:
+          type: array
+          items: { type: string }
+        warning_codes:
+          type: array
+          items: { type: string }
+        excluded_reason: { type: [string, 'null'] }
+        calc_version: { type: integer, format: int32 }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/PayrollLine' }
+        issues:
+          type: array
+          items: { $ref: '#/components/schemas/PayrollIssue' }
+    ExcludePayrollItemRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 10, maxLength: 500 }
+    CancelPayrollRunRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
     Problem:
       type: object
       description: RFC 9457 Problem Details with a stable machine-readable code.

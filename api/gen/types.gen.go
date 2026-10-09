@@ -476,6 +476,171 @@ func (e OrgUnitStatus) Valid() bool {
 	}
 }
 
+// Defines values for PayrollIssueKind.
+const (
+	Error   PayrollIssueKind = "error"
+	Warning PayrollIssueKind = "warning"
+)
+
+// Valid indicates whether the value is a known member of the PayrollIssueKind enum.
+func (e PayrollIssueKind) Valid() bool {
+	switch e {
+	case Error:
+		return true
+	case Warning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollItemStatus.
+const (
+	PayrollItemStatusERROR    PayrollItemStatus = "ERROR"
+	PayrollItemStatusEXCLUDED PayrollItemStatus = "EXCLUDED"
+	PayrollItemStatusOK       PayrollItemStatus = "OK"
+)
+
+// Valid indicates whether the value is a known member of the PayrollItemStatus enum.
+func (e PayrollItemStatus) Valid() bool {
+	switch e {
+	case PayrollItemStatusERROR:
+		return true
+	case PayrollItemStatusEXCLUDED:
+		return true
+	case PayrollItemStatusOK:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollItemDetailStatus.
+const (
+	PayrollItemDetailStatusERROR    PayrollItemDetailStatus = "ERROR"
+	PayrollItemDetailStatusEXCLUDED PayrollItemDetailStatus = "EXCLUDED"
+	PayrollItemDetailStatusOK       PayrollItemDetailStatus = "OK"
+)
+
+// Valid indicates whether the value is a known member of the PayrollItemDetailStatus enum.
+func (e PayrollItemDetailStatus) Valid() bool {
+	switch e {
+	case PayrollItemDetailStatusERROR:
+		return true
+	case PayrollItemDetailStatusEXCLUDED:
+		return true
+	case PayrollItemDetailStatusOK:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollLineCategory.
+const (
+	PayrollLineCategoryDEDUCTION PayrollLineCategory = "DEDUCTION"
+	PayrollLineCategoryEARNING   PayrollLineCategory = "EARNING"
+)
+
+// Valid indicates whether the value is a known member of the PayrollLineCategory enum.
+func (e PayrollLineCategory) Valid() bool {
+	switch e {
+	case PayrollLineCategoryDEDUCTION:
+		return true
+	case PayrollLineCategoryEARNING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollLineRounding.
+const (
+	PayrollLineRoundingDOWN   PayrollLineRounding = "DOWN"
+	PayrollLineRoundingHALFUP PayrollLineRounding = "HALF_UP"
+	PayrollLineRoundingUP     PayrollLineRounding = "UP"
+)
+
+// Valid indicates whether the value is a known member of the PayrollLineRounding enum.
+func (e PayrollLineRounding) Valid() bool {
+	switch e {
+	case PayrollLineRoundingDOWN:
+		return true
+	case PayrollLineRoundingHALFUP:
+		return true
+	case PayrollLineRoundingUP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollLineStage.
+const (
+	PayrollLineStageABSENCE    PayrollLineStage = "ABSENCE"
+	PayrollLineStageADJUSTMENT PayrollLineStage = "ADJUSTMENT"
+	PayrollLineStageEARNING    PayrollLineStage = "EARNING"
+	PayrollLineStageOVERTIME   PayrollLineStage = "OVERTIME"
+	PayrollLineStageSTATUTORY  PayrollLineStage = "STATUTORY"
+	PayrollLineStageTAX        PayrollLineStage = "TAX"
+)
+
+// Valid indicates whether the value is a known member of the PayrollLineStage enum.
+func (e PayrollLineStage) Valid() bool {
+	switch e {
+	case PayrollLineStageABSENCE:
+		return true
+	case PayrollLineStageADJUSTMENT:
+		return true
+	case PayrollLineStageEARNING:
+		return true
+	case PayrollLineStageOVERTIME:
+		return true
+	case PayrollLineStageSTATUTORY:
+		return true
+	case PayrollLineStageTAX:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayrollRunStatus.
+const (
+	APPROVED        PayrollRunStatus = "APPROVED"
+	CALCULATED      PayrollRunStatus = "CALCULATED"
+	CALCULATING     PayrollRunStatus = "CALCULATING"
+	CANCELLED       PayrollRunStatus = "CANCELLED"
+	DRAFT           PayrollRunStatus = "DRAFT"
+	FAILED          PayrollRunStatus = "FAILED"
+	FINALIZED       PayrollRunStatus = "FINALIZED"
+	PENDINGAPPROVAL PayrollRunStatus = "PENDING_APPROVAL"
+)
+
+// Valid indicates whether the value is a known member of the PayrollRunStatus enum.
+func (e PayrollRunStatus) Valid() bool {
+	switch e {
+	case APPROVED:
+		return true
+	case CALCULATED:
+		return true
+	case CALCULATING:
+		return true
+	case CANCELLED:
+		return true
+	case DRAFT:
+		return true
+	case FAILED:
+		return true
+	case FINALIZED:
+		return true
+	case PENDINGAPPROVAL:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Role.
 const (
 	EMPLOYEE     Role = "EMPLOYEE"
@@ -788,6 +953,27 @@ func (e ListMembersParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ListPayrollItemsParamsStatus.
+const (
+	ListPayrollItemsParamsStatusERROR    ListPayrollItemsParamsStatus = "ERROR"
+	ListPayrollItemsParamsStatusEXCLUDED ListPayrollItemsParamsStatus = "EXCLUDED"
+	ListPayrollItemsParamsStatusOK       ListPayrollItemsParamsStatus = "OK"
+)
+
+// Valid indicates whether the value is a known member of the ListPayrollItemsParamsStatus enum.
+func (e ListPayrollItemsParamsStatus) Valid() bool {
+	switch e {
+	case ListPayrollItemsParamsStatusERROR:
+		return true
+	case ListPayrollItemsParamsStatusEXCLUDED:
+		return true
+	case ListPayrollItemsParamsStatusOK:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPositionsParamsStatus.
 const (
 	ListPositionsParamsStatusACTIVE   ListPositionsParamsStatus = "ACTIVE"
@@ -845,6 +1031,11 @@ type BankInput struct {
 	AccountNumber *string `json:"account_number,omitempty"`
 	Holder        *string `json:"holder,omitempty"`
 	Name          *string `json:"name,omitempty"`
+}
+
+// CancelPayrollRunRequest defines model for CancelPayrollRunRequest.
+type CancelPayrollRunRequest struct {
+	Reason string `json:"reason"`
 }
 
 // ComponentAssignmentRequest defines model for ComponentAssignmentRequest.
@@ -985,6 +1176,12 @@ type ComponentRef struct {
 	Name     string             `json:"name"`
 }
 
+// CreatePayrollRunRequest defines model for CreatePayrollRunRequest.
+type CreatePayrollRunRequest struct {
+	// Period At most one month ahead of the current month (tenant timezone).
+	Period Period `json:"period"`
+}
+
 // CurrentOrg department/position/valid_from are null when only a manager is set (no placement yet).
 type CurrentOrg struct {
 	Department *Ref                `json:"department"`
@@ -1100,6 +1297,11 @@ type EmployeeUpdatePtkpStatus string
 
 // Empty defines model for Empty.
 type Empty = map[string]interface{}
+
+// ExcludePayrollItemRequest defines model for ExcludePayrollItemRequest.
+type ExcludePayrollItemRequest struct {
+	Reason string `json:"reason"`
+}
 
 // Holiday defines model for Holiday.
 type Holiday struct {
@@ -1274,8 +1476,176 @@ type Page struct {
 	NextCursor *string `json:"next_cursor,omitempty"`
 }
 
+// PayrollIssue defines model for PayrollIssue.
+type PayrollIssue struct {
+	Code   string           `json:"code"`
+	Detail string           `json:"detail"`
+	Kind   PayrollIssueKind `json:"kind"`
+}
+
+// PayrollIssueKind defines model for PayrollIssue.Kind.
+type PayrollIssueKind string
+
+// PayrollItem One employee in a run. `employee_no`, `employee_name` and `department_id` are denormalized at calculation time (R3-4), so historical runs keep the values they were paid with. Amounts are null for ERROR items.
+type PayrollItem struct {
+	Deductions     *string             `json:"deductions"`
+	DepartmentId   *openapi_types.UUID `json:"department_id"`
+	EmployeeId     openapi_types.UUID  `json:"employee_id"`
+	EmployeeName   string              `json:"employee_name"`
+	EmployeeNo     string              `json:"employee_no"`
+	ErrorCodes     []string            `json:"error_codes"`
+	ExcludedReason *string             `json:"excluded_reason"`
+	Gross          *string             `json:"gross"`
+	Id             openapi_types.UUID  `json:"id"`
+	Net            *string             `json:"net"`
+	Status         PayrollItemStatus   `json:"status"`
+	WarningCodes   []string            `json:"warning_codes"`
+}
+
+// PayrollItemStatus defines model for PayrollItem.Status.
+type PayrollItemStatus string
+
+// PayrollItemDetail `PayrollItem` + `calc_version`, `lines` and `issues`.
+type PayrollItemDetail struct {
+	CalcVersion    int32                   `json:"calc_version"`
+	Deductions     *string                 `json:"deductions"`
+	DepartmentId   *openapi_types.UUID     `json:"department_id"`
+	EmployeeId     openapi_types.UUID      `json:"employee_id"`
+	EmployeeName   string                  `json:"employee_name"`
+	EmployeeNo     string                  `json:"employee_no"`
+	ErrorCodes     []string                `json:"error_codes"`
+	ExcludedReason *string                 `json:"excluded_reason"`
+	Gross          *string                 `json:"gross"`
+	Id             openapi_types.UUID      `json:"id"`
+	Issues         []PayrollIssue          `json:"issues"`
+	Lines          []PayrollLine           `json:"lines"`
+	Net            *string                 `json:"net"`
+	Status         PayrollItemDetailStatus `json:"status"`
+	WarningCodes   []string                `json:"warning_codes"`
+}
+
+// PayrollItemDetailStatus defines model for PayrollItemDetail.Status.
+type PayrollItemDetailStatus string
+
+// PayrollItemList defines model for PayrollItemList.
+type PayrollItemList struct {
+	Data []PayrollItem `json:"data"`
+	Page Page          `json:"page"`
+}
+
+// PayrollLine defines model for PayrollLine.
+type PayrollLine struct {
+	// Amount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Amount Money `json:"amount"`
+
+	// Basis Inputs of this line (days, rates, bases) as decimal strings.
+	Basis    map[string]interface{} `json:"basis"`
+	Category PayrollLineCategory    `json:"category"`
+
+	// Code Examples: BASE_SALARY
+	Code        string              `json:"code"`
+	Explanation string              `json:"explanation"`
+	Name        string              `json:"name"`
+	Rounding    PayrollLineRounding `json:"rounding"`
+	SortOrder   int32               `json:"sort_order"`
+	Stage       PayrollLineStage    `json:"stage"`
+	Taxable     bool                `json:"taxable"`
+}
+
+// PayrollLineCategory defines model for PayrollLine.Category.
+type PayrollLineCategory string
+
+// PayrollLineRounding defines model for PayrollLine.Rounding.
+type PayrollLineRounding string
+
+// PayrollLineStage defines model for PayrollLine.Stage.
+type PayrollLineStage string
+
+// PayrollRun Run of one period (docs/design/16-api-endpoints.md §16, amendment S4). `totals`, `ruleset` and the `counts` values are null until the run is CALCULATED. Approval fields (`approval_request_id`, `stale`, `submitted_by`, …) arrive with Sprint 5.
+type PayrollRun struct {
+	CalcStartedAt *time.Time `json:"calc_started_at"`
+
+	// CalcVersion 0 until the first calculate; + 1 per (re)calculation.
+	CalcVersion  int32      `json:"calc_version"`
+	CalculatedAt *time.Time `json:"calculated_at"`
+	CancelReason *string    `json:"cancel_reason"`
+	Counts       struct {
+		Error    *int32 `json:"error"`
+		Excluded *int32 `json:"excluded"`
+		Ok       *int32 `json:"ok"`
+		Warnings *int32 `json:"warnings"`
+	} `json:"counts"`
+	CreatedAt time.Time           `json:"created_at"`
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// FailureReason Set when a job failed permanently (FAILED).
+	FailureReason *string            `json:"failure_reason"`
+	Id            openapi_types.UUID `json:"id"`
+
+	// Period Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	Period   Period `json:"period"`
+	Progress struct {
+		ChunksDone    int32  `json:"chunks_done"`
+		ChunksTotal   int32  `json:"chunks_total"`
+		EligibleCount *int32 `json:"eligible_count"`
+	} `json:"progress"`
+	Ruleset *RulesetRef       `json:"ruleset"`
+	Status  PayrollRunStatus  `json:"status"`
+	Totals  *PayrollRunTotals `json:"totals"`
+}
+
+// PayrollRunList defines model for PayrollRunList.
+type PayrollRunList struct {
+	Data []PayrollRunListItem `json:"data"`
+	Page Page                 `json:"page"`
+}
+
+// PayrollRunListItem defines model for PayrollRunListItem.
+type PayrollRunListItem struct {
+	CalcVersion int32              `json:"calc_version"`
+	CreatedAt   time.Time          `json:"created_at"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Period Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	Period   Period           `json:"period"`
+	Status   PayrollRunStatus `json:"status"`
+	TotalNet *string          `json:"total_net"`
+}
+
+// PayrollRunStatus defines model for PayrollRunStatus.
+type PayrollRunStatus string
+
+// PayrollRunTotals defines model for PayrollRunTotals.
+type PayrollRunTotals struct {
+	// Deductions Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Deductions Money `json:"deductions"`
+
+	// Gross Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Gross Money `json:"gross"`
+
+	// Net Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Net Money `json:"net"`
+}
+
 // Pending Placeholder until the feature sprint defines the body (Sprint 0 skeleton).
 type Pending = map[string]interface{}
+
+// Period Payroll period, calendar month in the tenant timezone.
+//
+// Examples: 2026-03
+type Period = string
 
 // Problem RFC 9457 Problem Details with a stable machine-readable code.
 type Problem struct {
@@ -1307,6 +1677,15 @@ type Ref struct {
 
 // Role defines model for Role.
 type Role string
+
+// RulesetRef defines model for RulesetRef.
+type RulesetRef struct {
+	// Code Examples: ID-SIMPLIFIED
+	Code string `json:"code"`
+
+	// Version Examples: 2026.1
+	Version string `json:"version"`
+}
 
 // SalaryAssignment defines model for SalaryAssignment.
 type SalaryAssignment struct {
@@ -1774,7 +2153,9 @@ type ListPayrollPeriodsParams struct {
 
 // ListPayrollRunsParams defines parameters for ListPayrollRuns.
 type ListPayrollRunsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Period *Period           `form:"period,omitempty" json:"period,omitempty"`
+	Status *PayrollRunStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit  *Limit            `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -1800,11 +2181,19 @@ type FinalizePayrollRunParams struct {
 
 // ListPayrollItemsParams defines parameters for ListPayrollItems.
 type ListPayrollItemsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status *ListPayrollItemsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// DepartmentId Department at calculation time (denormalized on the item, R3-4).
+	DepartmentId *openapi_types.UUID `form:"department_id,omitempty" json:"department_id,omitempty"`
+	HasWarning   *bool               `form:"has_warning,omitempty" json:"has_warning,omitempty"`
+	Limit        *int                `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListPayrollItemsParamsStatus defines parameters for ListPayrollItems.
+type ListPayrollItemsParamsStatus string
 
 // ListPayslipsParams defines parameters for ListPayslips.
 type ListPayslipsParams struct {
@@ -1939,19 +2328,19 @@ type CreateOvertimeRequestJSONRequestBody = Pending
 type CancelOvertimeRequestJSONRequestBody = Pending
 
 // CreatePayrollRunJSONRequestBody defines body for CreatePayrollRun for application/json ContentType.
-type CreatePayrollRunJSONRequestBody = Pending
+type CreatePayrollRunJSONRequestBody = CreatePayrollRunRequest
 
 // CalculatePayrollRunJSONRequestBody defines body for CalculatePayrollRun for application/json ContentType.
-type CalculatePayrollRunJSONRequestBody = Pending
+type CalculatePayrollRunJSONRequestBody = Empty
 
 // CancelPayrollRunJSONRequestBody defines body for CancelPayrollRun for application/json ContentType.
-type CancelPayrollRunJSONRequestBody = Pending
+type CancelPayrollRunJSONRequestBody = CancelPayrollRunRequest
 
 // FinalizePayrollRunJSONRequestBody defines body for FinalizePayrollRun for application/json ContentType.
 type FinalizePayrollRunJSONRequestBody = Pending
 
 // ExcludePayrollItemJSONRequestBody defines body for ExcludePayrollItem for application/json ContentType.
-type ExcludePayrollItemJSONRequestBody = Pending
+type ExcludePayrollItemJSONRequestBody = ExcludePayrollItemRequest
 
 // SubmitPayrollRunJSONRequestBody defines body for SubmitPayrollRun for application/json ContentType.
 type SubmitPayrollRunJSONRequestBody = Pending
