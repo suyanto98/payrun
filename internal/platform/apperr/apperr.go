@@ -26,7 +26,41 @@ type Error struct {
 	RetryAfter int
 	// ExistingResourceID membantu client melanjutkan (contoh ACTIVE_RUN_EXISTS).
 	ExistingResourceID string
-	cause              error // tidak pernah dikirim ke client; hanya untuk log
+	// Extension per code (katalog §3): RUN_STALE, APPROVAL_ALREADY_DECIDED, RUN_HAS_ERRORS.
+	EmployeesChanged []StaleEmployee
+	ChangedCount     *int
+	ApprovalStatus   string
+	ErrorCount       *int
+	cause            error // tidak pernah dikirim ke client; hanya untuk log
+}
+
+// StaleEmployee: satu karyawan yang membuat run stale (RUN_STALE.employees_changed).
+type StaleEmployee struct {
+	EmployeeID string `json:"employee_id"`
+	EmployeeNo string `json:"employee_no,omitempty"`
+	// Reason: INPUT_CHANGED, NEWLY_ELIGIBLE, NO_LONGER_ELIGIBLE.
+	Reason string `json:"reason"`
+}
+
+// WithStale: RUN_STALE dengan daftar karyawan dan jumlah kandidat perubahan.
+func (e *Error) WithStale(employees []StaleEmployee, changed int) *Error {
+	c := *e
+	c.EmployeesChanged, c.ChangedCount = employees, &changed
+	return &c
+}
+
+// WithApprovalStatus: APPROVAL_ALREADY_DECIDED menyebut status keputusan yang sudah ada.
+func (e *Error) WithApprovalStatus(status string) *Error {
+	c := *e
+	c.ApprovalStatus = status
+	return &c
+}
+
+// WithErrorCount: RUN_HAS_ERRORS menyebut jumlah item ERROR yang belum di-exclude.
+func (e *Error) WithErrorCount(n int) *Error {
+	c := *e
+	c.ErrorCount = &n
+	return &c
 }
 
 func (e *Error) Error() string {
@@ -135,6 +169,13 @@ var (
 	ErrPeriodLocked    = def(http.StatusConflict, "PERIOD_LOCKED", "The payroll period is finalized")
 	ErrRunFinalized    = def(http.StatusConflict, "RUN_FINALIZED", "The payroll run is finalized")
 	ErrLastOwner       = def(http.StatusConflict, "LAST_OWNER", "The tenant must keep at least one active owner")
+	// Sprint 5: approval + stale detection (katalog §3).
+	ErrRunStale             = def(http.StatusConflict, "RUN_STALE", "Payroll input changed after calculation; recalculate first")
+	ErrApprovalDecided      = def(http.StatusConflict, "APPROVAL_ALREADY_DECIDED", "The approval was already decided or cancelled")
+	ErrRunHasErrors         = def(http.StatusUnprocessableEntity, "RUN_HAS_ERRORS", "The run still has ERROR items; fix or exclude them first")
+	ErrDecisionNoteRequired = def(http.StatusUnprocessableEntity, "DECISION_NOTE_REQUIRED", "A note is required to reject")
+	ErrSelfApprovalReason   = def(http.StatusUnprocessableEntity, "SELF_APPROVAL_REASON_REQUIRED", "No other admin can approve; a self-approval reason is required")
+	ErrSelfApproval         = def(http.StatusForbidden, "SELF_APPROVAL_FORBIDDEN", "You cannot approve your own request")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

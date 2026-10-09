@@ -307,6 +307,11 @@ func (e env) inTenant(t *testing.T, tenant uuid.UUID, fn func(tx pgx.Tx) error) 
 	}
 }
 
+// tryInTenant: seperti inTenant, tetapi mengembalikan error (menguji penolakan DB).
+func (e env) tryInTenant(tenant uuid.UUID, fn func(tx pgx.Tx) error) error {
+	return db.WithTenantTxFor(context.Background(), e.pool, tenant, fn)
+}
+
 func (e env) login(t *testing.T, email string) (token, cookie string, body map[string]any) {
 	t.Helper()
 	resp, body := e.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": email, "password": password})

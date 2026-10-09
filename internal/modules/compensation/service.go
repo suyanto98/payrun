@@ -28,6 +28,7 @@ import (
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/periodguard"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 )
@@ -45,6 +46,18 @@ type Service struct {
 	employees Employees
 	clock     clock.Clock
 	ids       idgen.Generator
+	guard     periodguard.Guard
+}
+
+// SetPeriodGuard memasang PeriodGuard (modul payroll) untuk semua penulis input gaji/komponen (S5).
+func (s *Service) SetPeriodGuard(g periodguard.Guard) { s.guard = g }
+
+// lockInput: PeriodGuard.Lock sebelum baris input pertama ditulis ([1b] → [2] → [6]).
+func (s *Service) lockInput(ctx context.Context, tx pgx.Tx, c periodguard.Change) (periodguard.Recorder, error) {
+	if s.guard == nil {
+		return nil, errors.New("compensation: period guard not wired")
+	}
+	return s.guard.Lock(ctx, tx, c)
 }
 
 func NewService(pool *pgxpool.Pool, employees Employees, c clock.Clock, ids idgen.Generator) *Service {
@@ -410,6 +423,10 @@ func (s *Service) UpdateDefinition(ctx context.Context, actor, id uuid.UUID, ver
 		if cur.IsSystem && !in.onlyName() {
 			return apperr.ErrForbidden.WithDetail("Only the name of a system component can be changed")
 		}
+		record, err := s.lockInput(ctx, tx, defChange(cur.IsSystem, id))
+		if err != nil {
+			return err
+		}
 		// Parameter hasil gabungan harus tetap sah untuk calc_type (dan untuk graf).
 		merged := toEngineDef(cur)
 		if in.BaseRef != nil {
@@ -461,10 +478,22 @@ func (s *Service) UpdateDefinition(ctx context.Context, actor, id uuid.UUID, ver
 			return err
 		}
 		out = toDef(r)
-		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "component.updated",
-			TargetType: "component_definition", TargetID: id, Diff: map[string]any{"fields": changedFields(in)}}, meta)
+		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "component.updated",
+			TargetType: "component_definition", TargetID: id, Diff: map[string]any{"fields": changedFields(in)}}, meta); err != nil {
+			return err
+		}
+		return record(ctx)
 	})
 	return out, db.MapError(err)
+}
+
+// defChange: definisi komponen tidak effective-dated (hasil final tetap dari snapshot). Komponen
+// sistem dipakai semua karyawan; komponen tenant hanya oleh pemegangnya.
+func defChange(system bool, id uuid.UUID) periodguard.Change {
+	if system {
+		return periodguard.Change{AllEmployees: true, NotEffectiveDated: true}
+	}
+	return periodguard.Change{ComponentID: &id, NotEffectiveDated: true}
 }
 
 func changedFields(u DefinitionUpdate) []string {
@@ -497,6 +526,10 @@ func (s *Service) DeactivateDefinition(ctx context.Context, actor, id uuid.UUID,
 			return apperr.ErrForbidden.WithDetail("System components cannot be deactivated")
 		}
 		if cur.Status == "ACTIVE" {
+			record, err := s.lockInput(ctx, tx, defChange(false, id))
+			if err != nil {
+				return err
+			}
 			off := toEngineDef(cur)
 			off.Active = false
 			if err := checkGraph(ctx, q, &off); err != nil {
@@ -507,6 +540,9 @@ func (s *Service) DeactivateDefinition(ctx context.Context, actor, id uuid.UUID,
 			}
 			if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "component.deactivated",
 				TargetType: "component_definition", TargetID: id}, meta); err != nil {
+				return err
+			}
+			if err := record(ctx); err != nil {
 				return err
 			}
 		}
@@ -615,7 +651,7 @@ type SalaryChange struct {
 
 // ChangeSalaryTx (W9) di transaksi idempotency: tutup record yang berlaku di valid_from, sisipkan
 // [valid_from, ∞). Perubahan masa depan yang sudah ada → EXCLUDE → 409 OVERLAPPING_PERIOD.
-// PERIOD_LOCKED (valid_from di periode final) menyusul bersama payroll_periods (S4).
+// PeriodGuard [valid_from, ∞): periode final → 409 PERIOD_LOCKED; periode non-final dicatat (O12).
 func (s *Service) ChangeSalaryTx(ctx context.Context, tx pgx.Tx, p auth.Principal, employeeID uuid.UUID, in SalaryChange, meta reqmeta.Meta) (SalaryAssignment, error) {
 	tid, _ := tenantctx.From(ctx)
 	hire, err := s.employees.AccessTx(ctx, tx, p, employeeID, true)
@@ -643,10 +679,19 @@ func (s *Service) ChangeSalaryTx(ctx context.Context, tx pgx.Tx, p auth.Principa
 	if len(fe) > 0 {
 		return SalaryAssignment{}, apperr.Validation(fe...)
 	}
-	return s.insertSalary(ctx, tx, tid, p.UserID, employeeID, *amount, from, in.ChangeReason, "salary.changed", meta)
+	record, err := s.lockInput(ctx, tx, periodguard.Change{Employees: []uuid.UUID{employeeID}, Range: periodguard.From(from)})
+	if err != nil {
+		return SalaryAssignment{}, err
+	}
+	out, err := s.insertSalary(ctx, tx, tid, p.UserID, employeeID, *amount, from, in.ChangeReason, "salary.changed", meta)
+	if err != nil {
+		return SalaryAssignment{}, err
+	}
+	return out, record(ctx)
 }
 
-// CreateInitialSalaryTx: gaji awal dari POST /employees (W2), di transaksi pembuatan employee.
+// CreateInitialSalaryTx: gaji awal dari POST /employees (W2), di transaksi pembuatan employee. PeriodGuard
+// sudah diambil pemanggil (employee, rentang [hire_date, ∞)).
 func (s *Service) CreateInitialSalaryTx(ctx context.Context, tx pgx.Tx, actor, employeeID uuid.UUID, baseSalary string, from time.Time, meta reqmeta.Meta) error {
 	var fe []apperr.FieldError
 	amount := parseMoney("salary.base_salary", &baseSalary, &fe)
@@ -737,6 +782,10 @@ func (s *Service) AssignComponentTx(ctx context.Context, tx pgx.Tx, p auth.Princ
 	if len(fe) > 0 {
 		return EmployeeComponent{}, apperr.Validation(fe...)
 	}
+	record, err := s.lockInput(ctx, tx, periodguard.Change{Employees: []uuid.UUID{employeeID}, Range: periodguard.Range{From: from, To: to}})
+	if err != nil {
+		return EmployeeComponent{}, err
+	}
 	// Override sementara [from, to) di tengah record yang berlaku: ekor record lama [to, akhir lama)
 	// dipertahankan dengan nilai lama, tidak ikut hilang (review S3).
 	prev, perr2 := q.GetEmployeeComponentAt(ctx, store.GetEmployeeComponentAtParams{EmployeeID: employeeID, ComponentID: in.ComponentID, ValidFrom: from})
@@ -766,6 +815,9 @@ func (s *Service) AssignComponentTx(ctx context.Context, tx pgx.Tx, p auth.Princ
 		TargetType: "employee_component", TargetID: id,
 		Diff: map[string]any{"employee_id": employeeID.String(), "component": def.Code, "valid_from": in.ValidFrom,
 			"valid_to": in.ValidTo, "closed_previous": hasPrev}}, meta); err != nil {
+		return EmployeeComponent{}, err
+	}
+	if err := record(ctx); err != nil {
 		return EmployeeComponent{}, err
 	}
 	var toStr *string

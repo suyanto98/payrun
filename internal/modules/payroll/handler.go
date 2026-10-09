@@ -54,6 +54,28 @@ func (h *Handler) Routes(read, write chi.Router, heavy func(http.Handler) http.H
 	read.With(hidden).Get("/payroll-runs/{id}/items/{item_id}", h.item)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/items/{item_id}/exclude", h.exclude)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/cancel", h.cancel)
+	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/submit", h.submit)
+}
+
+// submit (Y10): approver dipilih server; idempoten secara natural (guard CALCULATED).
+func (h *Handler) submit(w http.ResponseWriter, r *http.Request) {
+	id, err := ids(r, "id")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	var in SubmitInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	run, err := h.svc.Submit(r.Context(), p.UserID, id[0], in, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, run)
 }
 
 func ids(r *http.Request, names ...string) ([]uuid.UUID, error) {

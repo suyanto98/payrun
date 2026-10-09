@@ -24,6 +24,24 @@ func (q *Queries) ActiveRunForPeriod(ctx context.Context, periodID uuid.UUID) (u
 	return id, err
 }
 
+const approveRun = `-- name: ApproveRun :execrows
+UPDATE payroll_runs SET status = 'APPROVED', approved_by = $1, approved_at = clock_timestamp()
+WHERE id = $2 AND status = 'PENDING_APPROVAL'
+`
+
+type ApproveRunParams struct {
+	Actor *uuid.UUID
+	ID    uuid.UUID
+}
+
+func (q *Queries) ApproveRun(ctx context.Context, arg ApproveRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, approveRun, arg.Actor, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const cancelRun = `-- name: CancelRun :one
 UPDATE payroll_runs SET status = 'CANCELLED', cancelled_by = $1, cancelled_at = clock_timestamp(), cancel_reason = $2
 WHERE id = $3 AND status IN ('DRAFT', 'CALCULATED', 'FAILED')
@@ -41,6 +59,45 @@ func (q *Queries) CancelRun(ctx context.Context, arg CancelRunParams) (uuid.UUID
 	var period_id uuid.UUID
 	err := row.Scan(&period_id)
 	return period_id, err
+}
+
+const candidateItems = `-- name: CandidateItems :many
+SELECT i.employee_id, i.input_fingerprint, e.employee_no
+FROM payroll_items i JOIN employees e ON e.tenant_id = i.tenant_id AND e.id = i.employee_id
+WHERE i.run_id = $1 AND i.calc_version = $2 AND i.employee_id = ANY ($3::uuid[])
+`
+
+type CandidateItemsParams struct {
+	RunID       uuid.UUID
+	CalcVersion int32
+	Ids         []uuid.UUID
+}
+
+type CandidateItemsRow struct {
+	EmployeeID       uuid.UUID
+	InputFingerprint []byte
+	EmployeeNo       string
+}
+
+// Item versi terkini untuk kandidat (boleh tidak ada: karyawan baru).
+func (q *Queries) CandidateItems(ctx context.Context, arg CandidateItemsParams) ([]CandidateItemsRow, error) {
+	rows, err := q.db.Query(ctx, candidateItems, arg.RunID, arg.CalcVersion, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CandidateItemsRow
+	for rows.Next() {
+		var i CandidateItemsRow
+		if err := rows.Scan(&i.EmployeeID, &i.InputFingerprint, &i.EmployeeNo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const completeCalculation = `-- name: CompleteCalculation :exec
@@ -101,6 +158,45 @@ type DeleteChunkItemsParams struct {
 func (q *Queries) DeleteChunkItems(ctx context.Context, arg DeleteChunkItemsParams) error {
 	_, err := q.db.Exec(ctx, deleteChunkItems, arg.RunID, arg.CalcVersion, arg.EmployeeIds)
 	return err
+}
+
+const eligibleAmong = `-- name: EligibleAmong :many
+SELECT DISTINCT e.id, e.employee_no FROM employees e
+JOIN employment_spans s ON s.tenant_id = e.tenant_id AND s.employee_id = e.id
+WHERE e.id = ANY ($1::uuid[]) AND s.span && daterange($2::date, $3::date, '[)')
+ORDER BY e.id
+`
+
+type EligibleAmongParams struct {
+	Ids      []uuid.UUID
+	FromDate time.Time
+	ToDate   time.Time
+}
+
+type EligibleAmongRow struct {
+	ID         uuid.UUID
+	EmployeeNo string
+}
+
+// D6: kandidat yang SAAT INI eligible di periode (PI-07, sama dengan EligibleEmployees).
+func (q *Queries) EligibleAmong(ctx context.Context, arg EligibleAmongParams) ([]EligibleAmongRow, error) {
+	rows, err := q.db.Query(ctx, eligibleAmong, arg.Ids, arg.FromDate, arg.ToDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EligibleAmongRow
+	for rows.Next() {
+		var i EligibleAmongRow
+		if err := rows.Scan(&i.ID, &i.EmployeeNo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const eligibleEmployees = `-- name: EligibleEmployees :many
@@ -239,7 +335,8 @@ const getRun = `-- name: GetRun :one
 SELECT r.tenant_id, r.id, r.period_id, p.year, p.month, r.status, r.calc_version, r.chunks_total, r.chunks_done,
        r.eligible_count, r.ruleset_code, r.ruleset_version, r.total_gross, r.total_deductions, r.total_net,
        r.item_ok_count, r.item_error_count, r.item_excluded_count, r.warning_count, r.failure_reason,
-       r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason
+       r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason,
+       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at
 FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
 WHERE r.id = $1
 `
@@ -271,6 +368,11 @@ type GetRunRow struct {
 	CreatedAt         time.Time
 	CancelledAt       *time.Time
 	CancelReason      *string
+	ApprovalRequestID *uuid.UUID
+	SubmittedBy       *uuid.UUID
+	SubmittedAt       *time.Time
+	ApprovedBy        *uuid.UUID
+	ApprovedAt        *time.Time
 }
 
 func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (GetRunRow, error) {
@@ -303,6 +405,11 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (GetRunRow, error) {
 		&i.CreatedAt,
 		&i.CancelledAt,
 		&i.CancelReason,
+		&i.ApprovalRequestID,
+		&i.SubmittedBy,
+		&i.SubmittedAt,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
 	)
 	return i, err
 }
@@ -328,6 +435,87 @@ func (q *Queries) GetSnapshot(ctx context.Context, itemID uuid.UUID) (GetSnapsho
 		&i.InputFingerprint,
 	)
 	return i, err
+}
+
+const guardLockOpenPeriods = `-- name: GuardLockOpenPeriods :many
+SELECT id, status FROM payroll_periods WHERE status <> 'FINALIZED' ORDER BY year, month FOR SHARE
+`
+
+type GuardLockOpenPeriodsRow struct {
+	ID     uuid.UUID
+	Status string
+}
+
+// [2] Nilai tanpa tanggal berlaku (PTKP, definisi komponen): semua periode non-final.
+func (q *Queries) GuardLockOpenPeriods(ctx context.Context) ([]GuardLockOpenPeriodsRow, error) {
+	rows, err := q.db.Query(ctx, guardLockOpenPeriods)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GuardLockOpenPeriodsRow
+	for rows.Next() {
+		var i GuardLockOpenPeriodsRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const guardLockPeriods = `-- name: GuardLockPeriods :many
+SELECT id, status FROM payroll_periods
+WHERE period_range && daterange($1::date, $2::date)
+ORDER BY year, month
+FOR SHARE
+`
+
+type GuardLockPeriodsParams struct {
+	FromDate time.Time
+	ToDate   *time.Time
+}
+
+type GuardLockPeriodsRow struct {
+	ID     uuid.UUID
+	Status string
+}
+
+// [2] FOR SHARE, urut (year, month) ascending (D3, anti-deadlock rentang multi-bulan).
+func (q *Queries) GuardLockPeriods(ctx context.Context, arg GuardLockPeriodsParams) ([]GuardLockPeriodsRow, error) {
+	rows, err := q.db.Query(ctx, guardLockPeriods, arg.FromDate, arg.ToDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GuardLockPeriodsRow
+	for rows.Next() {
+		var i GuardLockPeriodsRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const guardLockSettings = `-- name: GuardLockSettings :exec
+
+SELECT 1 FROM tenant_settings WHERE tenant_id = $1 FOR KEY SHARE
+`
+
+// ---------------------------------------------------------------- PeriodGuard (S5, PI-13/14, O12, D1/D3)
+// [1b] FOR KEY SHARE: penulis input tidak saling memblok, tetapi menunggu / ditunggu pembuatan periode
+// baru (LockTenantSettings FOR UPDATE, D1).
+func (q *Queries) GuardLockSettings(ctx context.Context, tenantID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, guardLockSettings, tenantID)
+	return err
 }
 
 const incrementChunksDone = `-- name: IncrementChunksDone :one
@@ -1226,6 +1414,143 @@ func (q *Queries) LockTenantSettings(ctx context.Context, tenantID uuid.UUID) (L
 	return i, err
 }
 
+const recordInputChanges = `-- name: RecordInputChanges :exec
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT $1, p, e, clock_timestamp()
+FROM unnest($2::uuid[]) AS p CROSS JOIN unnest($3::uuid[]) AS e
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1
+`
+
+type RecordInputChangesParams struct {
+	TenantID    uuid.UUID
+	PeriodIds   []uuid.UUID
+	EmployeeIds []uuid.UUID
+}
+
+// [7] changed_at = clock_timestamp() (bukan now() = awal transaksi), diambil setelah lock [2].
+func (q *Queries) RecordInputChanges(ctx context.Context, arg RecordInputChangesParams) error {
+	_, err := q.db.Exec(ctx, recordInputChanges, arg.TenantID, arg.PeriodIds, arg.EmployeeIds)
+	return err
+}
+
+const recordInputChangesAllEmployees = `-- name: RecordInputChangesAllEmployees :exec
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT DISTINCT $1::uuid, p.id, s.employee_id, clock_timestamp()
+FROM payroll_periods p JOIN employment_spans s ON s.span && p.period_range
+WHERE p.id = ANY ($2::uuid[])
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1
+`
+
+type RecordInputChangesAllEmployeesParams struct {
+	TenantID  uuid.UUID
+	PeriodIds []uuid.UUID
+}
+
+// [7] Perubahan tenant-wide (libur, komponen sistem): semua karyawan yang bekerja di periode itu.
+func (q *Queries) RecordInputChangesAllEmployees(ctx context.Context, arg RecordInputChangesAllEmployeesParams) error {
+	_, err := q.db.Exec(ctx, recordInputChangesAllEmployees, arg.TenantID, arg.PeriodIds)
+	return err
+}
+
+const recordInputChangesComponent = `-- name: RecordInputChangesComponent :exec
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT DISTINCT $1::uuid, p.id, ec.employee_id, clock_timestamp()
+FROM payroll_periods p JOIN employee_components ec ON ec.valid_during && p.period_range
+WHERE p.id = ANY ($2::uuid[]) AND ec.component_id = $3
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1
+`
+
+type RecordInputChangesComponentParams struct {
+	TenantID    uuid.UUID
+	PeriodIds   []uuid.UUID
+	ComponentID uuid.UUID
+}
+
+// [7] Definisi komponen tenant berubah: pemegang komponen itu di periode tersebut.
+func (q *Queries) RecordInputChangesComponent(ctx context.Context, arg RecordInputChangesComponentParams) error {
+	_, err := q.db.Exec(ctx, recordInputChangesComponent, arg.TenantID, arg.PeriodIds, arg.ComponentID)
+	return err
+}
+
+const rejectRun = `-- name: RejectRun :execrows
+UPDATE payroll_runs SET status = 'CALCULATED', submitted_by = NULL, submitted_at = NULL
+WHERE id = $1 AND status = 'PENDING_APPROVAL'
+`
+
+// Reject → kembali CALCULATED (ADR-P05); alasan tersimpan di approval.
+func (q *Queries) RejectRun(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, rejectRun, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rulesetByVersion = `-- name: RulesetByVersion :one
+SELECT payload FROM rulesets WHERE code = $1 AND version = $2
+`
+
+type RulesetByVersionParams struct {
+	Code    string
+	Version string
+}
+
+// Versi ruleset yang TERSIMPAN di snapshot (bukan yang berlaku hari ini).
+func (q *Queries) RulesetByVersion(ctx context.Context, arg RulesetByVersionParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, rulesetByVersion, arg.Code, arg.Version)
+	var payload []byte
+	err := row.Scan(&payload)
+	return payload, err
+}
+
+const runSummaries = `-- name: RunSummaries :many
+SELECT r.id, p.year, p.month, r.status, r.total_net, r.item_ok_count, r.item_excluded_count
+FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
+WHERE r.id = ANY ($1::uuid[])
+`
+
+type RunSummariesRow struct {
+	ID                uuid.UUID
+	Year              int16
+	Month             int16
+	Status            string
+	TotalNet          pgtype.Numeric
+	ItemOkCount       *int32
+	ItemExcludedCount *int32
+}
+
+// Ringkasan subjek untuk inbox approval.
+func (q *Queries) RunSummaries(ctx context.Context, ids []uuid.UUID) ([]RunSummariesRow, error) {
+	rows, err := q.db.Query(ctx, runSummaries, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RunSummariesRow
+	for rows.Next() {
+		var i RunSummariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Year,
+			&i.Month,
+			&i.Status,
+			&i.TotalNet,
+			&i.ItemOkCount,
+			&i.ItemExcludedCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const runVersionSummary = `-- name: RunVersionSummary :one
 SELECT coalesce(sum(gross) FILTER (WHERE status = 'OK'), 0)::numeric AS gross,
        coalesce(sum(deductions) FILTER (WHERE status = 'OK'), 0)::numeric AS deductions,
@@ -1300,6 +1625,38 @@ func (q *Queries) SetPlan(ctx context.Context, arg SetPlanParams) error {
 	return err
 }
 
+const staleCandidates = `-- name: StaleCandidates :many
+SELECT employee_id FROM payroll_input_changes
+WHERE period_id = $1 AND changed_at > $2
+ORDER BY employee_id
+`
+
+type StaleCandidatesParams struct {
+	PeriodID      uuid.UUID
+	CalcStartedAt time.Time
+}
+
+// O12: karyawan dengan perubahan input setelah kalkulasi mulai membaca (changed_at > calc_started_at).
+func (q *Queries) StaleCandidates(ctx context.Context, arg StaleCandidatesParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, staleCandidates, arg.PeriodID, arg.CalcStartedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var employee_id uuid.UUID
+		if err := rows.Scan(&employee_id); err != nil {
+			return nil, err
+		}
+		items = append(items, employee_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const startCalculation = `-- name: StartCalculation :one
 UPDATE payroll_runs
 SET status = 'CALCULATING', calc_version = calc_version + 1, chunks_total = 0, chunks_done = 0,
@@ -1319,6 +1676,29 @@ func (q *Queries) StartCalculation(ctx context.Context, id uuid.UUID) (int32, er
 	return calc_version, err
 }
 
+const submitRun = `-- name: SubmitRun :execrows
+
+UPDATE payroll_runs SET status = 'PENDING_APPROVAL', submitted_by = $1, submitted_at = clock_timestamp(),
+       approval_request_id = $2, approved_by = NULL, approved_at = NULL
+WHERE id = $3 AND status = 'CALCULATED'
+`
+
+type SubmitRunParams struct {
+	Actor             *uuid.UUID
+	ApprovalRequestID *uuid.UUID
+	ID                uuid.UUID
+}
+
+// ---------------------------------------------------------------- submit / approve / reject (S5)
+// [3] Guard CALCULATED → PENDING_APPROVAL (natural idempotency, Y10).
+func (q *Queries) SubmitRun(ctx context.Context, arg SubmitRunParams) (int64, error) {
+	result, err := q.db.Exec(ctx, submitRun, arg.Actor, arg.ApprovalRequestID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateRunCounts = `-- name: UpdateRunCounts :exec
 UPDATE payroll_runs SET item_error_count = item_error_count - 1, item_excluded_count = item_excluded_count + 1
 WHERE id = $1 AND status = 'CALCULATED'
@@ -1328,4 +1708,131 @@ WHERE id = $1 AND status = 'CALCULATED'
 func (q *Queries) UpdateRunCounts(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, updateRunCounts, id)
 	return err
+}
+
+const verifyItems = `-- name: VerifyItems :many
+
+SELECT i.id, i.employee_no, i.status, i.gross, i.deductions, i.net, i.error_codes, i.warning_codes,
+       i.input_fingerprint, s.item_id AS snapshot_item_id, s.snapshot_version, s.input, s.ruleset_code, s.ruleset_version,
+       s.input_fingerprint AS snapshot_fingerprint
+FROM payroll_items i
+LEFT JOIN payroll_item_snapshots s ON s.tenant_id = i.tenant_id AND s.item_id = i.id
+WHERE i.run_id = $1 AND i.calc_version = $2
+ORDER BY i.employee_no, i.id
+`
+
+type VerifyItemsParams struct {
+	RunID       uuid.UUID
+	CalcVersion int32
+}
+
+type VerifyItemsRow struct {
+	ID                  uuid.UUID
+	EmployeeNo          string
+	Status              string
+	Gross               pgtype.Numeric
+	Deductions          pgtype.Numeric
+	Net                 pgtype.Numeric
+	ErrorCodes          []string
+	WarningCodes        []string
+	InputFingerprint    []byte
+	SnapshotItemID      *uuid.UUID
+	SnapshotVersion     *int16
+	Input               []byte
+	RulesetCode         *string
+	RulesetVersion      *string
+	SnapshotFingerprint []byte
+}
+
+// ---------------------------------------------------------------- verify-run (S5, PI-12, ADR-P07)
+// Item versi terkini + snapshot-nya (LEFT JOIN: snapshot hilang juga dilaporkan).
+func (q *Queries) VerifyItems(ctx context.Context, arg VerifyItemsParams) ([]VerifyItemsRow, error) {
+	rows, err := q.db.Query(ctx, verifyItems, arg.RunID, arg.CalcVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VerifyItemsRow
+	for rows.Next() {
+		var i VerifyItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeNo,
+			&i.Status,
+			&i.Gross,
+			&i.Deductions,
+			&i.Net,
+			&i.ErrorCodes,
+			&i.WarningCodes,
+			&i.InputFingerprint,
+			&i.SnapshotItemID,
+			&i.SnapshotVersion,
+			&i.Input,
+			&i.RulesetCode,
+			&i.RulesetVersion,
+			&i.SnapshotFingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const verifyLines = `-- name: VerifyLines :many
+SELECT item_id, sort_order, code, category, stage, amount, basis, explanation, taxable, rounding
+FROM payroll_lines WHERE run_id = $1 AND calc_version = $2
+ORDER BY item_id, sort_order
+`
+
+type VerifyLinesParams struct {
+	RunID       uuid.UUID
+	CalcVersion int32
+}
+
+type VerifyLinesRow struct {
+	ItemID      uuid.UUID
+	SortOrder   int16
+	Code        string
+	Category    string
+	Stage       string
+	Amount      pgtype.Numeric
+	Basis       []byte
+	Explanation string
+	Taxable     bool
+	Rounding    string
+}
+
+func (q *Queries) VerifyLines(ctx context.Context, arg VerifyLinesParams) ([]VerifyLinesRow, error) {
+	rows, err := q.db.Query(ctx, verifyLines, arg.RunID, arg.CalcVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VerifyLinesRow
+	for rows.Next() {
+		var i VerifyLinesRow
+		if err := rows.Scan(
+			&i.ItemID,
+			&i.SortOrder,
+			&i.Code,
+			&i.Category,
+			&i.Stage,
+			&i.Amount,
+			&i.Basis,
+			&i.Explanation,
+			&i.Taxable,
+			&i.Rounding,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

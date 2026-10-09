@@ -31,10 +31,11 @@ import (
 )
 
 type Service struct {
-	pool    *pgxpool.Pool
-	clock   clock.Clock
-	ids     idgen.Generator
-	members Memberships
+	pool      *pgxpool.Pool
+	clock     clock.Clock
+	ids       idgen.Generator
+	members   Memberships
+	approvals Approvals
 }
 
 func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator, members Memberships) *Service {
@@ -45,6 +46,8 @@ func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator, members 
 // sensitif, role di token bisa basi ≤ 15 menit). Diimplementasikan modul iam (ADR-001).
 type Memberships interface {
 	ActiveRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]string, error)
+	// ActiveAdminsTx: user dengan membership ACTIVE OWNER/PAYROLL_ADMIN (calon approver run, ADR-P09).
+	ActiveAdminsTx(ctx context.Context, tx pgx.Tx) ([]uuid.UUID, error)
 }
 
 // readerRolesTx: role pemanggil dari DB. Bukan lagi pembaca hasil payroll → 404 (resource run tidak
@@ -88,20 +91,25 @@ type RulesetRef struct {
 }
 
 type Run struct {
-	ID            uuid.UUID   `json:"id"`
-	Period        string      `json:"period"`
-	Status        string      `json:"status"`
-	CalcVersion   int32       `json:"calc_version"`
-	Progress      Progress    `json:"progress"`
-	Totals        *Totals     `json:"totals"`
-	Counts        Counts      `json:"counts"`
-	Ruleset       *RulesetRef `json:"ruleset"`
-	FailureReason *string     `json:"failure_reason"`
-	CreatedBy     *uuid.UUID  `json:"created_by"`
-	CreatedAt     time.Time   `json:"created_at"`
-	CalcStartedAt *time.Time  `json:"calc_started_at"`
-	CalculatedAt  *time.Time  `json:"calculated_at"`
-	CancelReason  *string     `json:"cancel_reason"`
+	ID                uuid.UUID   `json:"id"`
+	ApprovalRequestID *uuid.UUID  `json:"approval_request_id"`
+	SubmittedBy       *uuid.UUID  `json:"submitted_by"`
+	SubmittedAt       *time.Time  `json:"submitted_at"`
+	ApprovedBy        *uuid.UUID  `json:"approved_by"`
+	ApprovedAt        *time.Time  `json:"approved_at"`
+	Period            string      `json:"period"`
+	Status            string      `json:"status"`
+	CalcVersion       int32       `json:"calc_version"`
+	Progress          Progress    `json:"progress"`
+	Totals            *Totals     `json:"totals"`
+	Counts            Counts      `json:"counts"`
+	Ruleset           *RulesetRef `json:"ruleset"`
+	FailureReason     *string     `json:"failure_reason"`
+	CreatedBy         *uuid.UUID  `json:"created_by"`
+	CreatedAt         time.Time   `json:"created_at"`
+	CalcStartedAt     *time.Time  `json:"calc_started_at"`
+	CalculatedAt      *time.Time  `json:"calculated_at"`
+	CancelReason      *string     `json:"cancel_reason"`
 }
 
 func periodText(year, month int16) string { return fmt.Sprintf("%04d-%02d", year, month) }
@@ -111,7 +119,8 @@ func toRun(r store.GetRunRow) Run {
 		Progress:      Progress{ChunksDone: r.ChunksDone, ChunksTotal: r.ChunksTotal, EligibleCount: r.EligibleCount},
 		Counts:        Counts{OK: r.ItemOkCount, Error: r.ItemErrorCount, Excluded: r.ItemExcludedCount, Warnings: r.WarningCount},
 		FailureReason: r.FailureReason, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt, CalcStartedAt: r.CalcStartedAt,
-		CalculatedAt: r.CalculatedAt, CancelReason: r.CancelReason}
+		CalculatedAt: r.CalculatedAt, CancelReason: r.CancelReason, ApprovalRequestID: r.ApprovalRequestID,
+		SubmittedBy: r.SubmittedBy, SubmittedAt: r.SubmittedAt, ApprovedBy: r.ApprovedBy, ApprovedAt: r.ApprovedAt}
 	if g, d, n := toDec(r.TotalGross), toDec(r.TotalDeductions), toDec(r.TotalNet); g != nil && d != nil && n != nil {
 		out.Totals = &Totals{Gross: g.StringFixed(2), Deductions: d.StringFixed(2), Net: n.StringFixed(2)}
 	}

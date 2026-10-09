@@ -17,12 +17,15 @@
 #                         holiday | component    → libur / komponen tenant (FIXED) yang dibuat OWNER
 #                         member_plain           → member ACTIVE baru dengan role EMPLOYEE
 #                         member_admin           → member ACTIVE baru dengan role PAYROLL_ADMIN
+#                         run_calculated         → run CALCULATED tanpa item ERROR (periode lampau)
+#                         approval_run           → approval PAYROLL_RUN, requester PAYROLL_ADMIN, approver OWNER
 #                         run                    → payroll run DRAFT (periode 2025 ke bawah, unik per run)
 #                         run_item               → run CALCULATED (2026) + satu item ERROR ({item_id})
 #           query     : query string (tanpa "?")
 #           body      : JSON; placeholder {n} = nomor unik, {nik} = NIK 16 digit unik, {email} = email unik,
 #                       {date} = tanggal unik, {period} = periode payroll unik (YYYY-MM),
-#                       {dept}/{pos}/{comp} = departemen/posisi/komponen fixture
+#                       {dept}/{pos}/{comp} = departemen/posisi/komponen fixture,
+#                       {owner_user}/{payroll_user} = user OWNER / PAYROLL_ADMIN fixture
 #           if_match  : kirim If-Match: "1"
 #           idempotency: kirim Idempotency-Key acak
 #           expect    : status per role (O H P M E); role yang tidak disebut tidak diuji di case itu
@@ -311,9 +314,37 @@ routes:
     audit: payroll_item.excluded
     cases:
       - {target: run_item, body: {reason: "Data gaji belum lengkap"}, expect: {O: 200, H: 403, P: 200, M: 404, E: 404}}
+  - id: Y10
+    route: "POST /payroll-runs/{id}/submit"
+    access: tenant
+    audit: payroll_run.submitted
+    cases:   # approver eksplisit (tenant matriks punya beberapa admin); memilih diri sendiri → 403
+      - {target: run_calculated, body: {approver_user_id: "{owner_user}"}, expect: {O: 403, H: 403, P: 200, M: 404, E: 404}}
+      - {target: run_calculated, body: {approver_user_id: "{payroll_user}"}, expect: {O: 200, P: 403}}
   - id: Y12
     route: "POST /payroll-runs/{id}/cancel"
     access: tenant
     audit: payroll_run.cancelled
     cases:
       - {target: run, body: {reason: "Salah periode"}, expect: {O: 200, H: 403, P: 200, M: 404, E: 404}}
+
+  # ---------------------------------------------------------------- approvals (R1–R3, S5)
+  # Otorisasi per approval: hanya approver yang di-snapshot; requester → 403 SELF_APPROVAL_FORBIDDEN;
+  # lainnya 404. Override HR untuk cuti/lembur menyusul S6.
+  - id: R1
+    route: "GET /approvals/inbox"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+  - id: R2
+    route: "POST /approvals/{id}/approve"
+    access: tenant
+    audit: approval.approved
+    cases:
+      - {target: approval_run, expect: {O: 200, H: 404, P: 403, M: 404, E: 404}}
+  - id: R3
+    route: "POST /approvals/{id}/reject"
+    access: tenant
+    audit: approval.rejected
+    cases:
+      - {target: approval_run, body: {note: "Data lembur belum lengkap"}, expect: {O: 200, H: 404, P: 403, M: 404, E: 404}}

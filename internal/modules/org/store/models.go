@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ApprovalRequest struct {
+	TenantID           uuid.UUID
+	ID                 uuid.UUID
+	SubjectType        string
+	SubjectID          uuid.UUID
+	RequesterID        uuid.UUID
+	ApproverID         uuid.UUID
+	Status             string
+	DecisionNote       *string
+	DecidedBy          *uuid.UUID
+	IsOverride         bool
+	SelfApproved       bool
+	SelfApprovalReason *string
+	DecidedAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 type AuditLog struct {
 	ID            uuid.UUID
 	TenantID      *uuid.UUID
@@ -227,6 +245,14 @@ type OrgAssignment struct {
 	Version      int32
 }
 
+type PayrollInputChange struct {
+	TenantID    uuid.UUID
+	PeriodID    uuid.UUID
+	EmployeeID  uuid.UUID
+	ChangedAt   time.Time
+	ChangeCount int32
+}
+
 type PayrollItem struct {
 	TenantID         uuid.UUID
 	ID               uuid.UUID
@@ -331,6 +357,7 @@ type PayrollRun struct {
 	CreatedBy         *uuid.UUID
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	ApprovalRequestID *uuid.UUID
 }
 
 type PlatformIdempotencyKey struct {

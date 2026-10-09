@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"payrun/db/migrations"
+	"payrun/internal/modules/approval"
 	"payrun/internal/modules/compensation"
 	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
@@ -119,12 +120,22 @@ func APIRouter(d Deps) http.Handler {
 	employeeH := employee.NewHandler(employeeSvc, idem)
 	compSvc := compensation.NewService(d.Pool, employeeAccess{employeeSvc}, d.Clock, d.IDs)
 	compH := compensation.NewHandler(compSvc, idem)
-	payrollH := payroll.NewHandler(payroll.NewService(d.Pool, d.Clock, d.IDs, iamSvc), idem)
+	payrollSvc := payroll.NewService(d.Pool, d.Clock, d.IDs, iamSvc)
+	payrollH := payroll.NewHandler(payrollSvc, idem)
+	approvalSvc := approval.NewService(d.Pool, d.IDs)
+	approvalSvc.Register(approval.SubjectPayrollRun, payrollSvc) // efek approve/reject run (ADR-P09)
+	payrollSvc.SetApprovals(runApprovals{approvalSvc})
+	approvalH := approval.NewHandler(approvalSvc)
 	// Ketergantungan lintas modul lewat interface (ADR-001): modul tidak saling meng-import.
 	iamSvc.SetEmployeeLinker(employeeSvc) // undangan dengan employee_id → tautan user saat accept
 	employeeSvc.Wire(orgSvc, compSvc)     // W2/W7: departemen/posisi aktif; gaji awal
 	employeeSvc.SetMemberships(iamSvc)    // W6: role dibaca ulang dari DB (ADR-P02)
 	orgSvc.Wire(employeeSvc)              // G4: masih dipakai penempatan hari ini
+	// PeriodGuard (S5): setiap penulis input payroll mengunci periode dan mencatat change log (O12, PI-14).
+	guard := payroll.PeriodGuard{}
+	employeeSvc.SetPeriodGuard(guard)
+	compSvc.SetPeriodGuard(guard)
+	tenancySvc.SetPeriodGuard(guard)
 
 	byUser := func(r *http.Request) string { p, _ := auth.PrincipalFrom(r.Context()); return p.UserID.String() }
 	// Tier heavy dikunci per TENANT: satu tenant tidak bisa membanjiri worker bersama (PF-29).
@@ -143,6 +154,7 @@ func APIRouter(d Deps) http.Handler {
 		employeeH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.PIIView, byUser))
 		compH.Routes(tenantRead, tenantWrite)
 		payrollH.Routes(tenantRead, tenantWrite, limiter.Middleware(tiers.HeavyCalculate, byTenant))
+		approvalH.Routes(tenantRead, tenantWrite)
 	})
 	return r
 }
@@ -204,6 +216,14 @@ func sessionStarter(svc *iam.Service) func(ctx context.Context, userID, tenantID
 		return map[string]any{"access_token": r.AccessToken, "token_type": r.TokenType, "expires_in": r.ExpiresIn,
 			"user": r.User, "active_tenant": r.ActiveTenant}, sess.RefreshToken, sess.RefreshMaxAge, nil
 	}
+}
+
+// runApprovals mengadaptasi approval.Service ke payroll.Approvals (payroll tidak mengenal tipe approval).
+type runApprovals struct{ svc *approval.Service }
+
+func (a runApprovals) CreateRunApprovalTx(ctx context.Context, tx pgx.Tx, runID, requester, approver uuid.UUID, self bool, reason *string, meta reqmeta.Meta) (uuid.UUID, error) {
+	return a.svc.CreateTx(ctx, tx, approval.NewRequest{SubjectType: approval.SubjectPayrollRun, SubjectID: runID,
+		Requester: requester, Approver: approver, SelfApproved: self, SelfApprovalReason: reason}, meta)
 }
 
 // employeeAccess mengadaptasi employee.Service.AccessTx ke interface compensation.Employees.

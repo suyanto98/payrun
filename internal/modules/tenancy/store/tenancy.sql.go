@@ -183,6 +183,18 @@ func (q *Queries) DeletePlatformIdempotencyKey(ctx context.Context, id uuid.UUID
 	return err
 }
 
+const getHolidayDate = `-- name: GetHolidayDate :one
+SELECT holiday_date FROM holidays WHERE id = $1
+`
+
+// [tenant] Tanggal libur yang akan dihapus, dibaca SEBELUM PeriodGuard (tanpa lock; urutan [1b] → [2] → [6]).
+func (q *Queries) GetHolidayDate(ctx context.Context, id uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, getHolidayDate, id)
+	var holiday_date time.Time
+	err := row.Scan(&holiday_date)
+	return holiday_date, err
+}
+
 const getPlatformIdempotencyKey = `-- name: GetPlatformIdempotencyKey :one
 SELECT id, request_hash, response_status, response_body, expires_at
 FROM platform_idempotency_keys

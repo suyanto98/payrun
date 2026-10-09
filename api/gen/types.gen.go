@@ -26,6 +26,51 @@ func (e AcceptedInvitationMembershipStatus) Valid() bool {
 	}
 }
 
+// Defines values for ApprovalRequestStatus.
+const (
+	ApprovalRequestStatusAPPROVED  ApprovalRequestStatus = "APPROVED"
+	ApprovalRequestStatusCANCELLED ApprovalRequestStatus = "CANCELLED"
+	ApprovalRequestStatusPENDING   ApprovalRequestStatus = "PENDING"
+	ApprovalRequestStatusREJECTED  ApprovalRequestStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalRequestStatus enum.
+func (e ApprovalRequestStatus) Valid() bool {
+	switch e {
+	case ApprovalRequestStatusAPPROVED:
+		return true
+	case ApprovalRequestStatusCANCELLED:
+		return true
+	case ApprovalRequestStatusPENDING:
+		return true
+	case ApprovalRequestStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalRequestSubjectType.
+const (
+	ApprovalRequestSubjectTypeLEAVEREQUEST    ApprovalRequestSubjectType = "LEAVE_REQUEST"
+	ApprovalRequestSubjectTypeOVERTIMEREQUEST ApprovalRequestSubjectType = "OVERTIME_REQUEST"
+	ApprovalRequestSubjectTypePAYROLLRUN      ApprovalRequestSubjectType = "PAYROLL_RUN"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalRequestSubjectType enum.
+func (e ApprovalRequestSubjectType) Valid() bool {
+	switch e {
+	case ApprovalRequestSubjectTypeLEAVEREQUEST:
+		return true
+	case ApprovalRequestSubjectTypeOVERTIMEREQUEST:
+		return true
+	case ApprovalRequestSubjectTypePAYROLLRUN:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComponentDefinitionCalcType.
 const (
 	ComponentDefinitionCalcTypeFIXED             ComponentDefinitionCalcType = "FIXED"
@@ -607,34 +652,76 @@ func (e PayrollLineStage) Valid() bool {
 
 // Defines values for PayrollRunStatus.
 const (
-	APPROVED        PayrollRunStatus = "APPROVED"
-	CALCULATED      PayrollRunStatus = "CALCULATED"
-	CALCULATING     PayrollRunStatus = "CALCULATING"
-	CANCELLED       PayrollRunStatus = "CANCELLED"
-	DRAFT           PayrollRunStatus = "DRAFT"
-	FAILED          PayrollRunStatus = "FAILED"
-	FINALIZED       PayrollRunStatus = "FINALIZED"
-	PENDINGAPPROVAL PayrollRunStatus = "PENDING_APPROVAL"
+	PayrollRunStatusAPPROVED        PayrollRunStatus = "APPROVED"
+	PayrollRunStatusCALCULATED      PayrollRunStatus = "CALCULATED"
+	PayrollRunStatusCALCULATING     PayrollRunStatus = "CALCULATING"
+	PayrollRunStatusCANCELLED       PayrollRunStatus = "CANCELLED"
+	PayrollRunStatusDRAFT           PayrollRunStatus = "DRAFT"
+	PayrollRunStatusFAILED          PayrollRunStatus = "FAILED"
+	PayrollRunStatusFINALIZED       PayrollRunStatus = "FINALIZED"
+	PayrollRunStatusPENDINGAPPROVAL PayrollRunStatus = "PENDING_APPROVAL"
 )
 
 // Valid indicates whether the value is a known member of the PayrollRunStatus enum.
 func (e PayrollRunStatus) Valid() bool {
 	switch e {
-	case APPROVED:
+	case PayrollRunStatusAPPROVED:
 		return true
-	case CALCULATED:
+	case PayrollRunStatusCALCULATED:
 		return true
-	case CALCULATING:
+	case PayrollRunStatusCALCULATING:
 		return true
-	case CANCELLED:
+	case PayrollRunStatusCANCELLED:
 		return true
-	case DRAFT:
+	case PayrollRunStatusDRAFT:
 		return true
-	case FAILED:
+	case PayrollRunStatusFAILED:
 		return true
-	case FINALIZED:
+	case PayrollRunStatusFINALIZED:
 		return true
-	case PENDINGAPPROVAL:
+	case PayrollRunStatusPENDINGAPPROVAL:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProblemApprovalStatus.
+const (
+	ProblemApprovalStatusAPPROVED  ProblemApprovalStatus = "APPROVED"
+	ProblemApprovalStatusCANCELLED ProblemApprovalStatus = "CANCELLED"
+	ProblemApprovalStatusREJECTED  ProblemApprovalStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ProblemApprovalStatus enum.
+func (e ProblemApprovalStatus) Valid() bool {
+	switch e {
+	case ProblemApprovalStatusAPPROVED:
+		return true
+	case ProblemApprovalStatusCANCELLED:
+		return true
+	case ProblemApprovalStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProblemEmployeesChangedReason.
+const (
+	INPUTCHANGED     ProblemEmployeesChangedReason = "INPUT_CHANGED"
+	NEWLYELIGIBLE    ProblemEmployeesChangedReason = "NEWLY_ELIGIBLE"
+	NOLONGERELIGIBLE ProblemEmployeesChangedReason = "NO_LONGER_ELIGIBLE"
+)
+
+// Valid indicates whether the value is a known member of the ProblemEmployeesChangedReason enum.
+func (e ProblemEmployeesChangedReason) Valid() bool {
+	switch e {
+	case INPUTCHANGED:
+		return true
+	case NEWLYELIGIBLE:
+		return true
+	case NOLONGERELIGIBLE:
 		return true
 	default:
 		return false
@@ -821,6 +908,69 @@ const (
 func (e XRequestedWith) Valid() bool {
 	switch e {
 	case XRequestedWithFetch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListApprovalInboxParamsStatus.
+const (
+	ListApprovalInboxParamsStatusAPPROVED  ListApprovalInboxParamsStatus = "APPROVED"
+	ListApprovalInboxParamsStatusCANCELLED ListApprovalInboxParamsStatus = "CANCELLED"
+	ListApprovalInboxParamsStatusPENDING   ListApprovalInboxParamsStatus = "PENDING"
+	ListApprovalInboxParamsStatusREJECTED  ListApprovalInboxParamsStatus = "REJECTED"
+)
+
+// Valid indicates whether the value is a known member of the ListApprovalInboxParamsStatus enum.
+func (e ListApprovalInboxParamsStatus) Valid() bool {
+	switch e {
+	case ListApprovalInboxParamsStatusAPPROVED:
+		return true
+	case ListApprovalInboxParamsStatusCANCELLED:
+		return true
+	case ListApprovalInboxParamsStatusPENDING:
+		return true
+	case ListApprovalInboxParamsStatusREJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListApprovalInboxParamsSubjectType.
+const (
+	ListApprovalInboxParamsSubjectTypeLEAVEREQUEST    ListApprovalInboxParamsSubjectType = "LEAVE_REQUEST"
+	ListApprovalInboxParamsSubjectTypeOVERTIMEREQUEST ListApprovalInboxParamsSubjectType = "OVERTIME_REQUEST"
+	ListApprovalInboxParamsSubjectTypePAYROLLRUN      ListApprovalInboxParamsSubjectType = "PAYROLL_RUN"
+)
+
+// Valid indicates whether the value is a known member of the ListApprovalInboxParamsSubjectType enum.
+func (e ListApprovalInboxParamsSubjectType) Valid() bool {
+	switch e {
+	case ListApprovalInboxParamsSubjectTypeLEAVEREQUEST:
+		return true
+	case ListApprovalInboxParamsSubjectTypeOVERTIMEREQUEST:
+		return true
+	case ListApprovalInboxParamsSubjectTypePAYROLLRUN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListApprovalInboxParamsScope.
+const (
+	All  ListApprovalInboxParamsScope = "all"
+	Mine ListApprovalInboxParamsScope = "mine"
+)
+
+// Valid indicates whether the value is a known member of the ListApprovalInboxParamsScope enum.
+func (e ListApprovalInboxParamsScope) Valid() bool {
+	switch e {
+	case All:
+		return true
+	case Mine:
 		return true
 	default:
 		return false
@@ -1016,6 +1166,65 @@ type ActiveTenant struct {
 	Name  string             `json:"name"`
 	Roles []Role             `json:"roles"`
 }
+
+// ApprovalDecision defines model for ApprovalDecision.
+type ApprovalDecision struct {
+	Approval ApprovalRequest `json:"approval"`
+
+	// Subject The subject after the decision (PAYROLL_RUN → PayrollRun).
+	Subject ApprovalDecision_Subject `json:"subject"`
+}
+
+// ApprovalDecision_Subject The subject after the decision (PAYROLL_RUN → PayrollRun).
+type ApprovalDecision_Subject struct {
+	union json.RawMessage
+}
+
+// ApprovalDecisionRequest defines model for ApprovalDecisionRequest.
+type ApprovalDecisionRequest struct {
+	// Note Optional to approve, required to reject.
+	Note *string `json:"note,omitempty"`
+}
+
+// ApprovalList defines model for ApprovalList.
+type ApprovalList struct {
+	Data []ApprovalRequest `json:"data"`
+	Page Page              `json:"page"`
+}
+
+// ApprovalPerson defines model for ApprovalPerson.
+type ApprovalPerson struct {
+	// DisplayName null when the user is no longer an active member.
+	DisplayName *string            `json:"display_name"`
+	Id          openapi_types.UUID `json:"id"`
+}
+
+// ApprovalRequest defines model for ApprovalRequest.
+type ApprovalRequest struct {
+	Approver           ApprovalPerson        `json:"approver"`
+	CreatedAt          time.Time             `json:"created_at"`
+	DecidedAt          *time.Time            `json:"decided_at"`
+	DecidedBy          *openapi_types.UUID   `json:"decided_by"`
+	DecisionNote       *string               `json:"decision_note"`
+	Id                 openapi_types.UUID    `json:"id"`
+	IsOverride         bool                  `json:"is_override"`
+	Requester          ApprovalPerson        `json:"requester"`
+	SelfApprovalReason *string               `json:"self_approval_reason"`
+	SelfApproved       bool                  `json:"self_approved"`
+	Status             ApprovalRequestStatus `json:"status"`
+	Subject            struct {
+		// Summary Examples: Payroll 2026-03 · PENDING_APPROVAL · net 688860900.00 · 100 karyawan
+		Summary string `json:"summary"`
+	} `json:"subject"`
+	SubjectId   openapi_types.UUID         `json:"subject_id"`
+	SubjectType ApprovalRequestSubjectType `json:"subject_type"`
+}
+
+// ApprovalRequestStatus defines model for ApprovalRequest.Status.
+type ApprovalRequestStatus string
+
+// ApprovalRequestSubjectType defines model for ApprovalRequest.SubjectType.
+type ApprovalRequestSubjectType string
 
 // Bank defines model for Bank.
 type Bank struct {
@@ -1579,9 +1788,13 @@ type PayrollLineRounding string
 // PayrollLineStage defines model for PayrollLine.Stage.
 type PayrollLineStage string
 
-// PayrollRun Run of one period (docs/design/16-api-endpoints.md §16, amendment S4). `totals`, `ruleset` and the `counts` values are null until the run is CALCULATED. Approval fields (`approval_request_id`, `stale`, `submitted_by`, …) arrive with Sprint 5.
+// PayrollRun Run of one period (docs/design/16-api-endpoints.md §16, amendment S4). `totals`, `ruleset` and the `counts` values are null until the run is CALCULATED. Approval fields arrive with Sprint 5 (`stale` is not returned: the authoritative check is the fingerprint guard at approve/finalize).
 type PayrollRun struct {
-	CalcStartedAt *time.Time `json:"calc_started_at"`
+	// ApprovalRequestId Latest approval of this run (S5).
+	ApprovalRequestId *openapi_types.UUID `json:"approval_request_id"`
+	ApprovedAt        *time.Time          `json:"approved_at"`
+	ApprovedBy        *openapi_types.UUID `json:"approved_by"`
+	CalcStartedAt     *time.Time          `json:"calc_started_at"`
 
 	// CalcVersion 0 until the first calculate; + 1 per (re)calculation.
 	CalcVersion  int32      `json:"calc_version"`
@@ -1609,9 +1822,11 @@ type PayrollRun struct {
 		ChunksTotal   int32  `json:"chunks_total"`
 		EligibleCount *int32 `json:"eligible_count"`
 	} `json:"progress"`
-	Ruleset *RulesetRef       `json:"ruleset"`
-	Status  PayrollRunStatus  `json:"status"`
-	Totals  *PayrollRunTotals `json:"totals"`
+	Ruleset     *RulesetRef         `json:"ruleset"`
+	Status      PayrollRunStatus    `json:"status"`
+	SubmittedAt *time.Time          `json:"submitted_at"`
+	SubmittedBy *openapi_types.UUID `json:"submitted_by"`
+	Totals      *PayrollRunTotals   `json:"totals"`
 }
 
 // PayrollRunList defines model for PayrollRunList.
@@ -1665,9 +1880,25 @@ type Period = string
 
 // Problem RFC 9457 Problem Details with a stable machine-readable code.
 type Problem struct {
+	// ApprovalStatus APPROVAL_ALREADY_DECIDED — the existing decision (`status` is the HTTP status, RFC 9457).
+	ApprovalStatus *ProblemApprovalStatus `json:"approval_status,omitempty"`
+
+	// ChangedCount RUN_STALE — number of employees with input changes since calc_started_at (candidates).
+	ChangedCount *int `json:"changed_count,omitempty"`
+
 	// Code Examples: RUN_STALE
 	Code   string  `json:"code"`
 	Detail *string `json:"detail,omitempty"`
+
+	// EmployeesChanged RUN_STALE — employees whose input changed since the calculation (empty when changed_count > 200).
+	EmployeesChanged *[]struct {
+		EmployeeId openapi_types.UUID            `json:"employee_id"`
+		EmployeeNo *string                       `json:"employee_no,omitempty"`
+		Reason     ProblemEmployeesChangedReason `json:"reason"`
+	} `json:"employees_changed,omitempty"`
+
+	// ErrorCount RUN_HAS_ERRORS — ERROR items not excluded.
+	ErrorCount *int `json:"error_count,omitempty"`
 
 	// Errors Field-level errors, only for VALIDATION_ERROR.
 	Errors *[]struct {
@@ -1684,6 +1915,12 @@ type Problem struct {
 	Title              string              `json:"title"`
 	Type               string              `json:"type"`
 }
+
+// ProblemApprovalStatus APPROVAL_ALREADY_DECIDED — the existing decision (`status` is the HTTP status, RFC 9457).
+type ProblemApprovalStatus string
+
+// ProblemEmployeesChangedReason defines model for Problem.EmployeesChanged.Reason.
+type ProblemEmployeesChangedReason string
 
 // Ref defines model for Ref.
 type Ref struct {
@@ -1794,6 +2031,12 @@ type SignupResult struct {
 
 // SignupResultTokenType defines model for SignupResult.TokenType.
 type SignupResultTokenType string
+
+// SubmitPayrollRunRequest Approver is chosen by the server among other active OWNER/PAYROLL_ADMIN members: automatically when exactly one exists, otherwise `approver_user_id` is required. `self_approval_reason` only when no other admin exists (422 SELF_APPROVAL_REASON_REQUIRED without it, 403 SELF_APPROVAL_FORBIDDEN when another admin exists).
+type SubmitPayrollRunRequest struct {
+	ApproverUserId     *openapi_types.UUID `json:"approver_user_id,omitempty"`
+	SelfApprovalReason *string             `json:"self_approval_reason,omitempty"`
+}
 
 // SwitchTenantRequest defines model for SwitchTenantRequest.
 type SwitchTenantRequest struct {
@@ -1940,11 +2183,25 @@ type CreateAdjustmentParams struct {
 
 // ListApprovalInboxParams defines parameters for ListApprovalInbox.
 type ListApprovalInboxParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Status      *ListApprovalInboxParamsStatus      `form:"status,omitempty" json:"status,omitempty"`
+	SubjectType *ListApprovalInboxParamsSubjectType `form:"subject_type,omitempty" json:"subject_type,omitempty"`
+
+	// Scope `all` (HR_ADMIN only) lists every approval, not only those assigned to the caller.
+	Scope *ListApprovalInboxParamsScope `form:"scope,omitempty" json:"scope,omitempty"`
+	Limit *Limit                        `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListApprovalInboxParamsStatus defines parameters for ListApprovalInbox.
+type ListApprovalInboxParamsStatus string
+
+// ListApprovalInboxParamsSubjectType defines parameters for ListApprovalInbox.
+type ListApprovalInboxParamsSubjectType string
+
+// ListApprovalInboxParamsScope defines parameters for ListApprovalInbox.
+type ListApprovalInboxParamsScope string
 
 // ListAttendanceParams defines parameters for ListAttendance.
 type ListAttendanceParams struct {
@@ -2262,10 +2519,10 @@ type CreateAdjustmentJSONRequestBody = Pending
 type CancelAdjustmentJSONRequestBody = Pending
 
 // ApproveRequestJSONRequestBody defines body for ApproveRequest for application/json ContentType.
-type ApproveRequestJSONRequestBody = Pending
+type ApproveRequestJSONRequestBody = ApprovalDecisionRequest
 
 // RejectRequestJSONRequestBody defines body for RejectRequest for application/json ContentType.
-type RejectRequestJSONRequestBody = Pending
+type RejectRequestJSONRequestBody = ApprovalDecisionRequest
 
 // CreateAttendanceImportJSONRequestBody defines body for CreateAttendanceImport for application/json ContentType.
 type CreateAttendanceImportJSONRequestBody = Pending
@@ -2364,7 +2621,7 @@ type FinalizePayrollRunJSONRequestBody = Pending
 type ExcludePayrollItemJSONRequestBody = ExcludePayrollItemRequest
 
 // SubmitPayrollRunJSONRequestBody defines body for SubmitPayrollRun for application/json ContentType.
-type SubmitPayrollRunJSONRequestBody = Pending
+type SubmitPayrollRunJSONRequestBody = SubmitPayrollRunRequest
 
 // CreatePositionJSONRequestBody defines body for CreatePosition for application/json ContentType.
 type CreatePositionJSONRequestBody = OrgUnitCreate
@@ -2383,6 +2640,42 @@ type UpdateTenantSettingsJSONRequestBody = Pending
 
 // SignupTenantJSONRequestBody defines body for SignupTenant for application/json ContentType.
 type SignupTenantJSONRequestBody = SignupRequest
+
+// AsPayrollRun returns the union data inside the ApprovalDecision_Subject as a PayrollRun
+func (t ApprovalDecision_Subject) AsPayrollRun() (PayrollRun, error) {
+	var body PayrollRun
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromPayrollRun overwrites any union data inside the ApprovalDecision_Subject as the provided PayrollRun
+func (t *ApprovalDecision_Subject) FromPayrollRun(v PayrollRun) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergePayrollRun performs a merge with any union data inside the ApprovalDecision_Subject, using the provided PayrollRun
+func (t *ApprovalDecision_Subject) MergePayrollRun(v PayrollRun) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ApprovalDecision_Subject) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ApprovalDecision_Subject) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsSignupResult returns the union data inside the SignupTenant201JSONResponseBody as a SignupResult
 func (t SignupTenant201JSONResponseBody) AsSignupResult() (SignupResult, error) {

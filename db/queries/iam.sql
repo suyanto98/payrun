@@ -258,3 +258,9 @@ SET status = 'ACTIVE', roles = @roles, accepted_at = @now, revoked_at = NULL, re
     updated_by = @actor, version = version + 1
 WHERE id = @id AND status = 'REVOKED'
 RETURNING tenant_id, roles, status;
+
+-- name: ActiveAdmins :many
+-- [tenant] Calon approver run (ADR-P09, dihitung server): membership ACTIVE dengan OWNER/PAYROLL_ADMIN.
+SELECT user_id::uuid AS user_id FROM memberships
+WHERE status = 'ACTIVE' AND roles && ARRAY['OWNER', 'PAYROLL_ADMIN']::text[]
+ORDER BY user_id;

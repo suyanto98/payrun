@@ -89,6 +89,12 @@ func (s *Service) ActiveRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID
 	return roles, err
 }
 
+// ActiveAdminsTx: user dengan membership ACTIVE ber-role OWNER/PAYROLL_ADMIN di tenant transaksi (calon
+// approver payroll run, dihitung server; ADR-P09 amandemen).
+func (s *Service) ActiveAdminsTx(ctx context.Context, tx pgx.Tx) ([]uuid.UUID, error) {
+	return store.New(tx).ActiveAdmins(ctx)
+}
+
 func (s *Service) getMember(ctx context.Context, q *store.Queries, id uuid.UUID) (Member, error) {
 	r, err := q.GetMember(ctx, id)
 	if err != nil {

@@ -482,3 +482,15 @@ func (e env) workerWith(cfg app.WorkerConfig) *app.Worker {
 	}
 	return app.NewWorker(e.deps, cfg)
 }
+
+// submitRun: submit run CALCULATED → id approval.
+func (e env) submitRun(t *testing.T, token string, run uuid.UUID, body map[string]any) uuid.UUID {
+	t.Helper()
+	r, b := e.do(t, http.MethodPost, "/api/v1/payroll-runs/"+run.String()+"/submit", token, body)
+	if r.StatusCode != http.StatusOK || b["status"] != "PENDING_APPROVAL" {
+		t.Fatalf("submit: %d %v", r.StatusCode, b)
+	}
+	return uuid.MustParse(b["approval_request_id"].(string))
+}
+
+func uuidMust(s string) uuid.UUID { return uuid.MustParse(s) }

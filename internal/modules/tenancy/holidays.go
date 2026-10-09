@@ -14,18 +14,31 @@ import (
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/audit"
 	"payrun/internal/platform/db"
+	"payrun/internal/platform/periodguard"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 )
 
 // Libur tenant (T4–T6): bagian dari kalender kerja yang dibaca engine (hari kerja = hari kerja mingguan
-// − libur). PERIOD_LOCKED untuk tanggal di periode FINALIZED menyusul bersama payroll_periods (S4).
+// − libur). Libur mengubah input SEMUA karyawan di periodenya: PeriodGuard satu hari, tanggal di periode
+// FINALIZED → 409 PERIOD_LOCKED (trigger guard_period_date sebagai jaring pengaman), periode non-final
+// dicatat untuk semua karyawan yang bekerja di periode itu (O12).
 
 type Holiday struct {
 	ID      uuid.UUID `json:"id"`
 	Date    string    `json:"date"`
 	Name    string    `json:"name"`
 	Version int32     `json:"version"`
+}
+
+// SetPeriodGuard memasang PeriodGuard (modul payroll) untuk penulis libur (S5).
+func (s *Service) SetPeriodGuard(g periodguard.Guard) { s.guard = g }
+
+func (s *Service) lockInput(ctx context.Context, tx pgx.Tx, d time.Time) (periodguard.Recorder, error) {
+	if s.guard == nil {
+		return nil, errors.New("tenancy: period guard not wired")
+	}
+	return s.guard.Lock(ctx, tx, periodguard.Change{AllEmployees: true, Range: periodguard.Day(d)})
 }
 
 func (s *Service) ListHolidays(ctx context.Context, year int) ([]Holiday, error) {
@@ -66,14 +79,21 @@ func (s *Service) CreateHoliday(ctx context.Context, actor uuid.UUID, date, name
 	tid, _ := tenantctx.From(ctx)
 	var h Holiday
 	err = db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
+		record, err := s.lockInput(ctx, tx, d)
+		if err != nil {
+			return err
+		}
 		q := store.New(tx)
 		r, err := q.CreateHoliday(ctx, store.CreateHolidayParams{TenantID: tid, ID: s.ids.New(), HolidayDate: d, Name: name, Actor: &actor})
 		if err != nil {
 			return err
 		}
 		h = Holiday{ID: r.ID, Date: r.HolidayDate.Format("2006-01-02"), Name: r.Name, Version: r.Version}
-		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "holiday.created",
-			TargetType: "holiday", TargetID: h.ID, Diff: map[string]any{"date": h.Date, "name": name}}, meta)
+		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "holiday.created",
+			TargetType: "holiday", TargetID: h.ID, Diff: map[string]any{"date": h.Date, "name": name}}, meta); err != nil {
+			return err
+		}
+		return record(ctx)
 	})
 	return h, db.MapError(err)
 }
@@ -81,15 +101,30 @@ func (s *Service) CreateHoliday(ctx context.Context, actor uuid.UUID, date, name
 func (s *Service) DeleteHoliday(ctx context.Context, actor, id uuid.UUID, meta reqmeta.Meta) error {
 	tid, _ := tenantctx.From(ctx)
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
-		date, err := store.New(tx).DeleteHoliday(ctx, id)
+		q := store.New(tx)
+		d, err := q.GetHolidayDate(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return apperr.ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "holiday.deleted",
-			TargetType: "holiday", TargetID: id, Diff: map[string]any{"date": date.Format("2006-01-02")}}, meta)
+		record, err := s.lockInput(ctx, tx, d)
+		if err != nil {
+			return err
+		}
+		date, err := q.DeleteHoliday(ctx, id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.ErrNotFound // dihapus paralel di antara baca dan lock
+		}
+		if err != nil {
+			return err
+		}
+		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "holiday.deleted",
+			TargetType: "holiday", TargetID: id, Diff: map[string]any{"date": date.Format("2006-01-02")}}, meta); err != nil {
+			return err
+		}
+		return record(ctx)
 	})
 	return db.MapError(err)
 }

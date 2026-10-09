@@ -1555,14 +1555,27 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED], default: PENDING }
+        - name: subject_type
+          in: query
+          required: false
+          schema: { type: string, enum: [PAYROLL_RUN, LEAVE_REQUEST, OVERTIME_REQUEST] }
+        - name: scope
+          in: query
+          required: false
+          description: "`all` (HR_ADMIN only) lists every approval, not only those assigned to the caller."
+          schema: { type: string, enum: [mine, all], default: mine }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `ApprovalList` (docs/design/16-api-endpoints.md §16).
+          description: OK. Approvals assigned to the caller, newest first, with a one-line subject summary.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ApprovalList' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -1582,13 +1595,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ApprovalDecisionRequest' }
       responses:
         '200':
-          description: OK. Body model `ApprovalRequest` (docs/design/16-api-endpoints.md §16).
+          description: OK. The decided approval and the subject after its effect (PAYROLL_RUN → `PayrollRun` APPROVED). PAYROLL_RUN with input changed since calculation → 409 RUN_STALE with `employees_changed`; nothing changes.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ApprovalDecision' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1612,13 +1625,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/ApprovalDecisionRequest' }
       responses:
         '200':
-          description: OK. Body model `ApprovalRequest` (docs/design/16-api-endpoints.md §16).
+          description: OK. `note` is required (422 DECISION_NOTE_REQUIRED). PAYROLL_RUN goes back to CALCULATED.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/ApprovalDecision' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1898,13 +1911,13 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/SubmitPayrollRunRequest' }
       responses:
         '200':
-          description: OK. Body model `PayrollRun` (docs/design/16-api-endpoints.md §16).
+          description: OK (`status` PENDING_APPROVAL, `approval_request_id` set). The fingerprint is not checked here; approve and finalize check it.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayrollRun' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2892,10 +2905,11 @@ components:
       type: object
       description: >
         Run of one period (docs/design/16-api-endpoints.md §16, amendment S4). `totals`, `ruleset` and the
-        `counts` values are null until the run is CALCULATED. Approval fields (`approval_request_id`,
-        `stale`, `submitted_by`, …) arrive with Sprint 5.
+        `counts` values are null until the run is CALCULATED. Approval fields arrive with Sprint 5
+        (`stale` is not returned: the authoritative check is the fingerprint guard at approve/finalize).
       required: [id, period, status, calc_version, progress, totals, counts, ruleset, failure_reason, created_by,
-                 created_at, calc_started_at, calculated_at, cancel_reason]
+                 created_at, calc_started_at, calculated_at, cancel_reason, approval_request_id, submitted_by,
+                 submitted_at, approved_by, approved_at]
       properties:
         id: { type: string, format: uuid }
         period: { $ref: '#/components/schemas/Period' }
@@ -2930,6 +2944,11 @@ components:
         calc_started_at: { type: [string, 'null'], format: date-time }
         calculated_at: { type: [string, 'null'], format: date-time }
         cancel_reason: { type: [string, 'null'] }
+        approval_request_id: { type: [string, 'null'], format: uuid, description: Latest approval of this run (S5). }
+        submitted_by: { type: [string, 'null'], format: uuid }
+        submitted_at: { type: [string, 'null'], format: date-time }
+        approved_by: { type: [string, 'null'], format: uuid }
+        approved_at: { type: [string, 'null'], format: date-time }
     PayrollRunListItem:
       type: object
       required: [id, period, status, calc_version, total_net, created_at]
@@ -3048,6 +3067,68 @@ components:
       required: [reason]
       properties:
         reason: { type: string, minLength: 3, maxLength: 500 }
+    SubmitPayrollRunRequest:
+      type: object
+      additionalProperties: false
+      description: >
+        Approver is chosen by the server among other active OWNER/PAYROLL_ADMIN members: automatically when
+        exactly one exists, otherwise `approver_user_id` is required. `self_approval_reason` only when no other
+        admin exists (422 SELF_APPROVAL_REASON_REQUIRED without it, 403 SELF_APPROVAL_FORBIDDEN when another admin exists).
+      properties:
+        approver_user_id: { type: string, format: uuid }
+        self_approval_reason: { type: string, maxLength: 500 }
+    ApprovalDecisionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        note: { type: string, maxLength: 500, description: 'Optional to approve, required to reject.' }
+    ApprovalPerson:
+      type: object
+      required: [id, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: [string, 'null'], description: 'null when the user is no longer an active member.' }
+    ApprovalRequest:
+      type: object
+      required: [id, subject_type, subject_id, subject, requester, approver, status, decision_note, decided_by,
+                 is_override, self_approved, self_approval_reason, decided_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        subject_type: { type: string, enum: [PAYROLL_RUN, LEAVE_REQUEST, OVERTIME_REQUEST] }
+        subject_id: { type: string, format: uuid }
+        subject:
+          type: object
+          required: [summary]
+          properties:
+            summary: { type: string, examples: ['Payroll 2026-03 · PENDING_APPROVAL · net 688860900.00 · 100 karyawan'] }
+        requester: { $ref: '#/components/schemas/ApprovalPerson' }
+        approver: { $ref: '#/components/schemas/ApprovalPerson' }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED] }
+        decision_note: { type: [string, 'null'] }
+        decided_by: { type: [string, 'null'], format: uuid }
+        is_override: { type: boolean }
+        self_approved: { type: boolean }
+        self_approval_reason: { type: [string, 'null'] }
+        decided_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    ApprovalList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ApprovalRequest' }
+        page: { $ref: '#/components/schemas/Page' }
+    ApprovalDecision:
+      type: object
+      required: [approval, subject]
+      properties:
+        approval: { $ref: '#/components/schemas/ApprovalRequest' }
+        subject:
+          description: The subject after the decision (PAYROLL_RUN → PayrollRun).
+          oneOf:
+            - $ref: '#/components/schemas/PayrollRun'
     Problem:
       type: object
       description: RFC 9457 Problem Details with a stable machine-readable code.
@@ -3074,6 +3155,26 @@ components:
           type: string
           format: uuid
           description: ACTIVE_RUN_EXISTS and IMPORT_DUPLICATE — the resource that already exists.
+        employees_changed:
+          type: array
+          description: RUN_STALE — employees whose input changed since the calculation (empty when changed_count > 200).
+          items:
+            type: object
+            required: [employee_id, reason]
+            properties:
+              employee_id: { type: string, format: uuid }
+              employee_no: { type: string }
+              reason: { type: string, enum: [INPUT_CHANGED, NEWLY_ELIGIBLE, NO_LONGER_ELIGIBLE] }
+        changed_count:
+          type: integer
+          description: RUN_STALE — number of employees with input changes since calc_started_at (candidates).
+        approval_status:
+          type: string
+          enum: [APPROVED, REJECTED, CANCELLED]
+          description: APPROVAL_ALREADY_DECIDED — the existing decision (`status` is the HTTP status, RFC 9457).
+        error_count:
+          type: integer
+          description: RUN_HAS_ERRORS — ERROR items not excluded.
   responses:
     ValidationError:
       description: VALIDATION_ERROR (including an unknown `tenant_id` body field), MALFORMED_JSON, INVALID_CURSOR, IDEMPOTENCY_KEY_REQUIRED, or IDEMPOTENCY_KEY_INVALID.

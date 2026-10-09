@@ -24,6 +24,7 @@ import (
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/observability"
+	"payrun/internal/platform/periodguard"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 )
@@ -43,6 +44,7 @@ type Service struct {
 	accounts Accounts
 	clock    clock.Clock
 	ids      idgen.Generator
+	guard    periodguard.Guard
 }
 
 func NewService(pool *pgxpool.Pool, accounts Accounts, c clock.Clock, ids idgen.Generator) *Service {

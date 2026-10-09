@@ -40,6 +40,33 @@ func (q *Queries) AcceptMembership(ctx context.Context, arg AcceptMembershipPara
 	return i, err
 }
 
+const activeAdmins = `-- name: ActiveAdmins :many
+SELECT user_id::uuid AS user_id FROM memberships
+WHERE status = 'ACTIVE' AND roles && ARRAY['OWNER', 'PAYROLL_ADMIN']::text[]
+ORDER BY user_id
+`
+
+// [tenant] Calon approver run (ADR-P09, dihitung server): membership ACTIVE dengan OWNER/PAYROLL_ADMIN.
+func (q *Queries) ActiveAdmins(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, activeAdmins)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const activeMemberEmailExists = `-- name: ActiveMemberEmailExists :one
 
 SELECT EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id

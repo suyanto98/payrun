@@ -31,6 +31,7 @@ import (
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/httpx"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/periodguard"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 )
@@ -116,6 +117,17 @@ type Service struct {
 	orgUnits OrgUnits
 	salaries Salaries
 	members  Memberships
+	guard    periodguard.Guard
+}
+
+// SetPeriodGuard memasang PeriodGuard (modul payroll): penulis employment dan PTKP (S5).
+func (s *Service) SetPeriodGuard(g periodguard.Guard) { s.guard = g }
+
+func (s *Service) lockInput(ctx context.Context, tx pgx.Tx, c periodguard.Change) (periodguard.Recorder, error) {
+	if s.guard == nil {
+		return nil, errors.New("employee: period guard not wired")
+	}
+	return s.guard.Lock(ctx, tx, c)
 }
 
 func NewService(pool *pgxpool.Pool, pii PII, c clock.Clock, ids idgen.Generator) *Service {
@@ -596,6 +608,12 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in C
 	if f.sealedNIK != nil || f.sealedNPWP != nil || f.sAcc != nil {
 		params.PiiKeyVersion = ptr(s.pii.Keyring.ActiveVersion())
 	}
+	// PeriodGuard [hire_date, ∞): hire di periode final → 409 PERIOD_LOCKED; karyawan baru di periode
+	// non-final dengan run terhitung → stale (D6). Gaji awal ikut tercakup.
+	record, err := s.lockInput(ctx, tx, periodguard.Change{Employees: []uuid.UUID{id}, Range: periodguard.From(hire)})
+	if err != nil {
+		return Employee{}, err
+	}
 	q := store.New(tx)
 	if err := q.CreateEmployee(ctx, params); err != nil {
 		return Employee{}, db.MapError(err)
@@ -617,6 +635,9 @@ func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in C
 	fields := append([]string{"employee_no", "full_name", "hire_date", "ptkp_status"}, f.names()...)
 	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "employee.created",
 		TargetType: "employee", TargetID: id, Diff: map[string]any{"fields": fields}}, meta); err != nil {
+		return Employee{}, err
+	}
+	if err := record(ctx); err != nil {
 		return Employee{}, err
 	}
 	e, err := s.load(ctx, q, id)
@@ -725,6 +746,15 @@ func (s *Service) Update(ctx context.Context, p auth.Principal, id uuid.UUID, pr
 			// PATCH {} tidak menaikkan versi dan tidak menulis audit kosong (review S2).
 			return apperr.Validation(apperr.FieldError{Field: "body", Code: "REQUIRED", Message: "at least one field"})
 		}
+		// Hanya PTKP yang masuk input payroll (kategori pajak). Tidak effective-dated: periode final tidak
+		// terblokir (hasilnya tetap dari snapshot), periode non-final dicatat (PFS-03).
+		record := periodguard.Recorder(func(context.Context) error { return nil })
+		if in.PtkpStatus != nil {
+			var err error
+			if record, err = s.lockInput(ctx, tx, periodguard.Change{Employees: []uuid.UUID{id}, NotEffectiveDated: true}); err != nil {
+				return err
+			}
+		}
 		if _, err := q.UpdateEmployee(ctx, params); errors.Is(err, pgx.ErrNoRows) {
 			// 0 baris: tidak ada / tenant lain (404) ATAU versi basi (412). Wajib dibedakan lewat lookup:
 			// menjawab 412 untuk id tenant lain membocorkan keberadaannya (ditangkap TestCrossTenant).
@@ -737,6 +767,9 @@ func (s *Service) Update(ctx context.Context, p auth.Principal, id uuid.UUID, pr
 		}
 		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "employee.updated",
 			TargetType: "employee", TargetID: id, Diff: map[string]any{"fields": changed}}, meta); err != nil {
+			return err
+		}
+		if err := record(ctx); err != nil {
 			return err
 		}
 		var err error
@@ -793,6 +826,11 @@ func (s *Service) Terminate(ctx context.Context, p auth.Principal, id uuid.UUID,
 		case in.EndDate < cur.HireDate: // YYYY-MM-DD dibandingkan leksikal = kronologis
 			return apperr.Validation(apperr.FieldError{Field: "end_date", Code: "OUT_OF_RANGE", Message: "must not be before hire_date"})
 		}
+		// Tanggal yang berubah: [end_date + 1, ∞) (span ditutup). Di periode final → PERIOD_LOCKED.
+		record, err := s.lockInput(ctx, tx, periodguard.Change{Employees: []uuid.UUID{id}, Range: periodguard.From(end.AddDate(0, 0, 1))})
+		if err != nil {
+			return err
+		}
 		if _, err := q.TerminateEmployee(ctx, store.TerminateEmployeeParams{Status: in.Type, Actor: &p.UserID, ID: id, Version: version}); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return apperr.ErrVersionConflict // diubah paralel di antara load dan update
@@ -809,6 +847,9 @@ func (s *Service) Terminate(ctx context.Context, p auth.Principal, id uuid.UUID,
 		}
 		if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: p.UserID, Action: "employee.terminated",
 			TargetType: "employee", TargetID: id, Diff: map[string]any{"type": in.Type, "end_date": in.EndDate}, Reason: in.Reason}, meta); err != nil {
+			return err
+		}
+		if err := record(ctx); err != nil {
 			return err
 		}
 		e, err = s.load(ctx, q, id)

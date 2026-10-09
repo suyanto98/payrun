@@ -39,7 +39,8 @@ UPDATE payroll_periods SET status = @status WHERE id = @id AND status <> 'FINALI
 SELECT r.tenant_id, r.id, r.period_id, p.year, p.month, r.status, r.calc_version, r.chunks_total, r.chunks_done,
        r.eligible_count, r.ruleset_code, r.ruleset_version, r.total_gross, r.total_deductions, r.total_net,
        r.item_ok_count, r.item_error_count, r.item_excluded_count, r.warning_count, r.failure_reason,
-       r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason
+       r.calc_started_at, r.calculated_at, r.created_by, r.created_at, r.cancelled_at, r.cancel_reason,
+       r.approval_request_id, r.submitted_by, r.submitted_at, r.approved_by, r.approved_at
 FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
 WHERE r.id = @id;
 
@@ -217,3 +218,110 @@ ORDER BY ec.employee_id, cd.code, lower(ec.valid_during);
 -- Komponen statutory (BPJS) berlaku untuk semua employee: definisi sistem stage STATUTORY yang aktif.
 SELECT code, name, category, stage, calc_type, ruleset_ref, base_ref, rounding, status
 FROM component_definitions WHERE is_system AND stage = 'STATUTORY' ORDER BY code;
+
+-- ---------------------------------------------------------------- PeriodGuard (S5, PI-13/14, O12, D1/D3)
+
+-- name: GuardLockSettings :exec
+-- [1b] FOR KEY SHARE: penulis input tidak saling memblok, tetapi menunggu / ditunggu pembuatan periode
+-- baru (LockTenantSettings FOR UPDATE, D1).
+SELECT 1 FROM tenant_settings WHERE tenant_id = @tenant_id FOR KEY SHARE;
+
+-- name: GuardLockPeriods :many
+-- [2] FOR SHARE, urut (year, month) ascending (D3, anti-deadlock rentang multi-bulan).
+SELECT id, status FROM payroll_periods
+WHERE period_range && daterange(@from_date::date, sqlc.narg(to_date)::date)
+ORDER BY year, month
+FOR SHARE;
+
+-- name: GuardLockOpenPeriods :many
+-- [2] Nilai tanpa tanggal berlaku (PTKP, definisi komponen): semua periode non-final.
+SELECT id, status FROM payroll_periods WHERE status <> 'FINALIZED' ORDER BY year, month FOR SHARE;
+
+-- name: RecordInputChanges :exec
+-- [7] changed_at = clock_timestamp() (bukan now() = awal transaksi), diambil setelah lock [2].
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT @tenant_id, p, e, clock_timestamp()
+FROM unnest(@period_ids::uuid[]) AS p CROSS JOIN unnest(@employee_ids::uuid[]) AS e
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1;
+
+-- name: RecordInputChangesAllEmployees :exec
+-- [7] Perubahan tenant-wide (libur, komponen sistem): semua karyawan yang bekerja di periode itu.
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT DISTINCT @tenant_id::uuid, p.id, s.employee_id, clock_timestamp()
+FROM payroll_periods p JOIN employment_spans s ON s.span && p.period_range
+WHERE p.id = ANY (@period_ids::uuid[])
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1;
+
+-- name: RecordInputChangesComponent :exec
+-- [7] Definisi komponen tenant berubah: pemegang komponen itu di periode tersebut.
+INSERT INTO payroll_input_changes (tenant_id, period_id, employee_id, changed_at)
+SELECT DISTINCT @tenant_id::uuid, p.id, ec.employee_id, clock_timestamp()
+FROM payroll_periods p JOIN employee_components ec ON ec.valid_during && p.period_range
+WHERE p.id = ANY (@period_ids::uuid[]) AND ec.component_id = @component_id
+ON CONFLICT (tenant_id, period_id, employee_id)
+DO UPDATE SET changed_at = EXCLUDED.changed_at, change_count = payroll_input_changes.change_count + 1;
+
+-- ---------------------------------------------------------------- submit / approve / reject (S5)
+
+-- name: SubmitRun :execrows
+-- [3] Guard CALCULATED → PENDING_APPROVAL (natural idempotency, Y10).
+UPDATE payroll_runs SET status = 'PENDING_APPROVAL', submitted_by = @actor, submitted_at = clock_timestamp(),
+       approval_request_id = @approval_request_id, approved_by = NULL, approved_at = NULL
+WHERE id = @id AND status = 'CALCULATED';
+
+-- name: ApproveRun :execrows
+UPDATE payroll_runs SET status = 'APPROVED', approved_by = @actor, approved_at = clock_timestamp()
+WHERE id = @id AND status = 'PENDING_APPROVAL';
+
+-- name: RejectRun :execrows
+-- Reject → kembali CALCULATED (ADR-P05); alasan tersimpan di approval.
+UPDATE payroll_runs SET status = 'CALCULATED', submitted_by = NULL, submitted_at = NULL
+WHERE id = @id AND status = 'PENDING_APPROVAL';
+
+-- name: StaleCandidates :many
+-- O12: karyawan dengan perubahan input setelah kalkulasi mulai membaca (changed_at > calc_started_at).
+SELECT employee_id FROM payroll_input_changes
+WHERE period_id = @period_id AND changed_at > @calc_started_at
+ORDER BY employee_id;
+
+-- name: CandidateItems :many
+-- Item versi terkini untuk kandidat (boleh tidak ada: karyawan baru).
+SELECT i.employee_id, i.input_fingerprint, e.employee_no
+FROM payroll_items i JOIN employees e ON e.tenant_id = i.tenant_id AND e.id = i.employee_id
+WHERE i.run_id = @run_id AND i.calc_version = @calc_version AND i.employee_id = ANY (@ids::uuid[]);
+
+-- name: EligibleAmong :many
+-- D6: kandidat yang SAAT INI eligible di periode (PI-07, sama dengan EligibleEmployees).
+SELECT DISTINCT e.id, e.employee_no FROM employees e
+JOIN employment_spans s ON s.tenant_id = e.tenant_id AND s.employee_id = e.id
+WHERE e.id = ANY (@ids::uuid[]) AND s.span && daterange(@from_date::date, @to_date::date, '[)')
+ORDER BY e.id;
+
+-- name: RunSummaries :many
+-- Ringkasan subjek untuk inbox approval.
+SELECT r.id, p.year, p.month, r.status, r.total_net, r.item_ok_count, r.item_excluded_count
+FROM payroll_runs r JOIN payroll_periods p ON p.tenant_id = r.tenant_id AND p.id = r.period_id
+WHERE r.id = ANY (@ids::uuid[]);
+
+-- ---------------------------------------------------------------- verify-run (S5, PI-12, ADR-P07)
+
+-- name: VerifyItems :many
+-- Item versi terkini + snapshot-nya (LEFT JOIN: snapshot hilang juga dilaporkan).
+SELECT i.id, i.employee_no, i.status, i.gross, i.deductions, i.net, i.error_codes, i.warning_codes,
+       i.input_fingerprint, s.item_id AS snapshot_item_id, s.snapshot_version, s.input, s.ruleset_code, s.ruleset_version,
+       s.input_fingerprint AS snapshot_fingerprint
+FROM payroll_items i
+LEFT JOIN payroll_item_snapshots s ON s.tenant_id = i.tenant_id AND s.item_id = i.id
+WHERE i.run_id = @run_id AND i.calc_version = @calc_version
+ORDER BY i.employee_no, i.id;
+
+-- name: VerifyLines :many
+SELECT item_id, sort_order, code, category, stage, amount, basis, explanation, taxable, rounding
+FROM payroll_lines WHERE run_id = @run_id AND calc_version = @calc_version
+ORDER BY item_id, sort_order;
+
+-- name: RulesetByVersion :one
+-- Versi ruleset yang TERSIMPAN di snapshot (bukan yang berlaku hari ini).
+SELECT payload FROM rulesets WHERE code = @code AND version = @version;

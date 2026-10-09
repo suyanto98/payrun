@@ -23,6 +23,11 @@ type Problem struct {
 	Errors    []apperr.FieldError `json:"errors,omitempty"`
 	// ID resource yang sudah ada (ACTIVE_RUN_EXISTS, IMPORT_DUPLICATE), supaya client bisa melanjutkan.
 	ExistingResourceID string `json:"existing_resource_id,omitempty"`
+	// Extension per code (katalog §3). `approval_status`, bukan `status` (sudah dipakai RFC 9457).
+	EmployeesChanged []apperr.StaleEmployee `json:"employees_changed,omitempty"`
+	ChangedCount     *int                   `json:"changed_count,omitempty"`
+	ApprovalStatus   string                 `json:"approval_status,omitempty"`
+	ErrorCount       *int                   `json:"error_count,omitempty"`
 }
 
 const problemTypeBase = "https://payrun.dev/errors/"
@@ -62,6 +67,10 @@ func NewProblem(r *http.Request, err error) Problem {
 		Errors:    e.Fields,
 
 		ExistingResourceID: e.ExistingResourceID,
+		EmployeesChanged:   e.EmployeesChanged,
+		ChangedCount:       e.ChangedCount,
+		ApprovalStatus:     e.ApprovalStatus,
+		ErrorCount:         e.ErrorCount,
 	}
 }
 

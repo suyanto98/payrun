@@ -139,6 +139,8 @@ func (m *matrixRunner) fill(t *testing.T, v any) any {
 		x = strings.ReplaceAll(x, "{dept}", m.f.dept.String())
 		x = strings.ReplaceAll(x, "{pos}", m.f.pos.String())
 		x = strings.ReplaceAll(x, "{comp}", m.f.comp.String())
+		x = strings.ReplaceAll(x, "{owner_user}", m.f.users[roleO].String())
+		x = strings.ReplaceAll(x, "{payroll_user}", m.f.users[roleP].String())
 		if strings.Contains(x, "{period}") {
 			x = strings.ReplaceAll(x, "{period}", m.pastPeriod())
 		}
@@ -209,6 +211,12 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 			m.run = id
 		}
 		return id
+	case "run_calculated": // run CALCULATED tanpa item ERROR (periode lampau: 0 karyawan eligible)
+		run, _ := m.e.calculatedRun(t, owner, m.pastPeriod())
+		return run
+	case "approval_run": // approval PAYROLL_RUN yang di-submit PAYROLL_ADMIN; approver otomatis = OWNER
+		run, _ := m.e.calculatedRun(t, owner, m.pastPeriod())
+		return m.e.submitRun(t, m.f.tokens[roleP], run, map[string]any{"approver_user_id": m.f.users[roleO]})
 	case "run_item":
 		if !fresh && m.runItm != uuid.Nil {
 			return m.runItm
@@ -307,8 +315,11 @@ func TestCrossTenant(t *testing.T) {
 	alphaRun, alphaItem := e.errorItem(t, alpha.tokens[roleO], "2026-01")
 	m := &matrixRunner{e: e, f: beta, items: map[uuid.UUID]uuid.UUID{alphaRun: alphaItem}}
 	alphaMember := e.newMember(t, alpha.id, "member@alpha.test", roleE)
+	alphaCalc, _ := e.calculatedRun(t, alpha.tokens[roleO], "2025-06")
+	alphaApproval := e.submitRun(t, alpha.tokens[roleP], alphaCalc, map[string]any{})
 	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
-		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun, "/members": alphaMember}
+		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun, "/members": alphaMember,
+		"/approvals": alphaApproval}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {
@@ -348,11 +359,11 @@ func TestCrossTenant(t *testing.T) {
 		t.Fatal("no cross-tenant case ran")
 	}
 	for _, path := range []string{"/departments", "/departments?status=INACTIVE", "/positions", "/employees", "/members", "/tenant",
-		"/holidays?year=2026", "/component-definitions", "/payroll-runs"} {
+		"/holidays?year=2026", "/component-definitions", "/payroll-runs", "/approvals/inbox", "/approvals/inbox?status=APPROVED"} {
 		r, b := e.do(t, http.MethodGet, "/api/v1"+path, beta.tokens[roleO], nil)
 		raw, _ := json.Marshal(b)
 		for _, id := range []uuid.UUID{alpha.id, alpha.dept, alpha.pos, alpha.empSelf, alpha.empOther, alpha.empManager, alpha.holiday, alpha.comp, alpha.users[roleO],
-			alphaRun, alphaItem, alphaMember} {
+			alphaRun, alphaItem, alphaMember, alphaApproval} {
 			if strings.Contains(string(raw), id.String()) {
 				t.Errorf("LEAK: Beta GET %s (%d) contains Alpha id %s", path, r.StatusCode, id)
 			}

@@ -5,6 +5,11 @@
 Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, bukan dibagi sebagai module
 (docs/design/32-repository-structure.md). Setiap perubahan skeleton dicatat di sini dan harus di-port ke repo lain.
 
+### 0.0.7 — PayRun Sprint 5 (belum di-port ke LedgerPay)
+- `apperr`: extension per code (`EmployeesChanged`, `ChangedCount`, `ApprovalStatus`, `ErrorCount`) + kode `RUN_STALE`, `APPROVAL_ALREADY_DECIDED`, `RUN_HAS_ERRORS`, `DECISION_NOTE_REQUIRED`, `SELF_APPROVAL_REASON_REQUIRED`, `SELF_APPROVAL_FORBIDDEN`; `httpx.Problem` menulisnya (`approval_status`, bukan `status`).
+- `db.MapError`: `P0002` (trigger PeriodGuard) → `PERIOD_LOCKED`.
+- Khusus PayRun: paket `periodguard` (kontrak PeriodGuard; implementasi di modul payroll).
+
 ### 0.0.6 — PayRun Sprint 4 (belum di-port ke LedgerPay)
 - `idempotency.Hash`: body kosong di-hash sama dengan `{}` (endpoint tanpa body seperti calculate/finalize tidak lagi `MALFORMED_JSON`).
 - `jobs` (baru di PayRun, dari LedgerPay): ditambah `tenant_id`; enqueue di tx tenant, claim tanpa tenant context, `CompleteInTx` di tx tenant handler.

@@ -81,6 +81,8 @@ func MapError(err error) error {
 		return apperr.ErrManagerCycle.WithCause(err)
 	case "P0001": // trigger PI-04: run/periode final immutable
 		return apperr.ErrRunFinalized.WithCause(err)
+	case "P0002": // trigger PI-14 guard_period_*: tanggal di periode FINALIZED
+		return apperr.ErrPeriodLocked.WithCause(err)
 	case "P0004": // trigger PI-16: owner terakhir
 		return apperr.ErrLastOwner.WithCause(err)
 	}

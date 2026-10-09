@@ -83,3 +83,7 @@ RETURNING tenant_id, id, holiday_date, name, version;
 -- name: DeleteHoliday :one
 -- [tenant] T6. Tidak ada / tenant lain → 0 baris → 404.
 DELETE FROM holidays WHERE id = @id RETURNING holiday_date;
+
+-- name: GetHolidayDate :one
+-- [tenant] Tanggal libur yang akan dihapus, dibaca SEBELUM PeriodGuard (tanpa lock; urutan [1b] → [2] → [6]).
+SELECT holiday_date FROM holidays WHERE id = @id;

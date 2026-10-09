@@ -883,3 +883,22 @@ Kontrak: `api/openapi.yaml` (`TestContract_S4ResponsesMatchSpec`); otorisasi: `a
 | W6 audit | `employee.pii_viewed` di transaksi dekripsi; gagal → `503` | Sama; diff `fields` = field yang benar-benar didekripsi (`nik`, `npwp`, `bank_account`). COMMIT gagal → `5xx` tanpa PII (`TestPII_AuditNotCommittedSendsNothing`) | — |
 | W6 rate limit | 30/jam per user | Tier `pii-view` (skeleton 0.0.6), di atas tier `read` | — |
 | Y6/Y7 cek ulang membership | Y6: "memeriksa ulang membership di DB" (R2-6) | Y6 dan Y7: role dari DB; bukan lagi pembaca → `404`. Audit baca detail HR (`payroll_item.read`) juga diputuskan dari role DB | Token PAYROLL_ADMIN basi tidak boleh membaca hasil payroll |
+
+## Catatan implementasi (Sprint 5, bagian 1: approval + stale detection)
+
+Kontrak: `api/openapi.yaml` (respons approval/run dicek di `TestApproval_SubmitApproveHappyPath`); otorisasi: `api/authz_matrix.yaml` (Y10, R1–R3, lintas tenant `/approvals`).
+
+| Endpoint | Desain | Implementasi S5 | Alasan |
+|---|---|---|---|
+| R2/R3 respons | `ApprovalRequest` + subjek terbaru | `{ "approval": ApprovalRequest, "subject": PayrollRun }` | Dua resource berbeda; satu objek per resource |
+| R2/R3 otorisasi | approver yang di-snapshot, lainnya `404` | Sama; **requester** (bukan self-approved) → `403 SELF_APPROVAL_FORBIDDEN`. Approver `PAYROLL_RUN` yang role adminnya sudah dicabut (DB) → `403` | Requester tahu approval itu ada (miliknya); 404 menyesatkan |
+| `APPROVAL_ALREADY_DECIDED` | extension `status` | extension **`approval_status`** | `status` sudah dipakai RFC 9457 untuk HTTP status |
+| `RUN_STALE` | `employees_changed[]` | `employees_changed: [{employee_id, employee_no, reason}]` (`INPUT_CHANGED`, `NEWLY_ELIGIBLE`, `NO_LONGER_ELIGIBLE`) + `changed_count`. Kandidat > 200 → `employees_changed` kosong, tanpa verifikasi (R1-7) | UI menampilkan siapa dan kenapa |
+| R2 `PAYROLL_RUN` urutan | periode `FOR UPDATE` → fingerprint → approval → run | periode `FOR UPDATE` [2] → run `FOR UPDATE` [3] → cek role approver (DB) → **keputusan approval [4]** → cek stale → run `APPROVED`. Stale → rollback penuh (approval tetap `PENDING`) | Keputusan yang kalah balapan mendapat `APPROVAL_ALREADY_DECIDED`, bukan `INVALID_STATE_TRANSITION` |
+| R2 fingerprint | Hitung ulang fingerprint seluruh run | Hanya kandidat change log `changed_at > calc_started_at` (O12, Step 7 `22` §3.3) | O(perubahan), bukan O(karyawan) |
+| Y10 | Approver otomatis bila tepat satu admin lain | Sama; beberapa admin lain → `400` (`approver_user_id` wajib); approver bukan admin aktif → `404`; memilih diri sendiri → `403`; alasan self-approval saat ada admin lain → `403`; satu-satunya admin tanpa alasan → `422 SELF_APPROVAL_REASON_REQUIRED` | ADR-P09 amandemen (dihitung server) |
+| `PayrollRun` | `approval_request_id`, `stale`, `submitted_by`, `approved_by`, … | Ditambah `approval_request_id`, `submitted_by/at`, `approved_by/at`. `stale` **tidak** dikembalikan | Penentu otoritatif adalah guard fingerprint saat approve/finalize; petunjuk murah bisa ditambahkan nanti tanpa memecah client |
+| R1 | `?scope=all` untuk H | Ada (H saja; role lain `403`) | Dipakai override cuti/lembur (S6) |
+| PeriodGuard | penulis salary/komponen/org/employment | Salary (W9), komponen (W10, C3/C4), employment (W2, W5), PTKP (W4), libur (T5/T6). **Org (W7) tidak** | Departemen hanya kolom denormalisasi item, bukan input engine; perubahan org tidak mengubah fingerprint |
+| PeriodGuard PTKP / definisi komponen | — | Tidak effective-dated: periode `FINALIZED` tidak memblokir (hasil final tetap dari snapshot); semua periode non-final dicatat | Nilai tanpa tanggal berlaku |
+| Notifikasi | outbox `payroll_run.submitted/approved` | Belum (hanya audit); inbox di UI cukup untuk MVP (ADR-P09) | Belum ada konsumen notifikasi |
