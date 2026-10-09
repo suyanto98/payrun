@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -33,7 +34,17 @@ import (
 	"payrun/internal/platform/ratelimit"
 )
 
-func TestMain(m *testing.M) { dbtest.Main(m) }
+// helperProcess: diisi file ber-tag testhooks. Test "worker mati" menjalankan ulang binary test ini
+// sebagai proses worker sungguhan (tanpa container DB baru); proses itu keluar lewat os.Exit di
+// tengah transaksi, persis seperti worker yang di-kill.
+var helperProcess func() int
+
+func TestMain(m *testing.M) {
+	if helperProcess != nil && os.Getenv(helperWorkerDSN) != "" {
+		os.Exit(helperProcess())
+	}
+	dbtest.Main(m)
+}
 
 // env: server API sungguhan (httptest) di atas DB test yang terhubung sebagai payrun_app, dengan jam
 // palsu yang dipakai token, refresh, dan lockout.

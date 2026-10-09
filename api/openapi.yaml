@@ -1664,7 +1664,7 @@ paths:
             schema: { $ref: '#/components/schemas/CreatePayrollRunRequest' }
       responses:
         '201':
-          description: Created (`status` DRAFT, `calc_version` 0). Replay of the same key returns the same 201 with `Idempotent-Replayed`.
+          description: "Created (`status` DRAFT, `calc_version` 0). A replay of the same key returns the stored status and body with `Idempotent-Replayed: true`; `Location` is sent on the first response only."
           headers:
             Location: { schema: { type: string } }
           content:
@@ -1749,7 +1749,7 @@ paths:
             schema: { $ref: '#/components/schemas/Empty' }
       responses:
         '202':
-          description: Accepted (`status` CALCULATING, `calc_version` + 1); processing continues in the background. A replay does not bump `calc_version` again.
+          description: Accepted (`status` CALCULATING, `calc_version` + 1); processing continues in the background. A replay returns the stored status and body and does not bump `calc_version` again; `Location` is sent on the first response only.
           headers:
             Location: { schema: { type: string } }
           content:
