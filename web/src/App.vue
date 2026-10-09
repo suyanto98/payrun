@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './components/AppIcon.vue'
-import { canListEmployees, canReadPayroll, rolesText } from './access'
+import { canEditEmployees, canListEmployees, canReadPayroll, rolesText } from './access'
 import { useAuth } from './stores/auth'
 
 const auth = useAuth()
@@ -43,6 +43,15 @@ async function logout() {
           </RouterLink>
           <RouterLink v-if="canReadPayroll(auth.roles)" to="/payroll" class="nav-link" :class="{ active: route.path.startsWith('/payroll') }">
             <AppIcon name="bank" />Payroll
+          </RouterLink>
+          <RouterLink v-if="auth.employeeId || canEditEmployees(auth.roles)" to="/attendance" class="nav-link" :class="{ active: route.path === '/attendance' }">
+            <AppIcon name="clock" />Absensi
+          </RouterLink>
+          <RouterLink v-if="auth.employeeId" to="/leave" class="nav-link" :class="{ active: route.path === '/leave' }">
+            <AppIcon name="list" />Cuti
+          </RouterLink>
+          <RouterLink v-if="auth.employeeId" to="/overtime" class="nav-link" :class="{ active: route.path === '/overtime' }">
+            <AppIcon name="chart" />Lembur
           </RouterLink>
           <RouterLink v-if="auth.tenant" to="/approvals" class="nav-link" :class="{ active: route.path === '/approvals' }">
             <AppIcon name="check" />Approval

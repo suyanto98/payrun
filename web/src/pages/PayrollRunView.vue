@@ -146,6 +146,28 @@ async function loadAdmins() {
   }
 }
 
+// Y11: satu niat = satu key, retry (respons hilang) = replay 200 yang sama.
+let finalizeKey = newIdempotencyKey()
+async function finalize() {
+  if (!window.confirm('Finalisasi mengunci periode dan hasil payroll. Lanjutkan?')) return
+  busy.value = true
+  error.value = ''
+  try {
+    run.value = await api<PayrollRun>(`/payroll-runs/${id.value}/finalize`, { method: 'POST', idempotencyKey: finalizeKey })
+    finalizeKey = newIdempotencyKey()
+    notice.value = 'Payroll difinalisasi. Periode terkunci; koreksi berikutnya lewat adjustment.'
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'RUN_STALE') {
+      const n = (e.extra.employees_changed as unknown[] | undefined)?.length ?? 0
+      error.value = `Input berubah setelah approve (${n} karyawan). Tolak approval lalu hitung ulang.`
+    } else {
+      error.value = e instanceof ApiError ? e.message : 'Gagal memfinalisasi'
+    }
+  } finally {
+    busy.value = false
+  }
+}
+
 const cancelling = ref(false)
 const cancelReason = ref('')
 async function cancel() {
@@ -188,6 +210,9 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
         <button v-if="actions.submit" type="button" class="btn sm" :disabled="busy" data-test="submit" @click="submit">
           <AppIcon name="check" />Ajukan approval
         </button>
+        <button v-if="run.status === 'APPROVED'" type="button" class="btn sm" :disabled="busy" data-test="finalize" @click="finalize">
+          <AppIcon name="lock" />Finalisasi
+        </button>
         <button v-if="actions.cancel" type="button" class="btn sm ghost" :disabled="busy" @click="cancelling = !cancelling">Batalkan</button>
       </div>
     </div>
@@ -229,6 +254,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
       </div>
       <p v-if="run.status === 'FAILED'" class="alert error">{{ run.failure_reason }}</p>
       <p v-if="run.status === 'CANCELLED'" class="note"><AppIcon name="info" />Dibatalkan: {{ run.cancel_reason }}</p>
+      <p v-if="run.status === 'FINALIZED'" class="note"><AppIcon name="lock" />Final. Periode terkunci; hasil tidak bisa diubah dan bisa dihitung ulang dari snapshot.</p>
       <p v-if="run.status === 'PENDING_APPROVAL'" class="note"><AppIcon name="clock" />Menunggu keputusan approver. Hitung ulang dan pembatalan dikunci sampai diputuskan.</p>
 
       <div v-if="run.totals" class="row-wrap">

@@ -47,6 +47,7 @@ export interface PayrollRun {
   failure_reason: string | null; created_at: string; calc_started_at: string | null; calculated_at: string | null
   cancel_reason: string | null; approval_request_id: string | null
   submitted_by: string | null; submitted_at: string | null; approved_by: string | null; approved_at: string | null
+  finalized_by: string | null; finalized_at: string | null
 }
 
 export interface PayrollRunListItem { id: string; period: string; status: RunStatus; calc_version: number; total_net: string | null; created_at: string }
@@ -76,3 +77,24 @@ export interface ApprovalRequest {
 
 /** RUN_STALE.employees_changed */
 export interface StaleEmployee { employee_id: string; employee_no?: string; reason: 'INPUT_CHANGED' | 'NEWLY_ELIGIBLE' | 'NO_LONGER_ELIGIBLE' }
+
+// ---------------------------------------------------------------- absensi, cuti, lembur (S6)
+
+export interface AttendanceRecord {
+  id: string; employee_id: string; work_date: string; clock_in_at: string | null; clock_out_at: string | null
+  status: 'INCOMPLETE' | 'COMPLETE'; source: 'CLOCK' | 'IMPORT' | 'CORRECTION'; correction_reason: string | null; version: number
+}
+export interface AttendanceSummary { present_days: number; incomplete_days: number; working_days: number }
+
+export interface LeaveTypeRef { id: string; code: string; name: string; is_paid: boolean }
+export interface LeaveType extends LeaveTypeRef { annual_quota_days: string | null; max_negative_days: string; status: string }
+export interface LeaveBalance { leave_type: LeaveTypeRef; year: number; balance_days: string | null; pending_days: string }
+export interface SubjectApproval { id: string; approver: { id: string; display_name: string | null }; status: string }
+export interface LeaveRequest {
+  id: string; employee_id: string; leave_type: LeaveTypeRef; start_date: string; end_date: string; days: string
+  reason: string | null; status: string; approved_at: string | null; approval: SubjectApproval | null
+}
+export interface OvertimeRequest {
+  id: string; employee_id: string; work_date: string; start_at: string; end_at: string; hours: string; reason: string
+  status: string; approved_at: string | null; approval: SubjectApproval | null; warnings: string[]
+}

@@ -10,6 +10,9 @@ import PayrollRunsView from './pages/PayrollRunsView.vue'
 import PayrollRunView from './pages/PayrollRunView.vue'
 import ApprovalsView from './pages/ApprovalsView.vue'
 import VerifyEmailView from './pages/VerifyEmailView.vue'
+import AttendanceView from './pages/AttendanceView.vue'
+import LeaveView from './pages/LeaveView.vue'
+import OvertimeView from './pages/OvertimeView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -35,6 +38,9 @@ export const router = createRouter({
     { path: '/payroll', component: PayrollRunsView, meta: { tenant: true, title: 'Payroll' } },
     { path: '/payroll/:id', component: PayrollRunView, meta: { tenant: true, title: 'Payroll run' } },
     { path: '/approvals', component: ApprovalsView, meta: { tenant: true, title: 'Approval' } },
+    { path: '/attendance', component: AttendanceView, meta: { tenant: true, title: 'Absensi' } },
+    { path: '/leave', component: LeaveView, meta: { tenant: true, title: 'Cuti' } },
+    { path: '/overtime', component: OvertimeView, meta: { tenant: true, title: 'Lembur' } },
   ],
 })
 

@@ -76,3 +76,23 @@ export function formatPeriod(p: string): string {
   const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
   return `${months[m - 1]} ${y}`
 }
+
+export const requestStatusLabel: Record<string, string> = { PENDING: 'Menunggu', APPROVED: 'Disetujui', REJECTED: 'Ditolak', CANCELLED: 'Dibatalkan' }
+export const requestStatusPill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED: 'bad', CANCELLED: '' }
+
+/** Jam lokal "HH:MM" dari ISO; "—" untuk null. */
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** "2026-10-12" + "18:30" → RFC 3339 dengan offset zona browser (server memvalidasi tanggal lokal tenant). */
+export function localDateTime(date: string, time: string): string {
+  const d = new Date(`${date}T${time}:00`)
+  const off = -d.getTimezoneOffset()
+  const sign = off >= 0 ? '+' : '-'
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0')
+  const mm = String(Math.abs(off) % 60).padStart(2, '0')
+  return `${date}T${time}:00${sign}${hh}:${mm}`
+}

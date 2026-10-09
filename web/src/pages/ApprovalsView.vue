@@ -3,10 +3,15 @@ import { onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import { staleReasonLabel } from '../access'
+import { useAuth } from '../stores/auth'
 import type { ApprovalRequest, Page, StaleEmployee } from '../types'
 
 // R1 inbox (approval yang di-snapshot untuk saya), R2 approve, R3 reject (catatan wajib). PAYROLL_RUN yang
 // inputnya berubah sejak kalkulasi → 409 RUN_STALE: daftar karyawan + alasan ditampilkan.
+const auth = useAuth()
+const isHR = auth.roles.includes('HR_ADMIN')
+// HR: semua approval cuti/lembur untuk override (ter-audit, file 17 §3.3).
+const scopeAll = ref(false)
 const status = ref('PENDING')
 const items = ref<ApprovalRequest[]>([])
 const page = ref<Page>({ next_cursor: null, has_more: false })
@@ -22,6 +27,7 @@ async function load(append = false) {
   loading.value = true
   error.value = ''
   const params = new URLSearchParams({ status: status.value, limit: '20' })
+  if (scopeAll.value) params.set('scope', 'all')
   if (append && page.value.next_cursor) params.set('cursor', page.value.next_cursor)
   try {
     const res = await api<{ data: ApprovalRequest[]; page: Page }>('/approvals/inbox?' + params)
@@ -59,7 +65,7 @@ async function decide(a: ApprovalRequest, approve: boolean) {
   }
 }
 
-watch(status, () => load())
+watch([status, scopeAll], () => load())
 onMounted(() => load())
 const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED: 'bad', CANCELLED: '' }
 </script>
@@ -71,6 +77,7 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
         <h1>Approval</h1>
         <p class="sub">Permintaan yang menunggu keputusan kamu.</p>
       </div>
+      <label v-if="isHR" class="muted"><input v-model="scopeAll" type="checkbox" /> Semua (override HR)</label>
       <select v-model="status" class="select sm" aria-label="Filter status">
         <option value="PENDING">Menunggu</option>
         <option value="APPROVED">Disetujui</option>
@@ -87,7 +94,7 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
         <div>
           <strong>{{ a.subject.summary }}</strong>
           <div class="muted">
-            Diajukan {{ a.requester.display_name ?? 'pengguna lain' }}
+            Diajukan {{ a.requester.display_name ?? 'pengguna lain' }} · approver {{ a.approver.display_name ?? '—' }}
             <template v-if="a.self_approved"> · disetujui sendiri: {{ a.self_approval_reason }}</template>
           </div>
         </div>
