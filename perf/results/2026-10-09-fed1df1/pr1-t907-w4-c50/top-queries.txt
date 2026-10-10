@@ -1,0 +1,15 @@
+3061|33|92.77|-- name: LockRun :one SELECT tenant_id, id, period_id, status, calc_version, chunks_total, chunks_done, eligible_count FROM payroll_runs WHERE id = $1 FOR UPDAT
+481|30|16.03|-- name: InsertLinesBatch :exec INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage, amount, basis,
+220|30|7.33|-- name: InsertItemsBatch :exec INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net, error_codes, warnin
+109|30|3.64|-- name: InsertSnapshotsBatch :exec INSERT INTO payroll_item_snapshots (tenant_id, item_id, run_id, calc_version, snapshot_version, input, ruleset_code, ruleset
+109|3|36.17|SELECT r.item_ok_count + r.item_error_count + r.item_excluded_count, r.eligible_count, r.total_net = (SELECT coalesce(sum(net), $1) FROM payroll_items i WHERE i
+73|30|2.45|-- name: InputEmployees :many SELECT e.id, e.employee_no, e.full_name, e.ptkp_status, coalesce((SELECT oa.department_id FROM org_assignments oa WHERE oa.tenant_
+45|30|1.51|-- name: InputSalary :many SELECT employee_id, base_salary, lower(valid_during)::date AS from_date, upper_inf(valid_during)::bool AS open_ended, coalesce(upper(
+41|1476|0.03|SELECT coalesce(sum(amount) FILTER (WHERE category = $19), $20), coalesce(sum(amount) FILTER (WHERE category = $21), $22) FROM payrun.payroll_lines WHERE tenant
+28|97|0.28|-- name: ClaimJobs :many UPDATE jobs SET status = 'running', locked_by = $1, locked_until = now() + make_interval(secs => $2::float8), attempts = attempts + 1 W
+26|1|26.15|SELECT count(*) FROM attendance_records
+18|1|17.69|-- name: RecordLoginSuccess :exec UPDATE users SET last_login_at = $1, failed_login_count = 0, locked_until = NULL WHERE id = $2
+17|1|16.88|-- name: AuthLookupUser SELECT id, password_hash, status, failed_login_count, locked_until FROM auth_lookup_user($1)
+13|30|0.45|-- name: InputSpans :many SELECT employee_id, lower(span)::date AS from_date, upper_inf(span)::bool AS open_ended, coalesce(upper(span), lower(span))::date AS t
+13|1|13.03|SELECT count(*) FROM employees
+11|3|3.77|-- name: EligibleEmployees :many SELECT DISTINCT e.id FROM employees e JOIN employment_spans s ON s.tenant_id = e.tenant_id AND s.employee_id = e.id WHERE s.spa

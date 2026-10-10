@@ -1,0 +1,60 @@
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.999' rate=100.00%
+
+    cross_tenant_rows
+    ✓ 'count==0' count=0
+
+    http_req_duration{name:attendance_day}
+    ✓ 'p(95)<300' p(95)=13.84ms
+
+    http_req_duration{name:employees_filter}
+    ✓ 'p(95)<300' p(95)=13.42ms
+
+    http_req_duration{name:employees_page}
+    ✓ 'p(95)<300' p(95)=10.54ms
+
+    http_req_duration{name:employees_prefix}
+    ✓ 'p(95)<300' p(95)=19.94ms
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 74164   227.480893/s
+    checks_succeeded...: 100.00% 74164 out of 74164
+    checks_failed......: 0.00%   0 out of 74164
+
+    ✓ login 200
+    ✓ employees_page 200
+    ✓ employees_filter 200
+    ✓ employees_prefix 200
+    ✓ attendance_day 200
+
+    CUSTOM
+    cross_tenant_rows..............: 0      0/s
+
+    HTTP
+    http_req_duration..............: avg=9.62ms  min=1.04ms  med=7.09ms  max=694.05ms p(90)=13.04ms p(95)=16.25ms
+      { expected_response:true }...: avg=9.62ms  min=1.04ms  med=7.09ms  max=694.05ms p(90)=13.04ms p(95)=16.25ms
+      { name:attendance_day }......: avg=6.99ms  min=1.04ms  med=4.52ms  max=101.14ms p(90)=12.63ms p(95)=13.84ms
+      { name:employees_filter }....: avg=8.91ms  min=3.16ms  med=8.59ms  max=79.56ms  p(90)=12.07ms p(95)=13.42ms
+      { name:employees_page }......: avg=7.6ms   min=2.95ms  med=6.98ms  max=77.19ms  p(90)=9.21ms  p(95)=10.54ms
+      { name:employees_prefix }....: avg=10.42ms min=2.64ms  med=7ms     max=114.68ms p(90)=18ms    p(95)=19.94ms
+    http_req_failed................: 0.00%  0 out of 74164
+    http_reqs......................: 74164  227.480893/s
+
+    EXECUTION
+    iteration_duration.............: avg=61.14ms min=13.19ms med=66.33ms max=327.61ms p(90)=87.33ms p(95)=95.03ms
+    iterations.....................: 10800  33.126499/s
+    vus............................: 3      min=0          max=9  
+    vus_max........................: 300    min=300        max=300
+
+    NETWORK
+    data_received..................: 1.3 GB 4.0 MB/s
+    data_sent......................: 42 MB  128 kB/s
+
+
+

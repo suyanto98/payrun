@@ -1,0 +1,15 @@
+66774|603|110.74|-- name: LockRun :one SELECT tenant_id, id, period_id, status, calc_version, chunks_total, chunks_done, eligible_count FROM payroll_runs WHERE id = $1 FOR UPDAT
+9537|600|15.89|-- name: InsertLinesBatch :exec INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage, amount, basis,
+3822|600|6.37|-- name: InsertItemsBatch :exec INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net, error_codes, warnin
+1891|600|3.15|-- name: InsertSnapshotsBatch :exec INSERT INTO payroll_item_snapshots (tenant_id, item_id, run_id, calc_version, snapshot_version, input, ruleset_code, ruleset
+1063|600|1.77|-- name: DeleteChunkItems :exec DELETE FROM payroll_items WHERE run_id = $1 AND calc_version = $2 AND employee_id = ANY($3::uuid[])
+808|30000|0.03|SELECT coalesce(sum(amount) FILTER (WHERE category = $19), $20), coalesce(sum(amount) FILTER (WHERE category = $21), $22) FROM payrun.payroll_lines WHERE tenant
+679|600|1.13|-- name: InputEmployees :many SELECT e.id, e.employee_no, e.full_name, e.ptkp_status, coalesce((SELECT oa.department_id FROM org_assignments oa WHERE oa.tenant_
+620|743|0.83|-- name: ClaimJobs :many UPDATE jobs SET status = 'running', locked_by = $1, locked_until = now() + make_interval(secs => $2::float8), attempts = attempts + 1 W
+487|600|0.81|-- name: InputSalary :many SELECT employee_id, base_salary, lower(valid_during)::date AS from_date, upper_inf(valid_during)::bool AS open_ended, coalesce(upper(
+487|600|0.81|-- name: InputSpans :many SELECT employee_id, lower(span)::date AS from_date, upper_inf(span)::bool AS open_ended, coalesce(upper(span), lower(span))::date AS t
+164|603|0.27|-- name: CompleteJob :execrows UPDATE jobs SET status = $3, completed_at = now(), locked_until = $4 WHERE id = $1 AND locked_by = $2 AND status = $5
+149|600|0.25|-- name: IncrementChunksDone :one UPDATE payroll_runs SET chunks_done = chunks_done + $2 WHERE id = $1 RETURNING chunks_done, chunks_total
+138|603|0.23|-- name: EnqueueJob :execrows INSERT INTO jobs (id, kind, payload, tenant_id, max_attempts, run_at, dedupe_key, correlation_id, trace_parent) VALUES ($1, $2, $3
+114|3|38.00|-- name: EligibleEmployees :many SELECT DISTINCT e.id FROM employees e JOIN employment_spans s ON s.tenant_id = e.tenant_id AND s.employee_id = e.id WHERE s.spa
+110|3|36.66|SELECT r.item_ok_count + r.item_error_count + r.item_excluded_count, r.eligible_count, r.total_net = (SELECT coalesce(sum(net), $1) FROM payroll_items i WHERE i

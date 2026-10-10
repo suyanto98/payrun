@@ -1,0 +1,61 @@
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.999' rate=100.00%
+
+    cross_tenant_rows
+    ✓ 'count==0' count=0
+
+    http_req_duration{name:attendance_day}
+    ✗ 'p(95)<300' p(95)=9.72s
+
+    http_req_duration{name:employees_filter}
+    ✗ 'p(95)<300' p(95)=10.46s
+
+    http_req_duration{name:employees_page}
+    ✗ 'p(95)<300' p(95)=11.86s
+
+    http_req_duration{name:employees_prefix}
+    ✗ 'p(95)<300' p(95)=9.72s
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 24731   37.668585/s
+    checks_succeeded...: 100.00% 24731 out of 24731
+    checks_failed......: 0.00%   0 out of 24731
+
+    ✓ login 200
+    ✓ employees_page 200
+    ✓ employees_filter 200
+    ✓ employees_prefix 200
+    ✓ attendance_day 200
+
+    CUSTOM
+    cross_tenant_rows..............: 0      0/s
+
+    HTTP
+    http_req_duration..............: avg=7.5s   min=171.96ms med=8.2s   max=13.98s p(90)=10.68s p(95)=11.42s
+      { expected_response:true }...: avg=7.5s   min=171.96ms med=8.2s   max=13.98s p(90)=10.68s p(95)=11.42s
+      { name:attendance_day }......: avg=6.22s  min=1.2s     med=6.46s  max=11.27s p(90)=9.51s  p(95)=9.72s 
+      { name:employees_filter }....: avg=7.65s  min=1.21s    med=8.55s  max=12.48s p(90)=9.93s  p(95)=10.46s
+      { name:employees_page }......: avg=8.27s  min=171.96ms med=9.02s  max=13.98s p(90)=11.36s p(95)=11.86s
+      { name:employees_prefix }....: avg=6.66s  min=1.23s    med=6.89s  max=10.3s  p(90)=9.55s  p(95)=9.72s 
+    http_req_failed................: 0.00%  0 out of 24731
+    http_reqs......................: 24731  37.668585/s
+
+    EXECUTION
+    iteration_duration.............: avg=46.71s min=17.42s   med=53.85s max=1m17s  p(90)=1m6s   p(95)=1m8s  
+    iterations.....................: 3887   5.920415/s
+    vus............................: 123    min=0          max=300
+    vus_max........................: 300    min=269        max=300
+
+    NETWORK
+    data_received..................: 385 MB 586 kB/s
+    data_sent......................: 14 MB  21 kB/s
+
+
+
+time="2026-10-10T00:11:08Z" level=error msg="thresholds on metrics 'http_req_duration{name:attendance_day}, http_req_duration{name:employees_filter}, http_req_duration{name:employees_page}, http_req_duration{name:employees_prefix}' have been crossed"

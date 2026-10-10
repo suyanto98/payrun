@@ -1,0 +1,218 @@
+{
+ "root_group": {
+  "name": "",
+  "path": "",
+  "id": "d41d8cd98f00b204e9800998ecf8427e",
+  "groups": {
+   "setup": {
+    "groups": {},
+    "checks": {
+     "login 200": {
+      "passes": 300,
+      "fails": 0,
+      "name": "login 200",
+      "path": "::setup::login 200",
+      "id": "647055af8ffe21e58084ae4b140cdda0"
+     }
+    },
+    "name": "setup",
+    "path": "::setup",
+    "id": "5c0f8025f7e0b6654089e5b00e950f1a"
+   }
+  },
+  "checks": {
+   "employees_page 200": {
+    "passes": 147112,
+    "fails": 0,
+    "name": "employees_page 200",
+    "path": "::employees_page 200",
+    "id": "8726bb77d3c875f819b93ca80be28431"
+   },
+   "employees_filter 200": {
+    "fails": 0,
+    "name": "employees_filter 200",
+    "path": "::employees_filter 200",
+    "id": "a4bff62432dbe25844a820724e4b2f06",
+    "passes": 45982
+   },
+   "employees_prefix 200": {
+    "name": "employees_prefix 200",
+    "path": "::employees_prefix 200",
+    "id": "19e4c1ddf70891a7b51468ec273d9bf4",
+    "passes": 45982,
+    "fails": 0
+   },
+   "attendance_day 200": {
+    "name": "attendance_day 200",
+    "path": "::attendance_day 200",
+    "id": "a5b0aa954caf3a9847294f4ea41fd490",
+    "passes": 45982,
+    "fails": 0
+   }
+  }
+ },
+ "metrics": {
+  "http_req_duration": {
+   "avg": 631.2472099746857,
+   "min": 15.025592,
+   "med": 612.929093,
+   "max": 1189.495108,
+   "p(90)": 759.3783374000001,
+   "p(95)": 813.6021206499996
+  },
+  "vus": {
+   "min": 0,
+   "max": 300,
+   "value": 76
+  },
+  "http_req_receiving": {
+   "med": 0.177256,
+   "max": 101.828519,
+   "p(90)": 1.6313359000000005,
+   "p(95)": 3.113777999999995,
+   "avg": 0.6524301691033809,
+   "min": 0.040504
+  },
+  "iterations": {
+   "count": 45982,
+   "rate": 73.07666205256936
+  },
+  "vus_max": {
+   "value": 300,
+   "min": 287,
+   "max": 300
+  },
+  "http_req_failed": {
+   "passes": 0,
+   "fails": 285358,
+   "value": 0
+  },
+  "iteration_duration": {
+   "med": 4848.1534785,
+   "max": 6172.649145,
+   "p(90)": 5229.8848921,
+   "p(95)": 5299.68976645,
+   "avg": 3925.803885244044,
+   "min": 1820.711937
+  },
+  "http_req_duration{name:employees_prefix}": {
+   "avg": 654.2830863210752,
+   "min": 80.02154,
+   "med": 644.760989,
+   "max": 1189.495108,
+   "p(90)": 785.3193311,
+   "p(95)": 844.1009058999998,
+   "thresholds": {
+    "p(95)<300": true
+   }
+  },
+  "http_req_waiting": {
+   "p(95)": 812.7968126000001,
+   "avg": 630.5240973469821,
+   "min": 14.77435,
+   "med": 612.185022,
+   "max": 1189.344851,
+   "p(90)": 758.5191559000001
+  },
+  "checks": {
+   "passes": 285358,
+   "fails": 0,
+   "thresholds": {
+    "rate>0.999": false
+   },
+   "value": 1
+  },
+  "data_sent": {
+   "rate": 254729.8107573865,
+   "count": 160283541
+  },
+  "data_received": {
+   "count": 4555275208,
+   "rate": 7239448.195630108
+  },
+  "http_req_tls_handshaking": {
+   "med": 0,
+   "max": 0,
+   "p(90)": 0,
+   "p(95)": 0,
+   "avg": 0,
+   "min": 0
+  },
+  "http_req_duration{name:employees_page}": {
+   "avg": 620.1280041208912,
+   "min": 104.828284,
+   "med": 597.248379,
+   "max": 1035.920111,
+   "p(90)": 745.4982458,
+   "p(95)": 800.3384797999988,
+   "thresholds": {
+    "p(95)<300": true
+   }
+  },
+  "http_req_duration{expected_response:true}": {
+   "avg": 631.2472099746857,
+   "min": 15.025592,
+   "med": 612.929093,
+   "max": 1189.495108,
+   "p(90)": 759.3783374000001,
+   "p(95)": 813.6021206499996
+  },
+  "http_req_sending": {
+   "p(90)": 0.06284930000000002,
+   "p(95)": 0.08120914999999997,
+   "avg": 0.07068245858184968,
+   "min": 0.009508,
+   "med": 0.035606,
+   "max": 36.083975
+  },
+  "http_req_connecting": {
+   "min": 0,
+   "med": 0,
+   "max": 87.73537,
+   "p(90)": 0,
+   "p(95)": 0,
+   "avg": 0.021584144989802295
+  },
+  "http_req_duration{name:employees_filter}": {
+   "max": 1054.628129,
+   "p(90)": 755.7553399000001,
+   "p(95)": 816.22088285,
+   "avg": 638.6973859508057,
+   "min": 189.705661,
+   "med": 624.548636,
+   "thresholds": {
+    "p(95)<300": true
+   }
+  },
+  "http_req_duration{name:attendance_day}": {
+   "max": 1067.545263,
+   "p(90)": 767.2881351,
+   "p(95)": 822.1297926499998,
+   "avg": 637.9445964945868,
+   "min": 15.025592,
+   "med": 631.402012,
+   "thresholds": {
+    "p(95)<300": true
+   }
+  },
+  "http_reqs": {
+   "count": 285358,
+   "rate": 453.50376516891583
+  },
+  "cross_tenant_rows": {
+   "count": 0,
+   "rate": 0,
+   "thresholds": {
+    "count==0": false
+   }
+  },
+  "http_req_blocked": {
+   "p(95)": 0.016944149999999967,
+   "avg": 0.04234162174531644,
+   "min": 0.002629,
+   "med": 0.010824,
+   "max": 272.545759,
+   "p(90)": 0.014604
+  }
+ }
+}

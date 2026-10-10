@@ -1,0 +1,61 @@
+
+
+  █ THRESHOLDS 
+
+    checks
+    ✓ 'rate>0.999' rate=100.00%
+
+    cross_tenant_rows
+    ✓ 'count==0' count=0
+
+    http_req_duration{name:attendance_day}
+    ✗ 'p(95)<300' p(95)=820.83ms
+
+    http_req_duration{name:employees_filter}
+    ✗ 'p(95)<300' p(95)=844.05ms
+
+    http_req_duration{name:employees_page}
+    ✗ 'p(95)<300' p(95)=842.01ms
+
+    http_req_duration{name:employees_prefix}
+    ✗ 'p(95)<300' p(95)=846.84ms
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 272954  432.788421/s
+    checks_succeeded...: 100.00% 272954 out of 272954
+    checks_failed......: 0.00%   0 out of 272954
+
+    ✓ login 200
+    ✓ employees_page 200
+    ✓ employees_filter 200
+    ✓ employees_prefix 200
+    ✓ attendance_day 200
+
+    CUSTOM
+    cross_tenant_rows..............: 0      0/s
+
+    HTTP
+    http_req_duration..............: avg=660.12ms min=14.53ms  med=640.45ms max=1.14s p(90)=783.86ms p(95)=839.99ms
+      { expected_response:true }...: avg=660.12ms min=14.53ms  med=640.45ms max=1.14s p(90)=783.86ms p(95)=839.99ms
+      { name:attendance_day }......: avg=647.88ms min=14.53ms  med=630.97ms max=1.08s p(90)=760.92ms p(95)=820.83ms
+      { name:employees_filter }....: avg=662.35ms min=288.77ms med=640.36ms max=1.14s p(90)=789.78ms p(95)=844.05ms
+      { name:employees_page }......: avg=661.62ms min=155.04ms med=641.83ms max=1.13s p(90)=785.92ms p(95)=842.01ms
+      { name:employees_prefix }....: avg=667.09ms min=233.93ms med=646.76ms max=1.13s p(90)=793.1ms  p(95)=846.84ms
+    http_req_failed................: 0.00%  0 out of 272954
+    http_reqs......................: 272954 432.788421/s
+
+    EXECUTION
+    iteration_duration.............: avg=4.08s    min=1.83s    med=4.97s    max=7.11s p(90)=5.57s    p(95)=5.65s   
+    iterations.....................: 44136  69.980838/s
+    vus............................: 106    min=0           max=300
+    vus_max........................: 300    min=269         max=300
+
+    NETWORK
+    data_received..................: 4.3 GB 6.9 MB/s
+    data_sent......................: 153 MB 243 kB/s
+
+
+
+time="2026-10-10T00:26:52Z" level=error msg="thresholds on metrics 'http_req_duration{name:attendance_day}, http_req_duration{name:employees_filter}, http_req_duration{name:employees_page}, http_req_duration{name:employees_prefix}' have been crossed"

@@ -1,0 +1,15 @@
+82944|1203|68.95|-- name: LockRun :one SELECT tenant_id, id, period_id, status, calc_version, chunks_total, chunks_done, eligible_count FROM payroll_runs WHERE id = $1 FOR UPDAT
+7738|752|10.29|-- name: InsertLinesBatch :exec INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage, amount, basis,
+4774|448|10.66|-- name: InsertLinesBatch :exec INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage, amount, basis,
+3260|770|4.23|-- name: InsertItemsBatch :exec INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net, error_codes, warnin
+1853|430|4.31|-- name: InsertItemsBatch :exec INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net, error_codes, warnin
+1749|789|2.22|-- name: InsertSnapshotsBatch :exec INSERT INTO payroll_item_snapshots (tenant_id, item_id, run_id, calc_version, snapshot_version, input, ruleset_code, ruleset
+1507|1403|1.07|-- name: ClaimJobs :many UPDATE jobs SET status = 'running', locked_by = $1, locked_until = now() + make_interval(secs => $2::float8), attempts = attempts + 1 W
+1148|1200|0.96|-- name: DeleteChunkItems :exec DELETE FROM payroll_items WHERE run_id = $1 AND calc_version = $2 AND employee_id = ANY($3::uuid[])
+908|411|2.21|-- name: InsertSnapshotsBatch :exec INSERT INTO payroll_item_snapshots (tenant_id, item_id, run_id, calc_version, snapshot_version, input, ruleset_code, ruleset
+819|30000|0.03|SELECT coalesce(sum(amount) FILTER (WHERE category = $19), $20), coalesce(sum(amount) FILTER (WHERE category = $21), $22) FROM payrun.payroll_lines WHERE tenant
+737|1200|0.61|-- name: InputEmployees :many SELECT e.id, e.employee_no, e.full_name, e.ptkp_status, coalesce((SELECT oa.department_id FROM org_assignments oa WHERE oa.tenant_
+496|1200|0.41|-- name: InputSpans :many SELECT employee_id, lower(span)::date AS from_date, upper_inf(span)::bool AS open_ended, coalesce(upper(span), lower(span))::date AS t
+494|1200|0.41|-- name: InputSalary :many SELECT employee_id, base_salary, lower(valid_during)::date AS from_date, upper_inf(valid_during)::bool AS open_ended, coalesce(upper(
+294|1200|0.25|-- name: IncrementChunksDone :one UPDATE payroll_runs SET chunks_done = chunks_done + $2 WHERE id = $1 RETURNING chunks_done, chunks_total
+294|1203|0.24|-- name: CompleteJob :execrows UPDATE jobs SET status = $3, completed_at = now(), locked_until = $4 WHERE id = $1 AND locked_by = $2 AND status = $5

@@ -1,0 +1,15 @@
+6493873|184382|35.22|-- name: ListEmployeesByNo :many SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date, -- LEFT JOIN LATERAL: sqlc ti
+969437|44136|21.96|-- name: ListEmployeesByName :many SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date, e.sort_key::text AS sort_ke
+704483|44136|15.96|-- name: ListRecords :many SELECT tenant_id, id, employee_id, work_date, clock_in_at, clock_out_at, status, source, correction_reason, version FROM attendance_r
+14560|44136|0.33|-- name: CalendarSettings :one SELECT timezone, work_days, coalesce(overtime_max_hours_per_day::text, $2)::text AS overtime_max FROM tenant_settings WHERE tenan
+11608|272954|0.04|SELECT set_config($2, $1, $3), set_config($4, $5, $6)
+7792|272954|0.03|begin isolation level read committed
+3413|3749|0.91|-- name: ClaimJobs :many UPDATE jobs SET status = 'running', locked_by = $1, locked_until = now() + make_interval(secs => $2::float8), attempts = attempts + 1 W
+934|272954|0.00|commit
+723|42|17.21|-- name: JobStats :many SELECT kind, status, count(*)::bigint AS n, coalesce(extract($1 FROM now() - min(run_at) FILTER (WHERE status = $2 AND run_at <= now()))
+493|42|11.75|-- name: EnqueueScheduledJob :execrows INSERT INTO jobs (id, kind, payload, max_attempts, run_at, dedupe_key) SELECT $1, $2, $5::jsonb, $3, now(), $4::text WHER
+191|300|0.64|-- name: RecordLoginSuccess :exec UPDATE users SET last_login_at = $1, failed_login_count = $3, locked_until = $4 WHERE id = $2
+189|300|0.63|-- name: AuthLookupUser SELECT id, password_hash, status, failed_login_count, locked_until FROM auth_lookup_user($1)
+171|300|0.57|-- name: CreateRefreshToken :exec INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, parent_id, issued_at, expires_at, family_expires_at, user_agen
+89|300|0.30|-- name: InsertAudit :exec INSERT INTO audit_log (id, tenant_id, actor_type, actor_id, action, target_type, target_id, request_id, ip, user_agent, reason) VALUE
+79|300|0.26|-- name: ListActiveMemberships :many SELECT m.tenant_id, t.name AS tenant_name, t.status AS tenant_status, m.roles FROM memberships m JOIN tenants t ON t.id = m
