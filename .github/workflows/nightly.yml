@@ -1,0 +1,72 @@
+# Nightly (docs/design/28-cicd.md §7):
+#   demo-verify    setiap malam: Demo A/B/C headless (make demo-verify) + test build demo.
+#   restore-drill  mingguan (Senin): backup terbaru dari offsite → dekripsi (key drill) → Postgres sekali
+#                  pakai → migrate → tabel tenant > 0 baris + verify-run run FINALIZED. Gagal = RPO yang
+#                  diklaim palsu. Aktif kalau BACKUP_REMOTE di-set.
+name: nightly
+
+on:
+  schedule:
+    - cron: "15 19 * * *" # 02:15 WIB
+    - cron: "15 20 * * 1" # Senin 03:15 WIB
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "demo-verify | restore-drill"
+        required: true
+        default: demo-verify
+        type: choice
+        options: [demo-verify, restore-drill]
+
+permissions:
+  contents: read
+
+jobs:
+  demo-verify:
+    if: github.event_name == 'schedule' && github.event.schedule == '15 19 * * *' || inputs.job == 'demo-verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+      - name: Demo A, B, C (testcontainers)
+        run: make demo-verify
+      - name: Build demo (guard + fault sekali pakai)
+        run: go test -count=1 -tags demo -run 'TestDemo_' ./internal/app/
+
+  restore-drill:
+    if: (github.event_name == 'schedule' && github.event.schedule == '15 20 * * 1' || inputs.job == 'restore-drill') && vars.BACKUP_REMOTE != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_REMOTE: ${{ vars.BACKUP_REMOTE }} # contoh offsite:payrun-backups/daily
+      # Kredensial READ-ONLY (berbeda dari kredensial write-only di VM).
+      RCLONE_CONFIG_OFFSITE_TYPE: s3
+      RCLONE_CONFIG_OFFSITE_PROVIDER: ${{ vars.BACKUP_S3_PROVIDER }}
+      RCLONE_CONFIG_OFFSITE_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+      RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${{ secrets.BACKUP_READ_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_READ_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build backup image (rclone, age, pg_restore 17)
+        run: docker build -q -f deploy/backup/Dockerfile -t payrun-backup:drill . >/dev/null
+      - name: Download latest backup + checksum
+        run: |
+          mkdir -p drill && chmod 777 drill
+          rc() { docker run --rm --entrypoint rclone -v "$PWD/drill:/drill" \
+            -e RCLONE_CONFIG_OFFSITE_TYPE -e RCLONE_CONFIG_OFFSITE_PROVIDER -e RCLONE_CONFIG_OFFSITE_ENDPOINT \
+            -e RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID -e RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY payrun-backup:drill "$@"; }
+          latest=$(rc lsf --files-only "$BACKUP_REMOTE" | grep '\.dump\.age$' | sort | tail -1)
+          [ -n "$latest" ] || { echo "no backup found in $BACKUP_REMOTE"; exit 1; }
+          rc copy "$BACKUP_REMOTE/$latest" /drill/ && rc copy "$BACKUP_REMOTE/$latest.sha256" /drill/
+          echo "BACKUP_FILE=drill/$latest" >> "$GITHUB_ENV"
+      - name: Restore + migrate + verify
+        env:
+          PR_RESTORE_DRILL_AGE_KEY: ${{ secrets.PR_RESTORE_DRILL_AGE_KEY }}
+          PR_BACKUP_IMAGE: payrun-backup:drill
+        run: |
+          umask 077 && printf '%s\n' "$PR_RESTORE_DRILL_AGE_KEY" > "$RUNNER_TEMP/drill.key" && chmod 644 "$RUNNER_TEMP/drill.key"
+          scripts/restore-drill.sh "$BACKUP_FILE" "$RUNNER_TEMP/drill.key" | tee drill.log
+          tail -1 drill.log >> "$GITHUB_STEP_SUMMARY"

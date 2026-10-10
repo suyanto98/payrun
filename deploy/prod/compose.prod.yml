@@ -1,0 +1,140 @@
+# Compose PayRun untuk VM demo publik, BERSAMA stack LedgerPay (Sprint 8). Dijalankan remote-deploy.sh:
+#   docker compose -p payrun-prod -f deploy/prod/compose.prod.yml ...
+# Tidak ada Caddy di sini: TLS + domain dilayani edge LedgerPay lewat network eksternal `edge`
+# (dibuat bootstrap.sh), dengan site payrun.caddy. Hanya payrun-api, payrun-web, dan payrun-storage
+# yang bergabung ke `edge`; Postgres dan worker hanya di network internal project ini.
+# Secret TIDAK ada di file ini: setiap service membaca env_file miliknya di $PR_ENV_DIR (init-env.sh, 0600).
+name: payrun-prod
+
+x-hardening: &hardening
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  restart: unless-stopped
+  logging: { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+
+networks:
+  default: {}
+  edge:
+    external: true
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    env_file: ${PR_ENV_DIR:?}/postgres.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payrun"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    deploy: { resources: { limits: { memory: 1g } } }
+
+  # Migrasi utama + migrasi demo (image build tag demo). DSN owner HANYA di sini.
+  migrate:
+    build: { context: ../.., dockerfile: deploy/Dockerfile, target: payrun, args: { VERSION: "${PR_VERSION:?}", BUILD_TAGS: "${PR_BUILD_TAGS-demo}" } }
+    image: ${PR_IMAGE_PREFIX:-}payrun-app:${PR_VERSION:?}
+    command: ["migrate", "up"]
+    env_file: ${PR_ENV_DIR:?}/migrate.env
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+    profiles: [migrate]
+
+  payrun-api:
+    image: ${PR_IMAGE_PREFIX:-}payrun-app:${PR_VERSION:?}
+    command: ["api"]
+    env_file: ${PR_ENV_DIR:?}/api.env
+    environment: { APP_VERSION: "${PR_VERSION:?}" }
+    networks: [default, edge]
+    depends_on: { postgres: { condition: service_healthy }, mailpit: { condition: service_started } }
+    <<: *hardening
+    deploy: { resources: { limits: { memory: 384m } } }
+
+  payrun-worker:
+    image: ${PR_IMAGE_PREFIX:-}payrun-app:${PR_VERSION:?}
+    command: ["worker"]
+    env_file: ${PR_ENV_DIR:?}/worker.env
+    environment: { APP_VERSION: "${PR_VERSION:?}" }
+    depends_on: { postgres: { condition: service_healthy } }
+    stop_grace_period: 30s
+    <<: *hardening
+    deploy: { resources: { limits: { memory: 384m } } }
+
+  payrun-web:
+    build: { context: ../.., dockerfile: deploy/prod/web.Dockerfile }
+    image: ${PR_IMAGE_PREFIX:-}payrun-web:${PR_VERSION:?}
+    networks: [edge]
+    tmpfs: [/tmp, /data, /config]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    <<: *hardening
+    deploy: { resources: { limits: { memory: 64m } } }
+
+  # Object storage payslip PDF (ADR-012). Bucket private; presigned GET lewat files.<domain> (edge).
+  payrun-storage:
+    image: chrislusf/seaweedfs:3.97
+    # -ip: alamat yang diiklankan master/filer = hostname, bukan IP salah satu dari DUA network container
+    # (IP network `edge` tidak terjangkau storage-init yang hanya di network internal → weed shell menggantung).
+    # Slot volume cukup untuk collection default + satu collection per bucket (5 slot habis → "Not enough
+    # data nodes found", PUT payslip 500); volume 128 MB supaya 20 slot tidak memesan 20 GB.
+    command: ["server", "-dir=/data", "-ip=payrun-storage", "-ip.bind=0.0.0.0", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json", "-master.volumeSizeLimitMB=128", "-volume.max=20"]
+    volumes:
+      - storagedata:/data
+      - ${PR_ENV_DIR:?}/s3.json:/etc/seaweedfs/s3.json:ro   # identitas payrun-app: Read/Write bucket saja (init-env.sh)
+    networks: [default, edge]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    deploy: { resources: { limits: { memory: 256m } } }
+
+  storage-init:
+    image: chrislusf/seaweedfs:3.97
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if echo "s3.bucket.list" | weed shell -master=payrun-storage:9333 | grep -q "payrun-private"; then
+          echo "bucket payrun-private already exists"
+        else
+          echo "s3.bucket.create -name payrun-private" | weed shell -master=payrun-storage:9333
+        fi
+    depends_on: { payrun-storage: { condition: service_healthy } }
+    restart: "no"
+    profiles: [migrate]
+
+  # Demo publik (Step 12 R2-8): email verifikasi/undangan ditangkap, tidak pernah keluar ke internet.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:${PR_MAILPIT_UI_PORT:-8026}:8025"]   # SSH tunnel
+    tmpfs: [/tmp]   # DB email di memori: email demo tidak perlu bertahan restart
+    <<: *hardening
+    deploy: { resources: { limits: { memory: 64m } } }
+
+  # Backup harian (cron host 02:00 UTC → run-backup.sh). Role payrun_backup (BYPASSRLS, baca saja),
+  # output terenkripsi age di host (bertahan dari `compose down -v`) + offsite kalau dikonfigurasi.
+  backup:
+    build: { context: ../.., dockerfile: deploy/backup/Dockerfile }
+    image: ${PR_IMAGE_PREFIX:-}payrun-backup:${PR_VERSION:?}
+    env_file: ${PR_ENV_DIR:?}/backup.env
+    volumes: ["${PR_BACKUP_HOST_DIR:-/srv/payrun/backups}:/backups"]
+    depends_on: { postgres: { condition: service_healthy } }
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: "no"
+    profiles: [backup]
+
+volumes:
+  pgdata:
+  storagedata:

@@ -2075,13 +2075,16 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/AdjustmentCreate' }
       responses:
         '201':
-          description: Created. Body model `Adjustment` (docs/design/16-api-endpoints.md §16).
+          description: >-
+            Created (`status` PENDING_APPLY). `origin_period` must be FINALIZED (400 otherwise); a FINALIZED
+            target period → 409 PERIOD_LOCKED; employee not employed in the target month → 422 EMPLOYEE_NOT_ACTIVE.
+            A target run already CALCULATED becomes stale (RUN_STALE at approve/finalize).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Adjustment' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2098,14 +2101,27 @@ paths:
       x-rate-tier: read
       x-priority: P1
       parameters:
+        - name: employee_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: target_period
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Period' }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [PENDING_APPLY, APPLIED, CANCELLED] }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `AdjustmentList` (docs/design/16-api-endpoints.md §16).
+          description: OK, newest first.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/AdjustmentList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -2125,13 +2141,15 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Pending' }
+            schema: { $ref: '#/components/schemas/AdjustmentCancel' }
       responses:
         '200':
-          description: OK. Body model `Adjustment` (docs/design/16-api-endpoints.md §16).
+          description: >-
+            OK (`status` CANCELLED). Only PENDING_APPLY (409 INVALID_STATE_TRANSITION otherwise); a target run
+            already CALCULATED becomes stale. Roles other than O/H/P → 404.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Adjustment' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2150,14 +2168,19 @@ paths:
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: year
+          in: query
+          required: false
+          schema: { type: string, pattern: '^[0-9]{4}$' }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `PayslipList` (docs/design/16-api-endpoints.md §16).
+          description: OK, newest period first. Only finalized runs have payslips; an account without an employee gets an empty list.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayslipSummaryList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -2175,10 +2198,10 @@ paths:
         - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
-          description: OK. Body model `Payslip` (docs/design/16-api-endpoints.md §16).
+          description: OK. Lines with explanations; bank account masked.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Payslip' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2190,18 +2213,27 @@ paths:
       summary: Payslips of all employees (non-owner access is audited)
       x-endpoint: S3
       x-feature: PF-15
-      x-roles: "O, P; H (audited)"
+      x-roles: "O, P, H (each request audited payroll.bulk_read)"
       x-rate-tier: read
       x-priority: P0
       parameters:
+        - name: run_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: employee_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: OK. Body model `PayslipList` (docs/design/16-api-endpoints.md §16).
+          description: OK, by employee number. Summary without lines; `pdf_status` per payslip (PF-22 AC4).
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/RunPayslipList' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -2212,17 +2244,17 @@ paths:
       summary: One payslip (non-owner access is audited)
       x-endpoint: S4
       x-feature: PF-15
-      x-roles: "O, P; H (audited)"
+      x-roles: "O, P, H (every access audited payslip.viewed_by_admin)"
       x-rate-tier: read
       x-priority: P0
       parameters:
         - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
-          description: OK. Body model `Payslip` (docs/design/16-api-endpoints.md §16).
+          description: OK. Lines with explanations; bank account masked.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/Payslip' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2241,13 +2273,16 @@ paths:
         - $ref: '#/components/parameters/ResourceId'
       responses:
         '200':
-          description: OK. Body model `PayslipDownload` (docs/design/16-api-endpoints.md §16).
+          description: >-
+            OK. Presigned GET valid 5 minutes, created after authorization and audit (non-owner access audited
+            payslip.downloaded). The URL is a bearer credential: do not log or share it.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Pending' }
+              schema: { $ref: '#/components/schemas/PayslipDownload' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '429': { $ref: '#/components/responses/RateLimited' }
   /audit-log:
     get:
@@ -3079,7 +3114,7 @@ components:
         page: { $ref: '#/components/schemas/Page' }
     PayrollLine:
       type: object
-      required: [sort_order, code, name, category, stage, amount, basis, explanation, taxable, rounding]
+      required: [sort_order, code, name, category, stage, amount, basis, explanation, taxable, rounding, adjustment_id]
       properties:
         sort_order: { type: integer, format: int32 }
         code: { type: string, examples: [BASE_SALARY] }
@@ -3094,6 +3129,10 @@ components:
         explanation: { type: string }
         taxable: { type: boolean }
         rounding: { type: string, enum: [HALF_UP, DOWN, UP] }
+        adjustment_id:
+          type: [string, 'null']
+          format: uuid
+          description: Set only on `ADJUSTMENT` lines (PF-19).
     PayrollIssue:
       type: object
       required: [kind, code, detail]
@@ -3358,6 +3397,126 @@ components:
         warnings:
           type: array
           items: { type: string, enum: [OVERTIME_OVER_LIMIT] }
+    PayslipSummary:
+      type: object
+      required: [id, period, net, finalized_at, pdf_status]
+      properties:
+        id: { type: string, format: uuid }
+        period: { $ref: '#/components/schemas/Period' }
+        net: { $ref: '#/components/schemas/Money' }
+        finalized_at: { type: string, format: date-time }
+        pdf_status: { type: string, enum: [PENDING, RENDERED, FAILED] }
+    PayslipSummaryList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/PayslipSummary' }
+        page: { $ref: '#/components/schemas/Page' }
+    RunPayslip:
+      type: object
+      required: [id, employee_id, employee_no, employee_name, period, net, pdf_status, rendered_at, attempts]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        employee_no: { type: string }
+        employee_name: { type: string }
+        period: { $ref: '#/components/schemas/Period' }
+        net: { $ref: '#/components/schemas/Money' }
+        pdf_status: { type: string, enum: [PENDING, RENDERED, FAILED] }
+        rendered_at: { type: [string, 'null'], format: date-time }
+        attempts: { type: integer, format: int32 }
+    RunPayslipList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/RunPayslip' }
+        page: { $ref: '#/components/schemas/Page' }
+    Payslip:
+      type: object
+      required: [id, run_id, employee_id, period, employee, bank_account_masked, lines, totals, ruleset, pdf_status, finalized_at]
+      properties:
+        id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        period: { $ref: '#/components/schemas/Period' }
+        employee:
+          type: object
+          required: [employee_no, full_name, position, department]
+          properties:
+            employee_no: { type: string }
+            full_name: { type: string }
+            position: { type: string, description: Empty when no placement overlaps the period. }
+            department: { type: string }
+        bank_account_masked: { type: [string, 'null'], examples: ['BCA ••••1234'] }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/PayrollLine' }
+        totals: { $ref: '#/components/schemas/PayrollRunTotals' }
+        ruleset: { $ref: '#/components/schemas/RulesetRef' }
+        pdf_status: { type: string, enum: [PENDING, RENDERED, FAILED] }
+        finalized_at: { type: string, format: date-time }
+    PayslipDownload:
+      type: object
+      required: [url, expires_at]
+      properties:
+        url: { type: string, format: uri }
+        expires_at: { type: string, format: date-time }
+    AdjustmentCreate:
+      type: object
+      additionalProperties: false
+      required: [employee_id, origin_period, target_period, component_code, amount, reason]
+      properties:
+        employee_id: { type: string, format: uuid }
+        origin_period: { $ref: '#/components/schemas/Period' }
+        target_period: { $ref: '#/components/schemas/Period' }
+        component_code: { type: string, enum: [OVERTIME_CORRECTION, DEDUCTION_CORRECTION, MANUAL] }
+        amount:
+          type: string
+          pattern: '^-?[0-9]{1,10}(\.[0-9]{1,2})?$'
+          description: Non-zero; positive adds to pay, negative deducts. Absolute value at most 1000000000.
+          examples: ['76300.58']
+        taxable: { type: boolean, default: true }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    AdjustmentCancel:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    Adjustment:
+      type: object
+      required: [id, employee_id, origin_period, target_period, component_code, amount, taxable, reason, status,
+                 applied_run_id, applied_at, cancelled_at, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        employee_id: { type: string, format: uuid }
+        origin_period: { $ref: '#/components/schemas/Period' }
+        target_period: { $ref: '#/components/schemas/Period' }
+        component_code: { type: string, enum: [OVERTIME_CORRECTION, DEDUCTION_CORRECTION, MANUAL] }
+        amount: { $ref: '#/components/schemas/Money' }
+        taxable: { type: boolean }
+        reason: { type: string }
+        status: { type: string, enum: [PENDING_APPLY, APPLIED, CANCELLED] }
+        applied_run_id: { type: [string, 'null'], format: uuid }
+        applied_at: { type: [string, 'null'], format: date-time }
+        cancelled_at: { type: [string, 'null'], format: date-time }
+        created_by: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+    AdjustmentList:
+      type: object
+      required: [data, page]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Adjustment' }
+        page: { $ref: '#/components/schemas/Page' }
     OvertimeRequestList:
       type: object
       required: [data, page]

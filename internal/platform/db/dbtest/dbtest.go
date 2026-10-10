@@ -255,3 +255,6 @@ func (d TestDB) Super(t testing.TB) *pgxpool.Pool { return d.As(t, superUser) }
 // SuperDSN: DSN superuser ke DB test. HANYA untuk test alat non-produksi (seed perf memakai
 // session_replication_role, yang butuh superuser).
 func (d TestDB) SuperDSN() string { return DSN(d.Name, superUser, superPass) }
+
+// OwnerDSN: DSN role payrun_owner (pemilik skema) untuk migrasi tambahan di test (contoh migrasi demo).
+func (d TestDB) OwnerDSN() string { return DSN(d.Name, ownerRole, rolePass) }

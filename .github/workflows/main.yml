@@ -1,0 +1,115 @@
+# CD (docs/design/28-cicd.md §4): merge ke main → verify → image → scan → deploy → smoke.
+# Deploy hanya aktif kalau repo variable DEPLOY_ENABLED = 'true' (VM bersama + secret sudah disiapkan),
+# sehingga repo tanpa VM tetap hijau. Semua action di-pin ke commit SHA (C-27).
+# VM bersama dengan LedgerPay: concurrency group sama ("deploy-vm-demo") + flock /srv/deploy.lock di VM.
+name: main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-vm-demo # antre, TIDAK dibatalkan: deploy setengah jalan lebih berbahaya dari deploy terlambat
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/pr.yml
+
+  images:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      prefix: ${{ steps.prefix.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: prefix
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/" >> "$GITHUB_OUTPUT"
+      - name: Login GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build + push app (demo), web, backup (tag = commit SHA, immutable)
+        run: scripts/build-images.sh "${{ steps.prefix.outputs.prefix }}" "$GITHUB_SHA" --push
+
+  scan:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Trivy (CRITICAL/HIGH yang sudah ada fix → tidak deploy)
+        env:
+          PREFIX: ${{ needs.images.outputs.prefix }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for name in app web backup; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD aquasec/trivy:0.65.0 image \
+              --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --no-progress "${PREFIX}payrun-$name:$GITHUB_SHA"
+          done
+
+  deploy:
+    needs: [images, scan]
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: demo
+      url: https://${{ vars.PUBLIC_DOMAIN }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      PR_IMAGE_PREFIX: ${{ needs.images.outputs.prefix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: SSH key + pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host *\n  StrictHostKeyChecking yes\n' > ~/.ssh/config
+      - name: Previous release (rollback target)
+        id: prev
+        run: echo "sha=$(ssh "deploy@$DEPLOY_HOST" 'basename "$(readlink -f /srv/payrun/current)"' || true)" >> "$GITHUB_OUTPUT"
+      - name: Deploy (pull → migrate → worker → api → web → site edge → smoke; auto-rollback di VM)
+        id: deploy
+        env:
+          PR_SKIP_ENV: "1" # secret sudah di VM (0600) sejak deploy pertama; tidak disimpan di GitHub
+          PR_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_REGISTRY_USER: ${{ github.actor }}
+          PR_DEPLOY_ACTOR: ci:${{ github.actor }}
+        run: deploy/prod/deploy.sh "$DEPLOY_HOST" "$GITHUB_SHA"
+      - name: Smoke dari internet (TLS asli, lewat edge bersama)
+        env:
+          DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
+          FILES: ${{ vars.FILES_DOMAIN }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors "https://$DOMAIN/" | grep -q '<div id="app"'
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://$DOMAIN/api/v1/me")
+          [ "$code" = 401 ] || { echo "API via edge answered $code, want 401"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://$FILES/payrun-private/")
+          [ "$code" = 404 ] || { echo "bucket listing via files domain answered $code, want 404"; exit 1; }
+      - name: Rollback (smoke dari internet gagal setelah deploy VM sukses)
+        if: failure() && steps.deploy.outcome == 'success' && steps.prev.outputs.sha != ''
+        env:
+          PREV: ${{ steps.prev.outputs.sha }}
+          PR_SKIP_ENV: "1"
+          PR_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_REGISTRY_USER: ${{ github.actor }}
+          PR_DEPLOY_ACTOR: ci-auto-rollback
+        run: |
+          PR_IMAGE_PREFIX=$(ssh "deploy@$DEPLOY_HOST" "cat /srv/payrun/releases/$PREV/.image-prefix" || true) \
+            deploy/prod/deploy.sh "$DEPLOY_HOST" "$PREV" --skip-migrate

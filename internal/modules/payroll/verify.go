@@ -16,6 +16,7 @@ import (
 	"payrun/internal/modules/payroll/engine"
 	"payrun/internal/modules/payroll/store"
 	"payrun/internal/platform/db"
+	"payrun/internal/platform/metrics"
 )
 
 // VerifyRun (PI-12, ADR-P07 "reproducibility test", perintah ops `payrun verify-run`): untuk setiap
@@ -78,6 +79,9 @@ func (s *Service) VerifyRun(ctx context.Context, tenantID, runID uuid.UUID) (Ver
 		}
 		return nil
 	})
+	if err == nil && len(rep.Mismatches) > 0 {
+		metrics.ReproducibilityFailures.WithLabelValues().Add(float64(len(rep.Mismatches)))
+	}
 	return rep, db.MapError(err)
 }
 

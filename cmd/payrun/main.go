@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 
 	"payrun/db/migrations"
+	migrationsdemo "payrun/db/migrations_demo"
 	"payrun/internal/app"
 	"payrun/internal/modules/iam"
 	"payrun/internal/modules/payroll"
@@ -34,17 +35,19 @@ import (
 	"payrun/internal/platform/clock"
 	"payrun/internal/platform/config"
 	"payrun/internal/platform/db"
+	"payrun/internal/platform/faults"
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/mail"
 	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/observability"
 	"payrun/internal/platform/ratelimit"
+	"payrun/internal/platform/storage"
 	"payrun/internal/platform/tracing"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: payrun <api|worker|migrate up|verify-run|healthcheck>")
+		fmt.Fprintln(os.Stderr, "usage: payrun <api|worker|migrate up|verify-run|seed|healthcheck>")
 		os.Exit(2)
 	}
 	var err error
@@ -53,6 +56,10 @@ func main() {
 		err = runAPI()
 	case "worker":
 		err = runWorker()
+	case "perf-recheck":
+		err = runPerfRecheck(os.Args[2:])
+	case "seed":
+		err = runSeed(os.Args[2:])
 	case "verify-run":
 		err = runVerify(os.Args[2:])
 	case "migrate":
@@ -124,7 +131,13 @@ func runAPI() error {
 		IAM: iam.Config{Argon2: auth.DefaultArgon2, RefreshTTL: cfg.RefreshTTL, RefreshFamilyTTL: cfg.RefreshFamilyTTL},
 		Mailer: mail.SMTP{Addr: cfg.SMTPAddr, From: cfg.MailFrom, Username: cfg.SMTPUsername,
 			Password: cfg.SMTPPassword, Timeout: cfg.MailTimeout},
-		Keyring: cfg.Keyring, BlindIndex: cfg.BlindIndex,
+		Keyring: cfg.Keyring, BlindIndex: cfg.BlindIndex, DemoMode: cfg.DemoMode, DemoToken: cfg.DemoToken,
+	}
+	if cfg.DemoMode && !faults.Enabled() {
+		logger.Warn("demo.mode_ignored", "reason", "DEMO_MODE=true but this is a release build (no demo tag)")
+	}
+	if deps.Storage, err = objectStorage(cfg, logger); err != nil {
+		return err
 	}
 	if err := deps.ValidateAPI(); err != nil {
 		return err
@@ -190,6 +203,9 @@ func runWorker() error {
 	logger.Info("db.role_check_passed", "role", rc.Role)
 
 	deps := app.Deps{Logger: logger, Pool: pool, Clock: clock.System{}, IDs: idgen.V7{}}
+	if deps.Storage, err = objectStorage(cfg, logger); err != nil {
+		return err
+	}
 	if err := deps.ValidateWorker(); err != nil {
 		return err
 	}
@@ -202,7 +218,8 @@ func runWorker() error {
 	}
 	// ID unik per START (hostname:pid:uuid): worker yang restart tidak pernah dianggap pemilik lease lamanya.
 	id := fmt.Sprintf("%s:%d:%s", workerID, os.Getpid(), uuid.NewString()[:8])
-	w := app.NewWorker(deps, app.WorkerConfig{ID: id, ChunkSize: cfg.PayrollChunkSize, DisablePayrollCalc: !cfg.PayrollCalcEnabled})
+	w := app.NewWorker(deps, app.WorkerConfig{ID: id, ChunkSize: cfg.PayrollChunkSize, Lease: cfg.JobLeaseTTL, PayrollConcurrency: cfg.PayrollWorkerConcurrency, DisablePayrollCalc: !cfg.PayrollCalcEnabled,
+		DisablePayslipRender: !cfg.PayslipRenderEnabled})
 	ops := &http.Server{Addr: cfg.OpsAddr, Handler: withPprof(cfg.PprofEnabled, app.WorkerOpsRouter(w, cfg.WorkerPollInterval)), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := serve(ops); err != nil {
@@ -286,6 +303,9 @@ func runMigrate(args []string) error {
 	if err := migrations.MigrateUp(ctx, cfg.MigrateDatabaseURL); err != nil {
 		return err
 	}
+	if err := migrationsdemo.MigrateUp(ctx, cfg.MigrateDatabaseURL); err != nil { // no-op di build release
+		return err
+	}
 	fmt.Println("migrations applied")
 	return nil
 }
@@ -326,4 +346,87 @@ func withPprof(enabled bool, h http.Handler) http.Handler {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 	return mux
+}
+
+// objectStorage: klien S3 bila S3_ENDPOINT diisi (ADR-012); kosong → tanpa PDF payslip (peringatan).
+func objectStorage(cfg config.Config, logger *slog.Logger) (storage.Store, error) {
+	if cfg.S3Endpoint == "" {
+		logger.Warn("storage.disabled", "reason", "S3_ENDPOINT empty; payslip PDFs are not rendered")
+		return nil, nil
+	}
+	return storage.NewS3(storage.Config{Endpoint: cfg.S3Endpoint, PublicEndpoint: cfg.S3PublicEndpoint, Region: cfg.S3Region,
+		Bucket: cfg.S3Bucket, AccessKey: cfg.S3AccessKey, SecretKey: cfg.S3SecretKey})
+}
+
+// runSeed: `payrun seed <smoke|perf>` — dataset load test (COPY + gate invariant). Butuh SEED_DATABASE_URL
+// (superuser, HANYA di container perf/dev) dan DATABASE_URL (payrun_app, untuk gate lewat RLS).
+func runSeed(args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: payrun seed <smoke|perf>")
+	}
+	profile, ok := app.SeedProfiles[args[0]]
+	if !ok {
+		return fmt.Errorf("unknown seed profile %q (smoke | perf)", args[0])
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.AppEnv != "dev" && cfg.AppEnv != "test" && cfg.AppEnv != "perf" {
+		return fmt.Errorf("seed refuses to run in APP_ENV=%s (dev/test/perf only)", cfg.AppEnv)
+	}
+	superDSN := os.Getenv("SEED_DATABASE_URL")
+	if superDSN == "" || cfg.DatabaseURL == "" {
+		return errors.New("SEED_DATABASE_URL (superuser) and DATABASE_URL (payrun_app) are required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL, db.Options{MaxConns: 4, StatementTimeout: time.Minute, LockTimeout: cfg.DBLockTimeout, IdleInTxTimeout: time.Minute})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	rep, err := app.Seed(ctx, superDSN, pool, profile, 42)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("seed %s OK: %d tenants, %d employees, %d attendance rows; big tenant %s (owner %s); COPY %.1fs, total (incl. VACUUM + gate) %.1fs\n",
+		rep.Profile, rep.Tenants, rep.Employees, rep.Attendance, rep.BigTenant, app.SeedOwnerEmail(0), rep.LoadSeconds, rep.TotalSec)
+	return nil
+}
+
+// runPerfRecheck: `payrun perf-recheck <tenant> <run>` — eksperimen E-2: durasi stale detection kalau SEMUA
+// karyawan diverifikasi ulang (pembanding change log O12). Read-only, APP_ENV dev/test/perf saja.
+func runPerfRecheck(args []string) error {
+	if len(args) != 2 {
+		return errors.New("usage: payrun perf-recheck <tenant-id> <run-id>")
+	}
+	tid, err := uuid.Parse(args[0])
+	if err != nil {
+		return fmt.Errorf("tenant-id: %w", err)
+	}
+	rid, err := uuid.Parse(args[1])
+	if err != nil {
+		return fmt.Errorf("run-id: %w", err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if cfg.AppEnv != "dev" && cfg.AppEnv != "test" && cfg.AppEnv != "perf" {
+		return fmt.Errorf("perf-recheck refuses to run in APP_ENV=%s", cfg.AppEnv)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	pool, err := db.NewPool(ctx, cfg.DatabaseURL, db.Options{MaxConns: 2, StatementTimeout: 10 * time.Minute, LockTimeout: cfg.DBLockTimeout, IdleInTxTimeout: time.Minute})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	rep, err := payroll.NewService(pool, clock.System{}, idgen.V7{}, nil).FullRecheck(ctx, tid, rid)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("full recheck: %d employees, %d changed, %.3fs\n", rep.Employees, rep.Changed, rep.Duration.Seconds())
+	return nil
 }

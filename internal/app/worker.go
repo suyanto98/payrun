@@ -24,6 +24,7 @@ import (
 type Worker struct {
 	Payroll     *jobs.Runner // payroll.plan, payroll.calc_chunk
 	Maintenance *jobs.Runner // cleanup (+ scheduler)
+	Documents   *jobs.Runner // payslip.render (ADR-012); nil bila storage tidak dikonfigurasi atau dimatikan
 	deps        Deps
 }
 
@@ -34,6 +35,8 @@ type WorkerConfig struct {
 	PayrollConcurrency int  // default 4 (Step 12: test 4 worker paralel)
 	ChunkSize          int  // default 50 (PAYROLL_CHUNK_SIZE, O5)
 	DisablePayrollCalc bool // kill switch PR_PAYROLL_CALC_ENABLED=false
+	// DisablePayslipRender: kill switch PR_PAYSLIP_RENDER_ENABLED=false (job tetap queued).
+	DisablePayslipRender bool
 }
 
 // ValidateWorker memastikan dependency wajib worker terisi (boot gagal, bukan job gagal).
@@ -62,6 +65,10 @@ func NewWorker(d Deps, cfg WorkerConfig) *Worker {
 		payrollKinds = payroll.NewJobs(d.Pool, d.IDs, cfg.ChunkSize).Kinds()
 	}
 	w := &Worker{deps: d, Payroll: jobs.NewRunner(d.Pool, rc("payroll", cfg.PayrollConcurrency), payrollKinds...)}
+	if d.Storage != nil && !cfg.DisablePayslipRender {
+		docs := payroll.NewJobs(d.Pool, d.IDs, cfg.ChunkSize).WithDocuments(d.Storage, d.Clock)
+		w.Documents = jobs.NewRunner(d.Pool, rc("documents", 2), docs.DocumentKinds()...)
+	}
 	w.Maintenance = jobs.NewRunner(d.Pool, rc("maintenance", 1),
 		jobs.Kind{Name: "maintenance.jobs_cleanup", MaxAttempts: 3, Timeout: 2 * time.Minute,
 			Handler: func(ctx context.Context, _ *jobs.Job) error {
@@ -79,7 +86,11 @@ func NewWorker(d Deps, cfg WorkerConfig) *Worker {
 func (w *Worker) Ready(now time.Time, poll time.Duration) map[string]bool {
 	limit := max(3*poll, 5*time.Second)
 	ok := func(t time.Time) bool { return !t.IsZero() && now.Sub(t) < limit }
-	return map[string]bool{"payroll": ok(w.Payroll.LastLoop()), "maintenance": ok(w.Maintenance.LastLoop())}
+	out := map[string]bool{"payroll": ok(w.Payroll.LastLoop()), "maintenance": ok(w.Maintenance.LastLoop())}
+	if w.Documents != nil {
+		out["documents"] = ok(w.Documents.LastLoop())
+	}
+	return out
 }
 
 // Run menjalankan semua lane sampai ctx selesai. Saat shutdown: berhenti mengklaim, job in-flight
@@ -88,6 +99,9 @@ func (w *Worker) Run(ctx context.Context, poll time.Duration) {
 	var wg sync.WaitGroup
 	wg.Go(func() { w.Payroll.Run(ctx, poll) })
 	wg.Go(func() { w.Maintenance.Run(ctx, poll) })
+	if w.Documents != nil {
+		wg.Go(func() { w.Documents.Run(ctx, poll) })
+	}
 	wg.Go(func() { w.Maintenance.RunScheduler(ctx, w.deps.Clock.Now, 15*time.Second) })
 	wg.Go(func() {
 		for {
@@ -107,7 +121,7 @@ func (w *Worker) Run(ctx context.Context, poll time.Duration) {
 // RunOnce menjalankan satu putaran setiap lane; mengembalikan jumlah job yang dikerjakan (test, skrip).
 func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 	total := 0
-	for _, r := range []*jobs.Runner{w.Payroll, w.Maintenance} {
+	for _, r := range w.lanes() {
 		n, err := r.RunOnce(ctx)
 		if err != nil {
 			return total, err
@@ -115,6 +129,14 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 		total += n
 	}
 	return total, nil
+}
+
+func (w *Worker) lanes() []*jobs.Runner {
+	out := []*jobs.Runner{w.Payroll, w.Maintenance}
+	if w.Documents != nil {
+		out = append(out, w.Documents)
+	}
+	return out
 }
 
 // WorkerOpsRouter: /healthz (proses hidup), /readyz (DB + skema + heartbeat setiap lane), /metrics.

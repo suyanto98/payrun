@@ -26,6 +26,7 @@ import (
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/httpx"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 )
@@ -272,6 +273,14 @@ func (s *Service) decide(ctx context.Context, p auth.Principal, id uuid.UUID, st
 	})
 	if err != nil {
 		return Decision{}, db.MapError(err)
+	}
+	decision := strings.ToLower(status)
+	metrics.Approvals.WithLabelValues(out.Approval.SubjectType, decision).Inc()
+	if out.Approval.SubjectType == SubjectPayrollRun {
+		metrics.PayrollRuns.WithLabelValues(decision).Inc()
+		if status == "APPROVED" && out.Approval.SelfApproved {
+			metrics.SelfApproved.WithLabelValues().Inc()
+		}
 	}
 	return out, nil
 }

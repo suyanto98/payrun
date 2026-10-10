@@ -13,6 +13,9 @@ import VerifyEmailView from './pages/VerifyEmailView.vue'
 import AttendanceView from './pages/AttendanceView.vue'
 import LeaveView from './pages/LeaveView.vue'
 import OvertimeView from './pages/OvertimeView.vue'
+import PayslipsView from './pages/PayslipsView.vue'
+import PayslipView from './pages/PayslipView.vue'
+import AdjustmentsView from './pages/AdjustmentsView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -41,6 +44,9 @@ export const router = createRouter({
     { path: '/attendance', component: AttendanceView, meta: { tenant: true, title: 'Absensi' } },
     { path: '/leave', component: LeaveView, meta: { tenant: true, title: 'Cuti' } },
     { path: '/overtime', component: OvertimeView, meta: { tenant: true, title: 'Lembur' } },
+    { path: '/payslips', component: PayslipsView, meta: { tenant: true, title: 'Slip gaji' } },
+    { path: '/payslips/:id', component: PayslipView, meta: { tenant: true, title: 'Slip gaji karyawan' } },
+    { path: '/adjustments', component: AdjustmentsView, meta: { tenant: true, title: 'Adjustment' } },
   ],
 })
 
@@ -72,7 +78,8 @@ router.beforeEach(async (to) => {
     return auth.employeeId ? `/employees/${auth.employeeId}` : '/select-tenant'
   }
   // Payroll hanya untuk OWNER/HR_ADMIN/PAYROLL_ADMIN (Y3 → 403, Y4 → 404 untuk role lain).
-  if (to.path.startsWith('/payroll') && auth.tenant && !canReadPayroll(auth.roles)) return '/'
+  if ((to.path.startsWith('/payroll') || to.path.startsWith('/adjustments') || to.path.startsWith('/payslips/')) &&
+    auth.tenant && !canReadPayroll(auth.roles)) return '/'
 })
 
 /** Hanya path internal ("/x"), bukan "//host" atau URL absolut (open redirect). */

@@ -10,7 +10,7 @@ REDOCLY := npx --yes @redocly/cli@1
 TRIVY_FS := docker run --rm -v "$$PWD:/src:ro" aquasec/trivy:0.65.0 fs --no-progress --scanners vuln,misconfig \
 	--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --skip-dirs docs /src
 
-.PHONY: help tools up up-storage down down-volumes logs ps migrate build test test-integration demo-verify lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
+.PHONY: help tools up up-storage perf-up perf-seed perf-run perf-down up-obs up-obs-full dashboards test-alerts backup-dev restore-drill test-demo images down down-volumes logs ps migrate build test test-integration demo-verify lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
 
 help: ## Tampilkan daftar target
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -24,18 +24,48 @@ tools: ## Pasang toolchain Go (sqlc, goose, oapi-codegen, golangci-lint, actionl
 	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
 # ------------------------------------------------------------------ local stack
-up: ## Jalankan postgres + migrate + api + worker (build ulang image), tunggu sampai /readyz hijau
+up: up-storage ## Jalankan storage + postgres + migrate + api + worker (build ulang image), tunggu sampai /readyz hijau
 	$(COMPOSE) up -d --build --wait api worker
 
 up-storage: ## Object storage S3 (SeaweedFS) + buat bucket private payrun-private
 	$(COMPOSE) --profile storage up -d --wait storage
 	$(COMPOSE) --profile storage run --rm storage-init
 
+# Perf env: project terpisah + port sendiri (stack dev boleh tetap jalan). Baseline mesin ini, bukan klaim kapasitas.
+PERF := PR_HTTP_PORT=8091 PR_OPS_PORT=9290 PR_WORKER_OPS_PORT=9291 PR_PG_PORT=55443 PR_MAILPIT_UI_PORT=8035 PR_S3_PORT=8343 \
+	docker compose -p payrun-perf -f deploy/compose.yml -f deploy/perf/compose.perf.yml
+
+perf-up: ## Perf env lokal (pg_stat_statements, pprof, rate limit off); PR_PERF_WORKERS/PR_PERF_CHUNK untuk PR-1
+	$(PERF) up -d --build --wait api worker
+
+perf-seed: ## Seed 1.000 tenant / 100.000 karyawan + gate invariant; PROFILE=smoke untuk kecil
+	$(PERF) --profile seed run --build --rm seed $${PROFILE:-perf}
+
+perf-run: ## Satu skenario: make perf-run S=pr1|pr3|pr4 (bukti di perf/results/)
+	./perf/run.sh $(S)
+
+perf-down: ## Hentikan perf env DAN hapus datanya
+	$(PERF) --profile seed down -v
+
+up-obs: up-storage ## Stack + Prometheus + Grafana (Grafana http://localhost:3001, Prometheus http://localhost:9098)
+	$(COMPOSE) --profile obs up -d --build --wait api worker prometheus grafana
+
+up-obs-full: up-storage ## up-obs + Jaeger; trace api/worker dikirim lewat OTLP (Jaeger http://localhost:16687)
+	PR_OTLP_ENDPOINT=http://jaeger:4318/v1/traces $(COMPOSE) --profile obs-full up -d --build --wait api worker prometheus grafana jaeger
+
+dashboards: ## Generate JSON dashboard Grafana dari deploy/grafana/gen_dashboards.py
+	python3 deploy/grafana/gen_dashboards.py
+
+test-alerts: ## Validasi + unit test alert rules Prometheus (promtool, termasuk A-13 sintetis)
+	docker run --rm -v "$$PWD/deploy/prometheus/rules:/r:ro" -w /r --entrypoint promtool prom/prometheus:v3.5.0 check rules payrun.yml platform.yml
+	docker run --rm -v "$$PWD/deploy/prometheus:/p:ro" -w /p/tests --entrypoint promtool prom/prometheus:v3.5.0 test rules payrun_test.yml
+	docker run --rm -v "$$PWD/deploy/prometheus:/p:ro" -w /p --entrypoint promtool prom/prometheus:v3.5.0 check config prometheus.yml
+
 down: ## Hentikan stack (data tetap di volume)
-	$(COMPOSE) --profile storage down
+	$(COMPOSE) --profile storage --profile obs-full down
 
 down-volumes: ## Hentikan stack DAN hapus data postgres + storage
-	$(COMPOSE) --profile storage down -v
+	$(COMPOSE) --profile storage --profile obs-full down -v
 
 logs: ## Ikuti log api
 	$(COMPOSE) logs -f api
@@ -56,8 +86,24 @@ test: ## Unit test (tanpa Docker), dengan race detector
 test-integration: ## Integration test (butuh Docker), termasuk test interleaving (build tag testhooks)
 	go test -race -count=1 -tags testhooks ./...
 
-demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (final immutable + recompute dari snapshot) secara headless
+demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (final immutable, adjustment ke bulan berikutnya, recompute dari snapshot) secara headless
 	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected|TestDemoC_FinalizedPayrollIsImmutable' ./internal/app/
+
+test-demo: ## Test build tag demo (guard endpoint /demo/*, fault sekali pakai di chunk ke-N)
+	go test -count=1 -tags demo -run 'TestDemo_' ./internal/app/
+
+backup-dev: ## Backup terenkripsi DB dev ke build/backups (key drill di build/backups/drill.agekey)
+	mkdir -p build/backups && chmod 777 build/backups
+	docker build -q -f deploy/backup/Dockerfile -t payrun-backup:local . >/dev/null
+	[ -f build/backups/drill.agekey ] || docker run --rm --entrypoint age-keygen payrun-backup:local > build/backups/drill.agekey 2>/dev/null
+	docker run --rm --network payrun_default -e PGHOST=postgres -e PGUSER=payrun_backup -e PGPASSWORD=backup-dev \
+	  -e PR_BACKUP_AGE_RECIPIENTS="$$(grep -o 'age1[0-9a-z]*' build/backups/drill.agekey)" -v "$$PWD/build/backups:/backups" payrun-backup:local
+
+restore-drill: ## Restore drill backup dev terbaru (Postgres sekali pakai → migrate → tabel > 0 → verify-run)
+	PR_BACKUP_IMAGE=payrun-backup:local scripts/restore-drill.sh "$$(ls build/backups/daily/*.dump.age | tail -1)" build/backups/drill.agekey
+
+images: ## Bangun image rilis lokal (app demo, web, backup) untuk SHA HEAD
+	scripts/build-images.sh "" "$$(git rev-parse HEAD)"
 
 cover: ## Laporan coverage (indikatif, bukan gate) → build/coverage.html
 	mkdir -p build && go test -tags testhooks -coverprofile=build/coverage.out ./internal/... >/dev/null && \
@@ -70,7 +116,7 @@ lint-go: ## golangci-lint (gosec, depguard, ...)
 	golangci-lint run ./...
 
 lint-shell: ## shellcheck skrip deploy
-	docker run --rm -v "$$PWD:/w:ro" -w /w koalaman/shellcheck:stable -x -S warning deploy/postgres/init/*.sh
+	docker run --rm -v "$$PWD:/w:ro" -w /w koalaman/shellcheck:stable -x -S warning deploy/postgres/init/*.sh deploy/backup/*.sh deploy/prod/*.sh scripts/*.sh perf/*.sh
 
 lint-api: ## Lint kontrak OpenAPI
 	$(REDOCLY) lint api/openapi.yaml

@@ -407,3 +407,23 @@ Ikuti Step 6 `04` §6 per jenis secret. Perubahan nilai = PR ke `infra/secrets/*
 | Akun penyedia VM dikunci | Semua mati | VM di penyedia lain + restore dari offsite (bucket di penyedia **berbeda** dari VM) | ≤ 24 jam | Beberapa jam |
 | Kredensial VM bocor | Risiko data | Rotasi semua secret (Step 6 §6), rebuild VM, audit. Backup lama aman karena kredensial offsite write-only | — | Jam |
 | Backup offsite hilang/rusak | Tidak ada jalur restore | Terdeteksi oleh drill mingguan; buat backup baru segera | — | — |
+
+---
+
+## Catatan implementasi (Sprint 8)
+
+| Topik | Desain | Implementasi S8 | Alasan |
+|---|---|---|---|
+| Repo `infra` + compose gabungan | Satu repo `infra`, satu compose untuk kedua project | **Edge bersama tanpa repo baru**: stack PayRun (`deploy/prod/compose.prod.yml`, project `payrun-prod`) tanpa Caddy; `payrun-api`, `payrun-web`, `payrun-storage` bergabung ke network docker eksternal `edge`. Caddy LedgerPay meng-`import /etc/caddy/sites/*.caddy`; deploy PayRun memasang `payrun.caddy` lalu `caddy reload` (admin API hanya di loopback container) | Keputusan pemilik repo: perubahan minimal di LedgerPay, tanpa memindahkan deploy LedgerPay. Nama service berprefix karena Compose menambahkan nama service sebagai alias di setiap network (`api` akan bentrok) |
+| Lock deploy | `flock` per project | `flock /srv/deploy.lock` **bersama** (LedgerPay ikut dipindah ke path yang sama) + concurrency group CI `deploy-vm-demo` | Dua build image paralel di VM 8 GB = OOM; keduanya me-reload edge yang sama |
+| Smoke pasca-deploy | Read-only | Lewat edge (TLS, `--resolve`): SPA berisi `<div id="app">`, `GET /api/v1/me` → `401`, `files.<domain>/payrun-private/` → `404`. Gagal → site Caddy lama dipulihkan + worker/api/web rilis sebelumnya | Tanpa menulis data di demo publik |
+| Presigned GET | `files.<domain>` lewat Caddy | Site `files.<domain>` hanya meneruskan `GET/HEAD` path object payslip yang membawa `X-Amz-Signature`; selainnya `404`. Host diteruskan apa adanya (tanda tangan SigV4 mengikat host) | C-40, T-PR-09 |
+| SeaweedFS prod | — | `-ip=payrun-storage` (container di dua network: IP `edge` tidak terjangkau `storage-init`), `-master.volumeSizeLimitMB=128 -volume.max=20` (5 slot habis oleh collection default → PUT payslip `500`); identitas S3 dibuat `init-env.sh` (secret acak, Read/Write bucket saja) | Ditemukan saat uji deploy lokal |
+| Email demo | SMTP | Mailpit di stack prod (UI `127.0.0.1:8026`, SSH tunnel) | `SMTP_ADDR` wajib; Step 12 R2-8 |
+| Backup | `pg_dump` per DB, dua recipient age | `deploy/backup/` (role `payrun_backup`, schema `payrun`, `trap` hapus `.partial`), cron host 02:15 UTC (setelah LedgerPay). Dump dengan role ber-RLS (`payrun_owner`) **gagal** (diverifikasi), bukan kosong | §5.2 |
+| Restore drill | migrate + verify | `scripts/restore-drill.sh`: Postgres sekali pakai → restore → `migrate up` → tenants/employees/payroll_items/audit_log > 0 → `verify-run` setiap run FINALIZED. Mingguan di `nightly.yml` (aktif bila `BACKUP_REMOTE` di-set); lokal `make backup-dev restore-drill` | DoD S8 |
+| Pushgateway / Prometheus prod | Metrik backup + scrape PayRun | **Belum** untuk PayRun: Prometheus LedgerPay belum men-scrape `payrun-api`/`payrun-worker` (network berbeda) | Integrasi obs lintas stack menyusul (S9/S10) |
+| Demo faults | `POST/DELETE /demo/faults`, `POST /demo/reset`, `POST /demo/payroll-runs/{id}/fast-track` | Hanya `POST/DELETE /demo/faults` (tenant pemanggil saja, OWNER, `X-Demo-Token`, tier heavy). Titik: `payroll.calc_chunk.before_commit`, `payslip.render.after_put`. `JOB_LEASE_TTL` (demo `10s`), `PAYROLL_CHUNK_SIZE=10` | `fast-track` di tenant dengan beberapa admin berarti menyetujui atas nama approver lain (melanggar SoD); `reset` butuh seed demo (S10) |
+| Import CSV (PF-21) | S8 | **Tidak dikerjakan** | Amandemen Step 12: P2 |
+| Deploy ke VM publik | Dari `main` | Skrip + workflow (`main.yml`, `rollback.yml`, `nightly.yml`) siap; deploy aktif bila `DEPLOY_ENABLED=true`. Diuji lokal penuh: deploy, deploy kedua (previous), rilis rusak → rollback otomatis, lock bersama, backup cron → drill | VM, domain, dan secret belum ada |
+

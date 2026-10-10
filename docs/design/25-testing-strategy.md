@@ -389,12 +389,12 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | PI-09 Effective dating tanpa overlap | `salary_change_parallel_one_wins`, golden "Effective dating" |
 | PI-10 Saldo cuti ≥ 0 | ✅ `TestLeave_ParallelApproveRespectsBalance`, `TestLeave_SubmitApproveRejectCancel` |
 | PI-11 Approval sekali, tanpa self-approval | ✅ `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestApproval_SelfApprovalRejectedByDB`, `TestRunApprove_BySubmitter_Forbidden`, `TestSubmit_SelfApprovalOnlyForSingleAdminTenant`, `TestApproval_HROverrideLeaveOnly`, `TestApprover_FallbackAndNoApprover`, `TestAuthzMatrix` |
-| PI-12 Determinisme | ✅ `TestProperty_Invariants` (determinisme), `TestGolden` (recompute dari snapshot JSON), `TestRecompute_FromSnapshotMatchesStoredResults` (`payrun verify-run`); `TestPayslipPDF_DeterministicBytes` (S7) |
+| PI-12 Determinisme | ✅ `TestProperty_Invariants` (determinisme), `TestGolden` (recompute dari snapshot JSON), `TestRecompute_FromSnapshotMatchesStoredResults` (`payrun verify-run`), `TestPayslipPDF_DeterministicBytes` (golden PDF), `TestPayslipRender_CrashMidBatch_ResumesIdempotently` |
 | PI-13 Approve hanya jika input tidak berubah | ✅ `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees`, `TestApprove_BlocksConcurrentInputWrite` (O3), `TestApprove_StaleDetectedForWriterCommittedAfterChunkRead` (O12 d1), `TestCreateRun_WaitsForInputWriterOfMissingPeriod` (D1), `TestApprove_StaleFalsePositiveFiltered`, `TestApprove_StaleDetectsHireAndTermination` (D6), `TestPeriodGuard_RecordsInputChanges` |
 | PI-14 Period final terkunci | ✅ `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` (termasuk kenaikan gaji setelah periode final dan trigger DB), `TestAttendanceEdit_FinalizedPeriod_PeriodLocked`, `TestFinalize_LocksPeriodAndRun` |
-| PI-15 Adjustment sekali | `TestAdjustment_AppliedOnce`, golden "Adjustment" |
+| PI-15 Adjustment sekali | ✅ `TestAdjustment_AppliedOnce` (stale saat dibuat/dibatalkan setelah kalkulasi, APPLIED tepat sekali, trigger immutable), `TestDemoC_FinalizedPayrollIsImmutable` (bagian 4–5), golden "Adjustment" |
 | PI-16 ≥ 1 owner | ✅ `TestMembership_OwnerParallelRevokeKeepsOne`, `TestMemberRoles_LastOwnerGuard` |
-| PI-17 Akses slip | `TestPayslipAccess_Matrix`, `TestAuthzMatrix` |
+| PI-17 Akses slip | ✅ `TestPayslipAccess_Matrix` (termasuk `payslip_download_requires_authz`), `TestAuthzMatrix` (S1–S5, `no_audit` untuk pemilik), `TestCrossTenant`, `TestPayslipPresignedURLTTL` (C-40) |
 | PI-18 Unik per tenant | `TestEmployee_NikUniquePerTenant` |
 | PI-19 Manager asiklik | `manager_cycle_parallel_rejected` |
 

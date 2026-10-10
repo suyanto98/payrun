@@ -1,0 +1,68 @@
+# Site PayRun di edge BERSAMA (Caddy milik stack LedgerPay di VM yang sama). remote-deploy.sh menyalin
+# file ini ke /srv/edge/sites/ lalu `caddy reload` di container edge; Caddyfile LedgerPay meng-import
+# /etc/caddy/sites/*.caddy. Variabel {$PR_DOMAIN} dan {$PR_FILES_DOMAIN} ada di edge.env LedgerPay.
+# Upstream dipanggil lewat alias network `edge` (payrun-api, payrun-web, payrun-storage): nama service
+# PayRun sengaja berprefix supaya tidak bentrok dengan `api` milik LedgerPay.
+
+(payrun_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		X-Frame-Options "DENY"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+}
+
+{$PR_DOMAIN} {
+	import payrun_headers
+	log {
+		output stdout
+		format json
+	}
+	handle /api/* {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy payrun-api:8080 {
+			health_uri /readyz
+			health_port 9090
+			health_interval 5s
+			health_timeout 2s
+			lb_try_duration 10s # tahan request selama api di-recreate → latensi, bukan 502
+			lb_try_interval 250ms
+		}
+	}
+	handle {
+		reverse_proxy payrun-web:8080
+	}
+}
+
+# Presigned GET payslip (C-40, ADR-012): HANYA GET/HEAD object, tanpa listing bucket. Tanda tangan SigV4
+# mengikat Host, jadi host di URL presign (S3_PUBLIC_ENDPOINT) = domain ini dan header Host diteruskan apa adanya.
+{$PR_FILES_DOMAIN} {
+	log {
+		output stdout
+		format json
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Cache-Control "no-store"
+		-Server
+	}
+	@object {
+		method GET HEAD
+		path_regexp ^/payrun-private/tenants/[0-9a-f-]+/payslips/[0-9a-f-]+/[0-9a-f-]+\.pdf$
+		query X-Amz-Signature=*
+	}
+	handle @object {
+		reverse_proxy payrun-storage:8333
+	}
+	handle {
+		respond 404
+	}
+}

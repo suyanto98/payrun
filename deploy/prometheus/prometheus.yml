@@ -1,0 +1,14 @@
+# Prometheus untuk profile compose `obs` (docs/design/24-observability.md, Step 12 R4-6).
+# Scrape port OPS internal (9090) api dan worker; port ini tidak pernah diekspos Caddy.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: payrun-api
+    static_configs: [{ targets: ["api:9090"], labels: { service: api } }]
+  - job_name: payrun-worker
+    static_configs: [{ targets: ["worker:9090"], labels: { service: worker } }]

@@ -26,7 +26,9 @@ import (
 	"payrun/internal/platform/httpx"
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/jobs"
+	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/reqmeta"
+	"payrun/internal/platform/storage"
 	"payrun/internal/platform/tenantctx"
 )
 
@@ -36,6 +38,7 @@ type Service struct {
 	ids       idgen.Generator
 	members   Memberships
 	approvals Approvals
+	docs      storage.Store
 }
 
 func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator, members Memberships) *Service {
@@ -376,6 +379,8 @@ type Line struct {
 	Explanation string          `json:"explanation"`
 	Taxable     bool            `json:"taxable"`
 	Rounding    string          `json:"rounding"`
+	// AdjustmentID: hanya baris ADJUSTMENT (S7, ck_payroll_lines_adjustment).
+	AdjustmentID *uuid.UUID `json:"adjustment_id"`
 }
 
 type ItemDetail struct {
@@ -483,7 +488,7 @@ func (s *Service) GetItem(ctx context.Context, actor uuid.UUID, runID, itemID uu
 		}
 		for _, l := range lines {
 			out.Lines = append(out.Lines, Line{SortOrder: l.SortOrder, Code: l.Code, Name: l.Name, Category: l.Category, Stage: l.Stage,
-				Amount: *fixed(l.Amount), Basis: l.Basis, Explanation: l.Explanation, Taxable: l.Taxable, Rounding: l.Rounding})
+				Amount: *fixed(l.Amount), Basis: l.Basis, Explanation: l.Explanation, Taxable: l.Taxable, Rounding: l.Rounding, AdjustmentID: l.AdjustmentID})
 		}
 		if !auditRead {
 			return nil
@@ -587,5 +592,8 @@ func (s *Service) Cancel(ctx context.Context, actor, runID uuid.UUID, reason str
 		out, err = s.loadRun(ctx, q, runID)
 		return err
 	})
+	if err == nil {
+		metrics.PayrollRuns.WithLabelValues("cancelled").Inc()
+	}
 	return out, db.MapError(err)
 }

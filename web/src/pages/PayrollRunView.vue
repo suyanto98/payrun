@@ -3,9 +3,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
-import { canRunPayroll, formatMoney, formatPeriod, runActions, runStatusLabel, runStatusPill } from '../access'
+import { canRunPayroll, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill, runActions, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
-import type { Page, PayrollItem, PayrollItemDetail, PayrollRun } from '../types'
+import type { Page, PayrollItem, PayrollItemDetail, PayrollRun, RunPayslip } from '../types'
 
 // Y4 status + progres (polling 2 dtk selama CALCULATING), Y5 hitung, Y6/Y7 item + baris, Y8 exclude,
 // Y10 submit, Y12 batal. Tombol hanya petunjuk; server menegakkan role dan state machine.
@@ -185,6 +185,23 @@ async function cancel() {
 
 onMounted(loadRun)
 
+// ---------------------------------------------------------------- slip gaji (S3, run FINALIZED)
+// Setiap pemanggilan S3 tercatat payroll.bulk_read, jadi dimuat sekali saat run final + tombol muat ulang.
+const payslips = ref<RunPayslip[]>([])
+const payslipsPage = ref<Page>({ next_cursor: null, has_more: false })
+async function loadPayslips(append = false) {
+  const params = new URLSearchParams({ run_id: id.value, limit: '50' })
+  if (append && payslipsPage.value.next_cursor) params.set('cursor', payslipsPage.value.next_cursor)
+  try {
+    const res = await api<{ data: RunPayslip[]; page: Page }>('/payslips?' + params)
+    payslips.value = append ? [...payslips.value, ...res.data] : res.data
+    payslipsPage.value = res.page
+  } catch (e) {
+    error.value = e instanceof ApiError ? e.message : 'Gagal memuat slip gaji'
+  }
+}
+watch(() => run.value?.status, (st) => { if (st === 'FINALIZED') loadPayslips() })
+
 const progressPct = computed(() => {
   const p = run.value?.progress
   return p && p.chunks_total > 0 ? Math.round((p.chunks_done / p.chunks_total) * 100) : 0
@@ -326,6 +343,30 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
         </div>
       </div>
 
+      <div v-if="run.status === 'FINALIZED'" class="card card-flush">
+        <div class="card-head">
+          <h2>Slip gaji</h2>
+          <button type="button" class="btn sm ghost" @click="loadPayslips()"><AppIcon name="refresh" :size="16" />Muat ulang</button>
+        </div>
+        <p class="muted pad">Membuka slip karyawan tercatat di audit log. PDF dibuat bertahap oleh worker setelah finalisasi.</p>
+        <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th scope="col">Nomor</th><th scope="col">Nama</th><th scope="col" class="right">Net</th><th scope="col">PDF</th></tr></thead>
+            <tbody>
+              <tr v-if="payslips.length === 0"><td colspan="4" class="empty">Belum ada slip.</td></tr>
+              <tr v-for="p in payslips" :key="p.id">
+                <td class="mono">{{ p.employee_no }}</td>
+                <td><RouterLink :to="`/payslips/${p.id}`">{{ p.employee_name }}</RouterLink></td>
+                <td class="right num">{{ formatMoney(p.net) }}</td>
+                <td><span class="pill" :class="pdfStatusPill[p.pdf_status]">{{ pdfStatusLabel[p.pdf_status] }}</span>
+                  <span v-if="p.attempts > 1" class="muted"> · {{ p.attempts }}×</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="payslipsPage.has_more" class="table-foot"><button type="button" class="btn sm ghost" @click="loadPayslips(true)">Muat lagi</button></div>
+      </div>
+
       <div v-if="detail" class="card" aria-live="polite">
         <div class="card-head flush">
           <h2>{{ detail.employee_name }} <span class="muted mono">{{ detail.employee_no }}</span></h2>
@@ -361,6 +402,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
 .exclude { display: flex; flex-wrap: wrap; gap: 8px; }
 .exclude .input { flex: 1 1 280px; }
 .card-head.flush { padding: 0 0 8px; }
+.pad { padding: 0 24px; margin: 0; }
 .lines { min-width: 0; }
 .lines .total td { font-weight: 800; border-top: 2px solid var(--border-strong); }
 .alert.warn { background: var(--warn-tint, #fff4e0); color: var(--warn, #8a5300); }

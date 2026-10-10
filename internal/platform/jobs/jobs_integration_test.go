@@ -240,3 +240,30 @@ func TestScheduler_DedupeKey_NoDoubleSchedule(t *testing.T) {
 		t.Fatalf("next bucket must get its own job, got %d", n)
 	}
 }
+
+// TestJobRunner_FullCapacity_ClaimsAsSoonAsSlotFrees (S9 PR-1): saat semua slot terpakai, runner mengklaim
+// job berikutnya begitu satu slot kosong — tidak menunggu interval polling. 6 job × 50 ms dengan 2 slot
+// dan interval 5 dtk selesai dalam < 2 dtk (versi lama: ±10 dtk, tidur setiap kali kapasitas penuh).
+func TestJobRunner_FullCapacity_ClaimsAsSoonAsSlotFrees(t *testing.T) {
+	pool := newPool(t)
+	var done atomic.Int32
+	k := jobs.Kind{Name: "test.fast", Timeout: 5 * time.Second, Handler: func(ctx context.Context, j *jobs.Job) error {
+		time.Sleep(50 * time.Millisecond)
+		done.Add(1)
+		return db.WithTx(ctx, pool, func(tx pgx.Tx) error { return jobs.CompleteInTx(ctx, tx, j) })
+	}}
+	for range 6 {
+		enqueue(t, pool, "test.fast", 3)
+	}
+	r := jobs.NewRunner(pool, jobs.RunnerConfig{Worker: "w", Concurrency: 2}, k)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	start := time.Now()
+	go r.Run(ctx, 5*time.Second)
+	for done.Load() < 6 && time.Since(start) < 15*time.Second {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if elapsed := time.Since(start); done.Load() != 6 || elapsed > 2*time.Second {
+		t.Fatalf("6 jobs × 50 ms on 2 slots: done %d in %s (runner idled on the poll interval while at capacity)", done.Load(), elapsed)
+	}
+}

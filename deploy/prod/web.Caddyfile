@@ -1,0 +1,17 @@
+# File server SPA di belakang edge bersama (tanpa TLS, tanpa header keamanan: dipasang edge).
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	# index.html dan fallback route SPA selalu divalidasi ulang; hanya aset ber-hash yang di-cache lama.
+	@hashed path /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@not_hashed not path /assets/*
+	header @not_hashed Cache-Control "no-cache"
+	root * /srv/payrun
+	try_files {path} /index.html
+	file_server
+}

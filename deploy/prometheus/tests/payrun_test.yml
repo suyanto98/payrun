@@ -1,0 +1,80 @@
+# promtool test rules: alert juga kode, dan harus diuji (make test-alerts). Seri sintetis.
+rule_files: [../rules/payrun.yml, ../rules/platform.yml]
+evaluation_interval: 1m
+tests:
+  # A-13 sintetis (DoD S7): satu baris tenant lain lolos ke repository → critical saat itu juga, padam
+  # setelah jendela 5 menit tanpa kenaikan baru. Metrik INV lain tetap 0.
+  - interval: 1m
+    input_series:
+      - series: 'payrun_tenant_isolation_violations_total{table="payroll_runs",service="api"}'
+        values: "0 0 1 1 1 1 1 1 1 1"
+      - series: 'payrun_finalized_mutation_attempts_total{table="payroll_runs",service="api"}'
+        values: "0x9"
+      - series: 'payrun_period_lock_bypass_total{table="unknown",service="api"}'
+        values: "0x9"
+    alert_rule_test:
+      - { eval_time: 1m, alertname: PayRunInvariantViolated, exp_alerts: [] }
+      - eval_time: 3m
+        alertname: PayRunInvariantViolated
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
+              runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+      - { eval_time: 9m, alertname: PayRunInvariantViolated, exp_alerts: [] }
+
+  # A-13 lewat lapis DB: trigger P0002 menahan tulisan ke periode FINALIZED (guard aplikasi bocor).
+  - interval: 1m
+    input_series:
+      - series: 'payrun_tenant_isolation_violations_total{table="payroll_runs"}'
+        values: "0x5"
+      - series: 'payrun_period_lock_bypass_total{table="attendance_records"}'
+        values: "0 0 0 1 1 1"
+    alert_rule_test:
+      - { eval_time: 2m, alertname: PayRunInvariantViolated, exp_alerts: [] }
+      - eval_time: 4m
+        alertname: PayRunInvariantViolated
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
+              runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+
+  # Semua 0 (kondisi normal) → tidak ada alert.
+  - interval: 1m
+    input_series:
+      - series: 'payrun_tenant_isolation_violations_total{table="payroll_runs"}'
+        values: "0x10"
+      - series: 'payrun_payroll_runs_total{outcome="failed"}'
+        values: "0x10"
+    alert_rule_test:
+      - { eval_time: 10m, alertname: PayRunInvariantViolated, exp_alerts: [] }
+      - { eval_time: 10m, alertname: BatchJobFailed, exp_alerts: [] }
+
+  # A-12: run payroll FAILED.
+  - interval: 1m
+    input_series:
+      - series: 'payrun_payroll_runs_total{outcome="failed",service="worker"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BatchJobFailed
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "A payroll run failed to calculate"
+              runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+
+  # A-04: job dead per kind.
+  - interval: 1m
+    input_series:
+      - series: 'app_job_dead_total{kind="payslip.render",service="worker"}'
+        values: "0 0 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: JobsDeadLettered
+        exp_alerts:
+          - exp_labels: { severity: warning, kind: payslip.render }
+            exp_annotations:
+              summary: "Jobs moved to dead (payslip.render)"
+              runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"

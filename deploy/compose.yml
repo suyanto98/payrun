@@ -53,6 +53,8 @@ services:
       PII_ACTIVE_KEY_VERSION: v1
       PII_BLIND_INDEX_KEY: cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=   # dev saja (32 byte)
       S3_ENDPOINT: http://storage:8333
+      # Host di URL presigned unduhan payslip: yang dijangkau browser (produksi: files.<domain> lewat Caddy).
+      S3_PUBLIC_ENDPOINT: http://127.0.0.1:${PR_S3_PORT:-8333}
       S3_BUCKET: payrun-private
       S3_ACCESS_KEY: payrun-dev-access
       S3_SECRET_KEY: payrun-dev-secret-only-for-local
@@ -83,6 +85,12 @@ services:
       PII_BLIND_INDEX_KEY: cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=
       PAYROLL_CHUNK_SIZE: ${PR_PAYROLL_CHUNK_SIZE:-50}
       PR_PAYROLL_CALC_ENABLED: ${PR_PAYROLL_CALC_ENABLED:-true}   # kill switch (29-deploy §4.3)
+      PR_PAYSLIP_RENDER_ENABLED: ${PR_PAYSLIP_RENDER_ENABLED:-true}   # kill switch lane documents
+      # Lane documents (payslip.render, S7): PUT PDF ke bucket private (ADR-012).
+      S3_ENDPOINT: http://storage:8333
+      S3_BUCKET: payrun-private
+      S3_ACCESS_KEY: payrun-dev-access
+      S3_SECRET_KEY: payrun-dev-secret-only-for-local
       OTEL_EXPORTER_OTLP_ENDPOINT: ${PR_OTLP_ENDPOINT:-}
     ports:
       - "127.0.0.1:${PR_WORKER_OPS_PORT:-9191}:9090"   # ops worker — di demo/prod tidak dipublish
@@ -112,7 +120,9 @@ services:
   storage:
     image: chrislusf/seaweedfs:3.97
     profiles: [storage]
-    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json", "-volume.max=5"]
+    # Slot volume cukup untuk collection default + satu collection per bucket (5 slot habis → "Not enough
+    # data nodes found", PUT payslip 500); volume 128 MB supaya 20 slot tidak memesan 20 GB.
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/seaweedfs/s3.json", "-master.volumeSizeLimitMB=128", "-volume.max=20"]
     volumes:
       - s3data:/data
       - ./storage/s3.json:/etc/seaweedfs/s3.json:ro
@@ -144,6 +154,36 @@ services:
     depends_on:
       storage: { condition: service_healthy }
     restart: "no"
+
+  # ---------------------------------------------------------------- observability (profile obs / obs-full)
+  # Step 12 R4-6: V1 `obs` = Prometheus + Grafana (ringan untuk VM kecil). Jaeger di `obs-full` (R4-16).
+  # `make up-obs`. Port berbeda dari LedgerPay supaya kedua stack bisa jalan bersamaan.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [obs, obs-full]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+    ports: ["127.0.0.1:${PR_PROM_PORT:-9098}:9090"]
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: [obs, obs-full]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"     # dev lokal saja; deploy publik memakai login
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: admin-dev
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:${PR_GRAFANA_PORT:-3001}:3000"]
+    depends_on: [prometheus]
+
+  jaeger:
+    image: jaegertracing/jaeger:2.9.0
+    profiles: [obs-full]
+    ports: ["127.0.0.1:${PR_JAEGER_PORT:-16687}:16686"]   # UI; OTLP 4318 hanya di jaringan compose
 
 volumes:
   pgdata:

@@ -190,6 +190,8 @@ var (
 	ErrEmployeeNotActive   = def(http.StatusUnprocessableEntity, "EMPLOYEE_NOT_ACTIVE", "Your account is not linked to an employee active on this date")
 	ErrClockOutWithoutIn   = def(http.StatusUnprocessableEntity, "CLOCK_OUT_WITHOUT_CLOCK_IN", "Clock in first")
 	ErrNoApproverAvailable = def(http.StatusUnprocessableEntity, "NO_APPROVER_AVAILABLE", "Nobody else in this company can approve the request")
+	// Sprint 7: payslip (katalog §3).
+	ErrPayslipNotReady = def(http.StatusConflict, "PAYSLIP_NOT_READY", "The payslip PDF is still being generated")
 )
 
 // Validation membuat VALIDATION_ERROR dengan daftar field yang salah.

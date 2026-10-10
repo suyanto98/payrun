@@ -69,6 +69,16 @@ func TestSalary_EffectiveDatedChange(t *testing.T) {
 	if len(data) != 1 || data[0].(map[string]any)["position"].(map[string]any)["name"] != "Staf" {
 		t.Fatalf("department filter: %v", list)
 	}
+	// Filter dievaluasi SEBELUM LIMIT halaman (S9 PR-3: halaman dipilih di subquery): karyawan departemen ini
+	// bukan yang pertama menurut employee_no, tetapi limit=1 tetap mengembalikannya.
+	_, all := e.do(t, http.MethodGet, "/api/v1/employees?limit=1", f.tokens[roleP], nil)
+	if first := all["data"].([]any)[0].(map[string]any)["id"]; first == id {
+		t.Fatalf("precondition: the department's employee must not be first overall: %v", all)
+	}
+	_, one := e.do(t, http.MethodGet, "/api/v1/employees?limit=1&department_id="+f.dept.String(), f.tokens[roleP], nil)
+	if d := one["data"].([]any); len(d) != 1 || d[0].(map[string]any)["id"] != id || one["page"].(map[string]any)["has_more"] != false {
+		t.Fatalf("department filter must apply before the page limit: %v", one)
+	}
 }
 
 // Dua HR mengubah gaji pada tanggal yang sama secara paralel: tepat satu menang, yang lain 409

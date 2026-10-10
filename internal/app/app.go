@@ -41,6 +41,7 @@ import (
 	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/ratelimit"
 	"payrun/internal/platform/reqmeta"
+	"payrun/internal/platform/storage"
 	"payrun/internal/platform/tracing"
 )
 
@@ -64,6 +65,13 @@ type Deps struct {
 	// PII (ADR-P08): keyring enkripsi + kunci blind index (terpisah).
 	Keyring    *crypto.Keyring
 	BlindIndex *crypto.BlindIndex
+
+	// Storage: object storage payslip PDF (ADR-012). nil = tanpa PDF (unduhan PAYSLIP_NOT_READY).
+	Storage storage.Store
+
+	// Mode demo (O15): berpengaruh HANYA di binary build tag `demo` (lihat demo_routes.go).
+	DemoMode  bool
+	DemoToken string
 }
 
 // ValidateAPI memastikan dependency wajib API terisi. Wiring yang lupa harus menggagalkan boot,
@@ -124,6 +132,9 @@ func APIRouter(d Deps) http.Handler {
 	compSvc := compensation.NewService(d.Pool, employeeAccess{employeeSvc}, d.Clock, d.IDs)
 	compH := compensation.NewHandler(compSvc, idem)
 	payrollSvc := payroll.NewService(d.Pool, d.Clock, d.IDs, iamSvc)
+	if d.Storage != nil {
+		payrollSvc.SetStorage(d.Storage)
+	}
 	payrollH := payroll.NewHandler(payrollSvc, idem)
 	approvalSvc := approval.NewService(d.Pool, d.IDs)
 	approvalSvc.Register(approval.SubjectPayrollRun, payrollSvc) // efek approve/reject run (ADR-P09)
@@ -171,6 +182,8 @@ func APIRouter(d Deps) http.Handler {
 		attendanceH.Routes(tenantRead, tenantWrite)
 		leaveH.Routes(tenantRead, tenantWrite)
 		overtimeH.Routes(tenantRead, tenantWrite)
+		// /api/v1/demo/*: build tag `demo` + DEMO_MODE + X-Demo-Token + OWNER; no-op di build release.
+		registerDemoRoutes(authed.With(auth.RequireTenant, limiter.Middleware(tiers.HeavyCalculate, byTenant)), d)
 	})
 	return r
 }

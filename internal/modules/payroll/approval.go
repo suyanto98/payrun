@@ -198,8 +198,8 @@ func (s *Service) ApproveSubjectTx(ctx context.Context, tx pgx.Tx, runID, approv
 	if err != nil {
 		return nil, err
 	}
-	if changed > maxStaleCandidates || len(stale) > 0 {
-		return nil, apperr.ErrRunStale.WithStale(stale, changed)
+	if err := staleVerdict("approve", stale, changed); err != nil {
+		return nil, err
 	}
 	// Titik hook test O3: approve memegang periode FOR UPDATE, fingerprint sudah diverifikasi.
 	if err := testhook.Pause(ctx, "payroll.approve.before_update"); err != nil {

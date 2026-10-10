@@ -26,6 +26,69 @@ func (e AcceptedInvitationMembershipStatus) Valid() bool {
 	}
 }
 
+// Defines values for AdjustmentComponentCode.
+const (
+	AdjustmentComponentCodeDEDUCTIONCORRECTION AdjustmentComponentCode = "DEDUCTION_CORRECTION"
+	AdjustmentComponentCodeMANUAL              AdjustmentComponentCode = "MANUAL"
+	AdjustmentComponentCodeOVERTIMECORRECTION  AdjustmentComponentCode = "OVERTIME_CORRECTION"
+)
+
+// Valid indicates whether the value is a known member of the AdjustmentComponentCode enum.
+func (e AdjustmentComponentCode) Valid() bool {
+	switch e {
+	case AdjustmentComponentCodeDEDUCTIONCORRECTION:
+		return true
+	case AdjustmentComponentCodeMANUAL:
+		return true
+	case AdjustmentComponentCodeOVERTIMECORRECTION:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdjustmentStatus.
+const (
+	AdjustmentStatusAPPLIED      AdjustmentStatus = "APPLIED"
+	AdjustmentStatusCANCELLED    AdjustmentStatus = "CANCELLED"
+	AdjustmentStatusPENDINGAPPLY AdjustmentStatus = "PENDING_APPLY"
+)
+
+// Valid indicates whether the value is a known member of the AdjustmentStatus enum.
+func (e AdjustmentStatus) Valid() bool {
+	switch e {
+	case AdjustmentStatusAPPLIED:
+		return true
+	case AdjustmentStatusCANCELLED:
+		return true
+	case AdjustmentStatusPENDINGAPPLY:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AdjustmentCreateComponentCode.
+const (
+	AdjustmentCreateComponentCodeDEDUCTIONCORRECTION AdjustmentCreateComponentCode = "DEDUCTION_CORRECTION"
+	AdjustmentCreateComponentCodeMANUAL              AdjustmentCreateComponentCode = "MANUAL"
+	AdjustmentCreateComponentCodeOVERTIMECORRECTION  AdjustmentCreateComponentCode = "OVERTIME_CORRECTION"
+)
+
+// Valid indicates whether the value is a known member of the AdjustmentCreateComponentCode enum.
+func (e AdjustmentCreateComponentCode) Valid() bool {
+	switch e {
+	case AdjustmentCreateComponentCodeDEDUCTIONCORRECTION:
+		return true
+	case AdjustmentCreateComponentCodeMANUAL:
+		return true
+	case AdjustmentCreateComponentCodeOVERTIMECORRECTION:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ApprovalRequestStatus.
 const (
 	ApprovalRequestStatusAPPROVED  ApprovalRequestStatus = "APPROVED"
@@ -806,6 +869,48 @@ func (e PayrollRunStatus) Valid() bool {
 	}
 }
 
+// Defines values for PayslipPdfStatus.
+const (
+	PayslipPdfStatusFAILED   PayslipPdfStatus = "FAILED"
+	PayslipPdfStatusPENDING  PayslipPdfStatus = "PENDING"
+	PayslipPdfStatusRENDERED PayslipPdfStatus = "RENDERED"
+)
+
+// Valid indicates whether the value is a known member of the PayslipPdfStatus enum.
+func (e PayslipPdfStatus) Valid() bool {
+	switch e {
+	case PayslipPdfStatusFAILED:
+		return true
+	case PayslipPdfStatusPENDING:
+		return true
+	case PayslipPdfStatusRENDERED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PayslipSummaryPdfStatus.
+const (
+	PayslipSummaryPdfStatusFAILED   PayslipSummaryPdfStatus = "FAILED"
+	PayslipSummaryPdfStatusPENDING  PayslipSummaryPdfStatus = "PENDING"
+	PayslipSummaryPdfStatusRENDERED PayslipSummaryPdfStatus = "RENDERED"
+)
+
+// Valid indicates whether the value is a known member of the PayslipSummaryPdfStatus enum.
+func (e PayslipSummaryPdfStatus) Valid() bool {
+	switch e {
+	case PayslipSummaryPdfStatusFAILED:
+		return true
+	case PayslipSummaryPdfStatusPENDING:
+		return true
+	case PayslipSummaryPdfStatusRENDERED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProblemApprovalStatus.
 const (
 	ProblemApprovalStatusAPPROVED  ProblemApprovalStatus = "APPROVED"
@@ -869,6 +974,27 @@ func (e Role) Valid() bool {
 	case OWNER:
 		return true
 	case PAYROLLADMIN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RunPayslipPdfStatus.
+const (
+	RunPayslipPdfStatusFAILED   RunPayslipPdfStatus = "FAILED"
+	RunPayslipPdfStatusPENDING  RunPayslipPdfStatus = "PENDING"
+	RunPayslipPdfStatusRENDERED RunPayslipPdfStatus = "RENDERED"
+)
+
+// Valid indicates whether the value is a known member of the RunPayslipPdfStatus enum.
+func (e RunPayslipPdfStatus) Valid() bool {
+	switch e {
+	case RunPayslipPdfStatusFAILED:
+		return true
+	case RunPayslipPdfStatusPENDING:
+		return true
+	case RunPayslipPdfStatusRENDERED:
 		return true
 	default:
 		return false
@@ -1052,6 +1178,27 @@ const (
 func (e XRequestedWith) Valid() bool {
 	switch e {
 	case XRequestedWithFetch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAdjustmentsParamsStatus.
+const (
+	ListAdjustmentsParamsStatusAPPLIED      ListAdjustmentsParamsStatus = "APPLIED"
+	ListAdjustmentsParamsStatusCANCELLED    ListAdjustmentsParamsStatus = "CANCELLED"
+	ListAdjustmentsParamsStatusPENDINGAPPLY ListAdjustmentsParamsStatus = "PENDING_APPLY"
+)
+
+// Valid indicates whether the value is a known member of the ListAdjustmentsParamsStatus enum.
+func (e ListAdjustmentsParamsStatus) Valid() bool {
+	switch e {
+	case ListAdjustmentsParamsStatusAPPLIED:
+		return true
+	case ListAdjustmentsParamsStatusCANCELLED:
+		return true
+	case ListAdjustmentsParamsStatusPENDINGAPPLY:
 		return true
 	default:
 		return false
@@ -1357,6 +1504,77 @@ type ActiveTenant struct {
 	Id    openapi_types.UUID `json:"id"`
 	Name  string             `json:"name"`
 	Roles []Role             `json:"roles"`
+}
+
+// Adjustment defines model for Adjustment.
+type Adjustment struct {
+	// Amount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Amount        Money                   `json:"amount"`
+	AppliedAt     *time.Time              `json:"applied_at"`
+	AppliedRunId  *openapi_types.UUID     `json:"applied_run_id"`
+	CancelledAt   *time.Time              `json:"cancelled_at"`
+	ComponentCode AdjustmentComponentCode `json:"component_code"`
+	CreatedAt     time.Time               `json:"created_at"`
+	CreatedBy     *openapi_types.UUID     `json:"created_by"`
+	EmployeeId    openapi_types.UUID      `json:"employee_id"`
+	Id            openapi_types.UUID      `json:"id"`
+
+	// OriginPeriod Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	OriginPeriod Period           `json:"origin_period"`
+	Reason       string           `json:"reason"`
+	Status       AdjustmentStatus `json:"status"`
+
+	// TargetPeriod Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	TargetPeriod Period `json:"target_period"`
+	Taxable      bool   `json:"taxable"`
+}
+
+// AdjustmentComponentCode defines model for Adjustment.ComponentCode.
+type AdjustmentComponentCode string
+
+// AdjustmentStatus defines model for Adjustment.Status.
+type AdjustmentStatus string
+
+// AdjustmentCancel defines model for AdjustmentCancel.
+type AdjustmentCancel struct {
+	Reason string `json:"reason"`
+}
+
+// AdjustmentCreate defines model for AdjustmentCreate.
+type AdjustmentCreate struct {
+	// Amount Non-zero; positive adds to pay, negative deducts. Absolute value at most 1000000000.
+	//
+	// Examples: 76300.58
+	Amount        string                        `json:"amount"`
+	ComponentCode AdjustmentCreateComponentCode `json:"component_code"`
+	EmployeeId    openapi_types.UUID            `json:"employee_id"`
+
+	// OriginPeriod Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	OriginPeriod Period `json:"origin_period"`
+	Reason       string `json:"reason"`
+
+	// TargetPeriod Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	TargetPeriod Period `json:"target_period"`
+	Taxable      *bool  `json:"taxable,omitempty"`
+}
+
+// AdjustmentCreateComponentCode defines model for AdjustmentCreate.ComponentCode.
+type AdjustmentCreateComponentCode string
+
+// AdjustmentList defines model for AdjustmentList.
+type AdjustmentList struct {
+	Data []Adjustment `json:"data"`
+	Page Page         `json:"page"`
 }
 
 // ApprovalDecision defines model for ApprovalDecision.
@@ -2110,6 +2328,9 @@ type PayrollItemList struct {
 
 // PayrollLine defines model for PayrollLine.
 type PayrollLine struct {
+	// AdjustmentId Set only on `ADJUSTMENT` lines (PF-19).
+	AdjustmentId *openapi_types.UUID `json:"adjustment_id"`
+
 	// Amount Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
 	//
 	// Examples: 6888609.00
@@ -2222,6 +2443,68 @@ type PayrollRunTotals struct {
 	Net Money `json:"net"`
 }
 
+// Payslip defines model for Payslip.
+type Payslip struct {
+	// BankAccountMasked Examples: BCA ••••1234
+	BankAccountMasked *string `json:"bank_account_masked"`
+	Employee          struct {
+		Department string `json:"department"`
+		EmployeeNo string `json:"employee_no"`
+		FullName   string `json:"full_name"`
+
+		// Position Empty when no placement overlaps the period.
+		Position string `json:"position"`
+	} `json:"employee"`
+	EmployeeId  openapi_types.UUID `json:"employee_id"`
+	FinalizedAt time.Time          `json:"finalized_at"`
+	Id          openapi_types.UUID `json:"id"`
+	Lines       []PayrollLine      `json:"lines"`
+	PdfStatus   PayslipPdfStatus   `json:"pdf_status"`
+
+	// Period Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	Period  Period             `json:"period"`
+	Ruleset RulesetRef         `json:"ruleset"`
+	RunId   openapi_types.UUID `json:"run_id"`
+	Totals  PayrollRunTotals   `json:"totals"`
+}
+
+// PayslipPdfStatus defines model for Payslip.PdfStatus.
+type PayslipPdfStatus string
+
+// PayslipDownload defines model for PayslipDownload.
+type PayslipDownload struct {
+	ExpiresAt time.Time `json:"expires_at"`
+	Url       string    `json:"url"`
+}
+
+// PayslipSummary defines model for PayslipSummary.
+type PayslipSummary struct {
+	FinalizedAt time.Time          `json:"finalized_at"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Net Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Net       Money                   `json:"net"`
+	PdfStatus PayslipSummaryPdfStatus `json:"pdf_status"`
+
+	// Period Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	Period Period `json:"period"`
+}
+
+// PayslipSummaryPdfStatus defines model for PayslipSummary.PdfStatus.
+type PayslipSummaryPdfStatus string
+
+// PayslipSummaryList defines model for PayslipSummaryList.
+type PayslipSummaryList struct {
+	Data []PayslipSummary `json:"data"`
+	Page Page             `json:"page"`
+}
+
 // Pending Placeholder until the feature sprint defines the body (Sprint 0 skeleton).
 type Pending = map[string]interface{}
 
@@ -2298,6 +2581,36 @@ type RulesetRef struct {
 
 	// Version Examples: 2026.1
 	Version string `json:"version"`
+}
+
+// RunPayslip defines model for RunPayslip.
+type RunPayslip struct {
+	Attempts     int32              `json:"attempts"`
+	EmployeeId   openapi_types.UUID `json:"employee_id"`
+	EmployeeName string             `json:"employee_name"`
+	EmployeeNo   string             `json:"employee_no"`
+	Id           openapi_types.UUID `json:"id"`
+
+	// Net Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+	//
+	// Examples: 6888609.00
+	Net       Money               `json:"net"`
+	PdfStatus RunPayslipPdfStatus `json:"pdf_status"`
+
+	// Period Payroll period, calendar month in the tenant timezone.
+	//
+	// Examples: 2026-03
+	Period     Period     `json:"period"`
+	RenderedAt *time.Time `json:"rendered_at"`
+}
+
+// RunPayslipPdfStatus defines model for RunPayslip.PdfStatus.
+type RunPayslipPdfStatus string
+
+// RunPayslipList defines model for RunPayslipList.
+type RunPayslipList struct {
+	Data []RunPayslip `json:"data"`
+	Page Page         `json:"page"`
 }
 
 // SalaryAssignment defines model for SalaryAssignment.
@@ -2534,11 +2847,17 @@ type ValidationError = Problem
 
 // ListAdjustmentsParams defines parameters for ListAdjustments.
 type ListAdjustmentsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	EmployeeId   *openapi_types.UUID          `form:"employee_id,omitempty" json:"employee_id,omitempty"`
+	TargetPeriod *Period                      `form:"target_period,omitempty" json:"target_period,omitempty"`
+	Status       *ListAdjustmentsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	Limit        *Limit                       `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// ListAdjustmentsParamsStatus defines parameters for ListAdjustments.
+type ListAdjustmentsParamsStatus string
 
 // CreateAdjustmentParams defines parameters for CreateAdjustment.
 type CreateAdjustmentParams struct {
@@ -2754,7 +3073,8 @@ type ListMyLeaveBalancesParams struct {
 
 // ListMyPayslipsParams defines parameters for ListMyPayslips.
 type ListMyPayslipsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	Year  *string `form:"year,omitempty" json:"year,omitempty"`
+	Limit *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -2854,7 +3174,9 @@ type ListPayrollItemsParamsStatus string
 
 // ListPayslipsParams defines parameters for ListPayslips.
 type ListPayslipsParams struct {
-	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+	RunId      openapi_types.UUID  `form:"run_id" json:"run_id"`
+	EmployeeId *openapi_types.UUID `form:"employee_id,omitempty" json:"employee_id,omitempty"`
+	Limit      *Limit              `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor Opaque cursor from `page.next_cursor`.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -2892,10 +3214,10 @@ type SignupTenant201JSONResponseBody struct {
 }
 
 // CreateAdjustmentJSONRequestBody defines body for CreateAdjustment for application/json ContentType.
-type CreateAdjustmentJSONRequestBody = Pending
+type CreateAdjustmentJSONRequestBody = AdjustmentCreate
 
 // CancelAdjustmentJSONRequestBody defines body for CancelAdjustment for application/json ContentType.
-type CancelAdjustmentJSONRequestBody = Pending
+type CancelAdjustmentJSONRequestBody = AdjustmentCancel
 
 // ApproveRequestJSONRequestBody defines body for ApproveRequest for application/json ContentType.
 type ApproveRequestJSONRequestBody = ApprovalDecisionRequest

@@ -1,0 +1,71 @@
+# Rollback manual: kembali ke SHA yang PERNAH sukses di VM, tanpa migrasi. Skema tidak pernah diturunkan
+# (expand/contract); kesalahan data diperbaiki roll-forward atau restore.
+name: rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA (40 hex) yang pernah sukses di-deploy"
+        required: true
+        type: string
+      reason:
+        description: "Alasan (dicatat di releases.log dan ringkasan job)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-vm-demo
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: demo
+      url: https://${{ vars.PUBLIC_DOMAIN }}
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      SHA: ${{ inputs.sha }}       # input lewat env, tidak pernah di-interpolasi ke skrip (injection)
+      REASON: ${{ inputs.reason }}
+    steps:
+      - name: Validate input
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex chars"; exit 1; }
+          [ "${#REASON}" -ge 10 ] || { echo "reason must be at least 10 characters"; exit 1; }
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # deploy.sh mengirim `git archive <sha>` (konfigurasi rilis lama)
+      - name: SSH key + pinned host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf 'Host *\n  StrictHostKeyChecking yes\n' > ~/.ssh/config
+      - name: Guard — target pernah sukses di VM ini
+        id: guard
+        run: |
+          ssh "deploy@$DEPLOY_HOST" "grep -qP '\t$SHA\tsuccess\t' /srv/payrun/releases.log" \
+            || { echo "$SHA never deployed successfully on this VM; refusing (roll forward instead)"; exit 1; }
+          echo "prefix=$(ssh "deploy@$DEPLOY_HOST" "cat /srv/payrun/releases/$SHA/.image-prefix" || true)" >> "$GITHUB_OUTPUT"
+      - name: Rollback (pull → worker → api → web → smoke; migrate SKIPPED)
+        env:
+          PR_IMAGE_PREFIX: ${{ steps.guard.outputs.prefix }}
+          PR_SKIP_ENV: "1"
+          PR_REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_REGISTRY_USER: ${{ github.actor }}
+        run: |
+          PR_DEPLOY_ACTOR="rollback:${GITHUB_ACTOR}:${REASON//[$'\t\n']/ }" deploy/prod/deploy.sh "$DEPLOY_HOST" "$SHA" --skip-migrate
+          {
+            echo "### Rollback to \`$SHA\`"
+            echo "Reason: $REASON"
+            echo "Actor: $GITHUB_ACTOR"
+          } >> "$GITHUB_STEP_SUMMARY"

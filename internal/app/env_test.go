@@ -32,6 +32,7 @@ import (
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/mail"
 	"payrun/internal/platform/ratelimit"
+	"payrun/internal/platform/storage"
 )
 
 // helperProcess: diisi file ber-tag testhooks. Test "worker mati" menjalankan ulang binary test ini
@@ -60,6 +61,7 @@ type env struct {
 	// supaya run beberapa karyawan sudah melewati lebih dari satu chunk).
 	worker *app.Worker
 	deps   app.Deps
+	docs   *storage.Memory // object storage payslip PDF (tanpa jaringan)
 }
 
 // fakeMailer merekam email alih-alih mengirim; fail = simulasi SMTP mati.
@@ -135,14 +137,15 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")},
 		AllowedOrigins: []string{"http://localhost:5173"}, PublicBaseURL: "http://localhost:5173", Tiers: tiers,
 		IAM:    iam.Config{Argon2: auth.TestArgon2, RefreshTTL: 7 * 24 * time.Hour, RefreshFamilyTTL: 30 * 24 * time.Hour},
-		Mailer: &fakeMailer{}, Keyring: testKeyring(t), BlindIndex: testBlindIndex(t),
+		Mailer: &fakeMailer{}, Keyring: testKeyring(t), BlindIndex: testBlindIndex(t), Storage: storage.NewMemory(),
 	}
 	if err := deps.ValidateAPI(); err != nil { // env test harus lengkap seperti produksi
 		t.Fatal(err)
 	}
 	h := app.APIRouter(deps)
 	e := env{srv: httptest.NewServer(h), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb, handler: h,
-		worker: app.NewWorker(deps, app.WorkerConfig{ID: "test:" + newID().String()[:8], ChunkSize: 2}), deps: deps}
+		worker: app.NewWorker(deps, app.WorkerConfig{ID: "test:" + newID().String()[:8], ChunkSize: 2}), deps: deps,
+		docs: deps.Storage.(*storage.Memory)}
 	t.Cleanup(e.srv.Close)
 	return e
 }

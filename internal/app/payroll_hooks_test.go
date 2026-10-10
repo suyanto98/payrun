@@ -41,7 +41,14 @@ func envInt(name string, def int) int {
 	return def
 }
 
-func init() { helperProcess = runKilledWorker }
+func init() {
+	helperProcess = func() int {
+		if os.Getenv(helperMode) == "payslip" {
+			return runKilledRenderer()
+		}
+		return runKilledWorker()
+	}
+}
 
 // runKilledWorker berjalan di proses anak (binary test yang sama, lihat TestMain). Worker sungguhan
 // dengan lease 1 dtk mengerjakan plan dan chunk sebelum chunk ke-K; di chunk ke-K (default 2) proses

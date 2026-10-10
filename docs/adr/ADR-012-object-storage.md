@@ -61,6 +61,8 @@ Keputusan inti tidak berubah: S3-compatible API lewat `platform/storage`, bucket
 
 Konsekuensi: kode aplikasi hanya memakai API S3 standar (SigV4, presign), sehingga bisa berpindah ke S3/R2 saat deploy tanpa perubahan. Fitur khusus MinIO (admin API, `mc`) tidak boleh dipakai. Kalau ditemukan perbedaan perilaku presign antara SeaweedFS dan S3/R2 (Sprint 7), catat di sini.
 
+**Catatan Sprint 7 (presign diverifikasi dengan SeaweedFS 3.97):** presigned GET SigV4 path-style (`X-Amz-Expires=300`) → `200 application/pdf`; GET tanpa tanda tangan → `403`; URL yang diubah → `403`; `response-content-disposition` dihormati. Tidak ada perbedaan yang memengaruhi kode. Dua catatan: (1) tanda tangan mengikat host, jadi aplikasi menandatangani dengan `S3_PUBLIC_ENDPOINT` (host yang dibuka browser) sementara PUT memakai `S3_ENDPOINT` internal; (2) izin `List` dicabut dari identitas `payrun-app` (sebelumnya ada di `s3.json`), sesuai least privilege T-PR-09. Kedaluwarsa 5 menit adalah perilaku SigV4 standar dan tidak diuji ulang di sini (`TestPayslipPresignedURLTTL` memeriksa parameter tanda tangan).
+
 ## Related
 
 - [ADR-P01](ADR-P01-multi-tenancy-pooled-rls.md) · [ADR-P08](ADR-P08-pii-encryption.md) · [ADR-006](ADR-006-background-processing-postgres-queue.md)

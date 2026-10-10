@@ -15,6 +15,7 @@ import (
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/db"
 	"payrun/internal/platform/jobs"
+	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/reqmeta"
 	"payrun/internal/platform/tenantctx"
 	"payrun/internal/platform/testhook"
@@ -26,8 +27,8 @@ import (
 //	(input bisa berubah di antara approve dan finalize, §4.c) → run FINALIZED (trigger total PI-05) →
 //	periode FINALIZED (PeriodGuard + trigger PI-14 aktif penuh) → job payroll.cleanup_versions → audit.
 //
-// Snapshot sudah ditulis saat kalkulasi dan sejak COMMIT dibekukan trigger PI-04. Payslip (S7) dan
-// adjustment APPLIED (S7) menyusul di transaksi ini juga.
+// Snapshot sudah ditulis saat kalkulasi dan sejak COMMIT dibekukan trigger PI-04. Di transaksi yang
+// sama: adjustment di snapshot item OK → APPLIED (PI-15), payslip PENDING + job payslip.render (S7).
 
 const KindCleanupVersions = "payroll.cleanup_versions"
 
@@ -75,8 +76,8 @@ func (s *Service) FinalizeTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.U
 	if err != nil {
 		return Run{}, err
 	}
-	if changed > maxStaleCandidates || len(stale) > 0 {
-		return Run{}, apperr.ErrRunStale.WithStale(stale, changed)
+	if err := staleVerdict("finalize", stale, changed); err != nil {
+		return Run{}, err
 	}
 	now := s.clock.Now()
 	if n, err := q.FinalizeRun(ctx, store.FinalizeRunParams{Actor: &actor, At: &now, ID: runID}); err != nil {
@@ -87,6 +88,14 @@ func (s *Service) FinalizeTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.U
 	if err := q.FinalizePeriod(ctx, store.FinalizePeriodParams{FinalRun: &runID, At: &now, ID: run.PeriodID}); err != nil {
 		return Run{}, db.MapError(err)
 	}
+	applied, err := q.ApplyAdjustments(ctx, store.ApplyAdjustmentsParams{RunID: &runID, At: &now, CalcVersion: run.CalcVersion})
+	if err != nil {
+		return Run{}, db.MapError(err)
+	}
+	slips, err := createPayslips(ctx, q, tx, s.ids.New, tid, runID, run.CalcVersion, meta.RequestID)
+	if err != nil {
+		return Run{}, db.MapError(err)
+	}
 	if run.CalcVersion > 1 {
 		if _, err := jobs.Enqueue(ctx, tx, jobs.Spec{Kind: KindCleanupVersions, MaxAttempts: 5, CorrelationID: meta.RequestID,
 			Dedupe: fmt.Sprintf("cleanup_versions:%s", runID), Payload: cleanupPayload{RunID: runID, KeepVersion: run.CalcVersion}}); err != nil {
@@ -94,7 +103,7 @@ func (s *Service) FinalizeTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.U
 		}
 	}
 	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "payroll_run.finalized",
-		TargetType: "payroll_run", TargetID: runID, Diff: map[string]any{"calc_version": run.CalcVersion, "candidates": changed}}, meta); err != nil {
+		TargetType: "payroll_run", TargetID: runID, Diff: map[string]any{"calc_version": run.CalcVersion, "candidates": changed, "adjustments_applied": applied, "payslips": slips}}, meta); err != nil {
 		return Run{}, err
 	}
 	// Titik hook test FS-03 di level layanan: semua efek sudah ditulis, COMMIT belum.
@@ -102,7 +111,20 @@ func (s *Service) FinalizeTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.U
 		return Run{}, err
 	}
 	r, err := s.loadRun(ctx, q, runID)
+	if err == nil {
+		metrics.PayrollRuns.WithLabelValues("finalized").Inc() // replay idempotency tidak sampai sini
+	}
 	return r, db.MapError(err)
+}
+
+// staleVerdict: jumlah kandidat ke histogram; stale → 409 RUN_STALE (+ counter per aksi).
+func staleVerdict(action string, stale []apperr.StaleEmployee, changed int) error {
+	metrics.StaleCandidates.WithLabelValues().Observe(float64(changed))
+	if changed > maxStaleCandidates || len(stale) > 0 {
+		metrics.StaleRejections.WithLabelValues(action).Inc()
+		return apperr.ErrRunStale.WithStale(stale, changed)
+	}
+	return nil
 }
 
 // cleanupVersions: job payroll.cleanup_versions. Menghapus item (+ line, snapshot) versi lama per batch

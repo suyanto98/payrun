@@ -56,6 +56,158 @@ func (h *Handler) Routes(read, write chi.Router, heavy, heavyFinalize func(http.
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/cancel", h.cancel)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/submit", h.submit)
 	write.With(hidden, auth.RequireAnyRole(runners...), heavyFinalize).Post("/payroll-runs/{id}/finalize", h.finalize)
+
+	// Adjustment (J1–J3, file 17 §2.4): OWNER/HR_ADMIN/PAYROLL_ADMIN. J3 untuk role lain → 404.
+	read.With(auth.RequireAnyRole(readers...)).Get("/adjustments", h.listAdjustments)
+	write.With(auth.RequireAnyRole(readers...)).Post("/adjustments", h.createAdjustment)
+	write.With(hidden).Post("/adjustments/{id}/cancel", h.cancelAdjustment)
+
+	// Payslip (S1–S5, file 17 §2.4): self (👤) tanpa audit; OWNER/HR/PAYROLL ter-audit (ᴬ); lainnya 404.
+	read.Get("/me/payslips", h.myPayslips)
+	read.Get("/me/payslips/{id}", h.payslip(true))
+	read.With(auth.RequireAnyRole(readers...)).Get("/payslips", h.runPayslips)
+	read.With(hidden).Get("/payslips/{id}", h.payslip(false))
+	read.Get("/payslips/{id}/download", h.downloadPayslip)
+}
+
+func (h *Handler) myPayslips(w http.ResponseWriter, r *http.Request) {
+	if err := httpx.OnlyQuery(r, "year", "limit", "cursor"); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	limit, err := httpx.Limit(r, 20, 100)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	q := r.URL.Query()
+	out, page, err := h.svc.ListMyPayslips(r.Context(), p.UserID, q.Get("year"), q.Get("cursor"), limit)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
+}
+
+func (h *Handler) payslip(selfOnly bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := ids(r, "id")
+		if err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+		p, _ := auth.PrincipalFrom(r.Context())
+		out, err := h.svc.GetPayslip(r.Context(), p.UserID, id[0], selfOnly, reqmeta.From(r))
+		if err != nil {
+			httpx.WriteError(w, r, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+func (h *Handler) runPayslips(w http.ResponseWriter, r *http.Request) {
+	if err := httpx.OnlyQuery(r, "run_id", "employee_id", "limit", "cursor"); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	limit, err := httpx.Limit(r, 50, 200)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	q := r.URL.Query()
+	out, page, err := h.svc.ListRunPayslips(r.Context(), p.UserID, q.Get("run_id"), q.Get("employee_id"), q.Get("cursor"), limit, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
+}
+
+// downloadPayslip (S5): URL bertanda tangan; Cache-Control no-store sudah dari middleware keamanan (C-40).
+func (h *Handler) downloadPayslip(w http.ResponseWriter, r *http.Request) {
+	id, err := ids(r, "id")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	out, err := h.svc.DownloadPayslip(r.Context(), p.UserID, id[0], reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// createAdjustment (J1): Idempotency-Key wajib.
+func (h *Handler) createAdjustment(w http.ResponseWriter, r *http.Request) {
+	var in AdjustmentInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	req, err := idempotency.FromHTTP(r, p.UserID, "POST /adjustments")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	meta := reqmeta.From(r)
+	resp, err := h.idem.Execute(r, req, func(ctx context.Context, tx pgx.Tx) (idempotency.Outcome, error) {
+		a, err := h.svc.CreateAdjustmentTx(ctx, tx, p.UserID, in, meta)
+		if err != nil {
+			return idempotency.Outcome{}, err
+		}
+		return idempotency.Outcome{Status: http.StatusCreated, Body: a, ResourceType: "adjustment", ResourceID: &a.ID}, nil
+	})
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	idempotency.Write(w, resp)
+}
+
+func (h *Handler) cancelAdjustment(w http.ResponseWriter, r *http.Request) {
+	id, err := ids(r, "id")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	var in CancelAdjustmentInput
+	if err := httpx.Decode(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	a, err := h.svc.CancelAdjustment(r.Context(), p.UserID, id[0], in, reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, a)
+}
+
+func (h *Handler) listAdjustments(w http.ResponseWriter, r *http.Request) {
+	if err := httpx.OnlyQuery(r, "employee_id", "target_period", "status", "limit", "cursor"); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	limit, err := httpx.Limit(r, 20, 100)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	q := r.URL.Query()
+	out, page, err := h.svc.ListAdjustments(r.Context(), q.Get("employee_id"), q.Get("target_period"), q.Get("status"), q.Get("cursor"), limit)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
 }
 
 // finalize (Y11): Idempotency-Key wajib; replay (contoh respons COMMIT yang hilang) → 200 yang sama.

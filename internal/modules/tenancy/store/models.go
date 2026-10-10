@@ -12,6 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Adjustment struct {
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	EmployeeID     uuid.UUID
+	OriginPeriodID uuid.UUID
+	TargetYear     int16
+	TargetMonth    int16
+	ComponentCode  string
+	Amount         pgtype.Numeric
+	Taxable        bool
+	Reason         string
+	Status         string
+	AppliedRunID   *uuid.UUID
+	AppliedAt      *time.Time
+	CancelledBy    *uuid.UUID
+	CancelledAt    *time.Time
+	CancelReason   *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	CreatedBy      *uuid.UUID
+}
+
 type ApprovalRequest struct {
 	TenantID           uuid.UUID
 	ID                 uuid.UUID
@@ -439,6 +461,23 @@ type PayrollRun struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	ApprovalRequestID *uuid.UUID
+}
+
+type Payslip struct {
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	RunID          uuid.UUID
+	EmployeeID     uuid.UUID
+	ItemID         uuid.UUID
+	Status         string
+	ObjectKey      string
+	ChecksumSha256 []byte
+	SizeBytes      *int32
+	RenderedAt     *time.Time
+	Attempts       int16
+	LastError      *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type PlatformIdempotencyKey struct {

@@ -21,7 +21,7 @@ var files embed.FS
 // Readiness lulus jika versi DB >= nilai ini (bukan "=", supaya rollback app N-1 tetap ready;
 // docs/design/29-deploy-migrations-backup.md, Step 12 R3-8). Naikkan saat menambah migrasi
 // yang WAJIB ada untuk kode baru.
-const MinSchemaVersion int64 = 10
+const MinSchemaVersion int64 = 11
 
 // MigrateUp menjalankan semua migrasi yang belum diterapkan. dsn harus role payrun_owner.
 func MigrateUp(ctx context.Context, dsn string) error {

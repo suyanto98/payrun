@@ -24,6 +24,32 @@ func (q *Queries) ActiveRunForPeriod(ctx context.Context, periodID uuid.UUID) (u
 	return id, err
 }
 
+const applyAdjustments = `-- name: ApplyAdjustments :execrows
+UPDATE adjustments a SET status = 'APPLIED', applied_run_id = $1, applied_at = $2
+WHERE a.status = 'PENDING_APPLY' AND a.applied_run_id IS NULL AND a.id IN (
+    SELECT (adj->>'id')::uuid
+    FROM payroll_item_snapshots s
+    JOIN payroll_items i ON i.tenant_id = s.tenant_id AND i.id = s.item_id
+    CROSS JOIN LATERAL jsonb_array_elements(s.input->'adjustments') AS adj
+    WHERE s.run_id = $1 AND s.calc_version = $3 AND i.status = 'OK')
+`
+
+type ApplyAdjustmentsParams struct {
+	RunID       *uuid.UUID
+	At          *time.Time
+	CalcVersion int32
+}
+
+// Finalize (PI-15): adjustment yang tercantum di snapshot item OK versi final → APPLIED, tepat sekali
+// (guard status + applied_run_id IS NULL). Item ERROR/EXCLUDED: adjustment tetap PENDING_APPLY.
+func (q *Queries) ApplyAdjustments(ctx context.Context, arg ApplyAdjustmentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, applyAdjustments, arg.RunID, arg.At, arg.CalcVersion)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const approveRun = `-- name: ApproveRun :execrows
 UPDATE payroll_runs SET status = 'APPROVED', approved_by = $1, approved_at = clock_timestamp()
 WHERE id = $2 AND status = 'PENDING_APPROVAL'
@@ -36,6 +62,31 @@ type ApproveRunParams struct {
 
 func (q *Queries) ApproveRun(ctx context.Context, arg ApproveRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, approveRun, arg.Actor, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const cancelAdjustment = `-- name: CancelAdjustment :execrows
+UPDATE adjustments SET status = 'CANCELLED', cancelled_by = $1, cancelled_at = $2, cancel_reason = $3
+WHERE id = $4 AND status = 'PENDING_APPLY'
+`
+
+type CancelAdjustmentParams struct {
+	Actor  *uuid.UUID
+	At     *time.Time
+	Reason *string
+	ID     uuid.UUID
+}
+
+func (q *Queries) CancelAdjustment(ctx context.Context, arg CancelAdjustmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelAdjustment,
+		arg.Actor,
+		arg.At,
+		arg.Reason,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -100,13 +151,14 @@ func (q *Queries) CandidateItems(ctx context.Context, arg CandidateItemsParams) 
 	return items, nil
 }
 
-const completeCalculation = `-- name: CompleteCalculation :exec
+const completeCalculation = `-- name: CompleteCalculation :one
 UPDATE payroll_runs
 SET status = 'CALCULATED', total_gross = $1, total_deductions = $2, total_net = $3,
     item_ok_count = $4, item_error_count = $5, item_excluded_count = $6,
     warning_count = $7, input_fingerprint = $8, ruleset_code = $9,
     ruleset_version = $10, calculated_at = clock_timestamp()
 WHERE id = $11 AND status = 'CALCULATING' AND calc_version = $12
+RETURNING extract(epoch FROM calculated_at - coalesce(calc_started_at, calculated_at))::float8 AS duration_secs
 `
 
 type CompleteCalculationParams struct {
@@ -124,8 +176,9 @@ type CompleteCalculationParams struct {
 	CalcVersion    int32
 }
 
-func (q *Queries) CompleteCalculation(ctx context.Context, arg CompleteCalculationParams) error {
-	_, err := q.db.Exec(ctx, completeCalculation,
+// duration_secs: calc_started_at → CALCULATED (metrik payrun_payroll_run_duration_seconds).
+func (q *Queries) CompleteCalculation(ctx context.Context, arg CompleteCalculationParams) (float64, error) {
+	row := q.db.QueryRow(ctx, completeCalculation,
 		arg.Gross,
 		arg.Deductions,
 		arg.Net,
@@ -139,7 +192,9 @@ func (q *Queries) CompleteCalculation(ctx context.Context, arg CompleteCalculati
 		arg.ID,
 		arg.CalcVersion,
 	)
-	return err
+	var duration_secs float64
+	err := row.Scan(&duration_secs)
+	return duration_secs, err
 }
 
 const deleteChunkItems = `-- name: DeleteChunkItems :exec
@@ -253,6 +308,35 @@ func (q *Queries) EligibleEmployees(ctx context.Context, arg EligibleEmployeesPa
 	return items, nil
 }
 
+const employeeActiveInMonth = `-- name: EmployeeActiveInMonth :one
+SELECT EXISTS (SELECT 1 FROM employment_spans WHERE employee_id = $1
+               AND span && daterange($2::date, $3::date, '[)'))::bool
+`
+
+type EmployeeActiveInMonthParams struct {
+	EmployeeID uuid.UUID
+	FromDate   time.Time
+	ToDate     time.Time
+}
+
+func (q *Queries) EmployeeActiveInMonth(ctx context.Context, arg EmployeeActiveInMonthParams) (bool, error) {
+	row := q.db.QueryRow(ctx, employeeActiveInMonth, arg.EmployeeID, arg.FromDate, arg.ToDate)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const employeeExists = `-- name: EmployeeExists :one
+SELECT EXISTS (SELECT 1 FROM employees WHERE id = $1)::bool
+`
+
+func (q *Queries) EmployeeExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, employeeExists, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const excludeItem = `-- name: ExcludeItem :one
 UPDATE payroll_items SET status = 'EXCLUDED', excluded_reason = $1, excluded_by = $2, excluded_at = clock_timestamp()
 WHERE id = $3 AND run_id = $4 AND status = 'ERROR'
@@ -336,6 +420,59 @@ func (q *Queries) FinalizeRun(ctx context.Context, arg FinalizeRunParams) (int64
 	return result.RowsAffected(), nil
 }
 
+const getAdjustment = `-- name: GetAdjustment :one
+SELECT a.id, a.tenant_id, a.employee_id, p.year AS origin_year, p.month AS origin_month, a.target_year, a.target_month,
+       a.component_code, a.amount::text AS amount, a.taxable, a.reason, a.status, a.applied_run_id, a.applied_at,
+       a.cancelled_at, a.created_by, a.created_at
+FROM adjustments a JOIN payroll_periods p ON p.tenant_id = a.tenant_id AND p.id = a.origin_period_id
+WHERE a.id = $1
+`
+
+type GetAdjustmentRow struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	EmployeeID    uuid.UUID
+	OriginYear    int16
+	OriginMonth   int16
+	TargetYear    int16
+	TargetMonth   int16
+	ComponentCode string
+	Amount        string
+	Taxable       bool
+	Reason        string
+	Status        string
+	AppliedRunID  *uuid.UUID
+	AppliedAt     *time.Time
+	CancelledAt   *time.Time
+	CreatedBy     *uuid.UUID
+	CreatedAt     time.Time
+}
+
+func (q *Queries) GetAdjustment(ctx context.Context, id uuid.UUID) (GetAdjustmentRow, error) {
+	row := q.db.QueryRow(ctx, getAdjustment, id)
+	var i GetAdjustmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.EmployeeID,
+		&i.OriginYear,
+		&i.OriginMonth,
+		&i.TargetYear,
+		&i.TargetMonth,
+		&i.ComponentCode,
+		&i.Amount,
+		&i.Taxable,
+		&i.Reason,
+		&i.Status,
+		&i.AppliedRunID,
+		&i.AppliedAt,
+		&i.CancelledAt,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getItem = `-- name: GetItem :one
 SELECT i.tenant_id, i.id, i.run_id, i.employee_id, i.employee_no, i.employee_name, i.department_id, i.calc_version,
        i.status, i.gross, i.deductions, i.net, i.error_codes, i.warning_codes, i.issues, i.excluded_reason
@@ -387,6 +524,45 @@ func (q *Queries) GetItem(ctx context.Context, arg GetItemParams) (GetItemRow, e
 		&i.WarningCodes,
 		&i.Issues,
 		&i.ExcludedReason,
+	)
+	return i, err
+}
+
+const getPayslip = `-- name: GetPayslip :one
+SELECT p.id, p.tenant_id, p.run_id, p.employee_id, p.item_id, p.status, p.object_key, r.finalized_at, per.year, per.month
+FROM payslips p
+JOIN payroll_runs r ON r.tenant_id = p.tenant_id AND r.id = p.run_id
+JOIN payroll_periods per ON per.tenant_id = r.tenant_id AND per.id = r.period_id
+WHERE p.id = $1
+`
+
+type GetPayslipRow struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	RunID       uuid.UUID
+	EmployeeID  uuid.UUID
+	ItemID      uuid.UUID
+	Status      string
+	ObjectKey   string
+	FinalizedAt *time.Time
+	Year        int16
+	Month       int16
+}
+
+func (q *Queries) GetPayslip(ctx context.Context, id uuid.UUID) (GetPayslipRow, error) {
+	row := q.db.QueryRow(ctx, getPayslip, id)
+	var i GetPayslipRow
+	err := row.Scan(
+		&i.ID,
+		&i.TenantID,
+		&i.RunID,
+		&i.EmployeeID,
+		&i.ItemID,
+		&i.Status,
+		&i.ObjectKey,
+		&i.FinalizedAt,
+		&i.Year,
+		&i.Month,
 	)
 	return i, err
 }
@@ -599,6 +775,64 @@ func (q *Queries) IncrementChunksDone(ctx context.Context, id uuid.UUID) (Increm
 	return i, err
 }
 
+const inputAdjustments = `-- name: InputAdjustments :many
+SELECT a.id, a.employee_id, p.year AS origin_year, p.month AS origin_month, a.amount::text AS amount, a.taxable, a.reason
+FROM adjustments a JOIN payroll_periods p ON p.tenant_id = a.tenant_id AND p.id = a.origin_period_id
+WHERE a.tenant_id = $1 AND a.employee_id = ANY($2::uuid[]) AND a.target_year = $3 AND a.target_month = $4 AND a.status = 'PENDING_APPLY'
+ORDER BY a.employee_id, p.year, p.month, a.id
+`
+
+type InputAdjustmentsParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+	Year     int16
+	Month    int16
+}
+
+type InputAdjustmentsRow struct {
+	ID          uuid.UUID
+	EmployeeID  uuid.UUID
+	OriginYear  int16
+	OriginMonth int16
+	Amount      string
+	Taxable     bool
+	Reason      string
+}
+
+// Adjustment PENDING_APPLY untuk (tahun, bulan) target; urutan (origin, id) agar input deterministik.
+func (q *Queries) InputAdjustments(ctx context.Context, arg InputAdjustmentsParams) ([]InputAdjustmentsRow, error) {
+	rows, err := q.db.Query(ctx, inputAdjustments,
+		arg.TenantID,
+		arg.Ids,
+		arg.Year,
+		arg.Month,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InputAdjustmentsRow
+	for rows.Next() {
+		var i InputAdjustmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EmployeeID,
+			&i.OriginYear,
+			&i.OriginMonth,
+			&i.Amount,
+			&i.Taxable,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const inputComponents = `-- name: InputComponents :many
 SELECT ec.employee_id, ec.amount, ec.rate, lower(ec.valid_during)::date AS from_date, upper_inf(ec.valid_during)::bool AS open_ended,
        coalesce(upper(ec.valid_during), lower(ec.valid_during))::date AS to_date,
@@ -606,11 +840,12 @@ SELECT ec.employee_id, ec.amount, ec.rate, lower(ec.valid_during)::date AS from_
        cd.day_source, cd.cap_min, cd.cap_max, cd.taxable, cd.bpjs_base, cd.rounding, cd.status
 FROM employee_components ec
 JOIN component_definitions cd ON cd.tenant_id = ec.tenant_id AND cd.id = ec.component_id
-WHERE ec.employee_id = ANY($1::uuid[]) AND ec.valid_during && daterange($2::date, $3::date, '[)')
+WHERE ec.tenant_id = $1 AND ec.employee_id = ANY($2::uuid[]) AND ec.valid_during && daterange($3::date, $4::date, '[)')
 ORDER BY ec.employee_id, cd.code, lower(ec.valid_during)
 `
 
 type InputComponentsParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	FromDate time.Time
 	ToDate   time.Time
@@ -642,7 +877,12 @@ type InputComponentsRow struct {
 }
 
 func (q *Queries) InputComponents(ctx context.Context, arg InputComponentsParams) ([]InputComponentsRow, error) {
-	rows, err := q.db.Query(ctx, inputComponents, arg.Ids, arg.FromDate, arg.ToDate)
+	rows, err := q.db.Query(ctx, inputComponents,
+		arg.TenantID,
+		arg.Ids,
+		arg.FromDate,
+		arg.ToDate,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -689,12 +929,13 @@ SELECT e.id, e.employee_no, e.full_name, e.ptkp_status,
        coalesce((SELECT oa.department_id FROM org_assignments oa
         WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during && daterange($1::date, $2::date, '[)')
         ORDER BY lower(oa.valid_during) DESC LIMIT 1), '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id
-FROM employees e WHERE e.id = ANY($3::uuid[]) ORDER BY e.id
+FROM employees e WHERE e.tenant_id = $3 AND e.id = ANY($4::uuid[]) ORDER BY e.id
 `
 
 type InputEmployeesParams struct {
 	FromDate time.Time
 	ToDate   time.Time
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 }
 
@@ -706,9 +947,18 @@ type InputEmployeesRow struct {
 	DepartmentID uuid.UUID
 }
 
+// Query Input* menyebut tenant_id EKSPLISIT walau RLS sudah membatasi (S9 PR-1): predikat RLS memakai
+// (SELECT current_tenant()) yang nilainya tidak diketahui planner, sehingga untuk tenant besar (10% tabel)
+// estimasi baris salah dan indeks yang dipilih memindai seluruh tenant. Dengan nilai eksplisit + custom
+// plan (txRead chunk), statistik MCV tenant_id terpakai. RLS tetap lapis pengaman.
 // department_id: penempatan terakhir yang beririsan dengan periode (uuid nol = tidak ada; Go → NULL).
 func (q *Queries) InputEmployees(ctx context.Context, arg InputEmployeesParams) ([]InputEmployeesRow, error) {
-	rows, err := q.db.Query(ctx, inputEmployees, arg.FromDate, arg.ToDate, arg.Ids)
+	rows, err := q.db.Query(ctx, inputEmployees,
+		arg.FromDate,
+		arg.ToDate,
+		arg.TenantID,
+		arg.Ids,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -764,11 +1014,12 @@ func (q *Queries) InputHolidays(ctx context.Context, arg InputHolidaysParams) ([
 
 const inputIncomplete = `-- name: InputIncomplete :many
 SELECT employee_id, work_date FROM attendance_records
-WHERE employee_id = ANY ($1::uuid[]) AND status = 'INCOMPLETE' AND work_date >= $2 AND work_date < $3
+WHERE tenant_id = $1 AND employee_id = ANY ($2::uuid[]) AND status = 'INCOMPLETE' AND work_date >= $3 AND work_date < $4
 ORDER BY employee_id, work_date
 `
 
 type InputIncompleteParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	FromDate time.Time
 	ToDate   time.Time
@@ -781,7 +1032,12 @@ type InputIncompleteRow struct {
 
 // Catatan INCOMPLETE (lupa clock-out) → engine sesuai incomplete_attendance_policy. COMPLETE = hadir.
 func (q *Queries) InputIncomplete(ctx context.Context, arg InputIncompleteParams) ([]InputIncompleteRow, error) {
-	rows, err := q.db.Query(ctx, inputIncomplete, arg.Ids, arg.FromDate, arg.ToDate)
+	rows, err := q.db.Query(ctx, inputIncomplete,
+		arg.TenantID,
+		arg.Ids,
+		arg.FromDate,
+		arg.ToDate,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -803,12 +1059,13 @@ func (q *Queries) InputIncomplete(ctx context.Context, arg InputIncompleteParams
 const inputLeaves = `-- name: InputLeaves :many
 SELECT r.employee_id, lower(r.dates)::date AS start_date, upper(r.dates)::date AS end_exclusive, lt.is_paid
 FROM leave_requests r JOIN leave_types lt ON lt.tenant_id = r.tenant_id AND lt.id = r.leave_type_id
-WHERE r.employee_id = ANY ($1::uuid[]) AND r.status = 'APPROVED' AND r.approved_at <= $2
-  AND r.dates && daterange($3::date, $4::date, '[)')
+WHERE r.tenant_id = $1 AND r.employee_id = ANY ($2::uuid[]) AND r.status = 'APPROVED' AND r.approved_at <= $3
+  AND r.dates && daterange($4::date, $5::date, '[)')
 ORDER BY r.employee_id, lower(r.dates)
 `
 
 type InputLeavesParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	CutoffAt *time.Time
 	FromDate time.Time
@@ -825,6 +1082,7 @@ type InputLeavesRow struct {
 // PI-08: cuti APPROVED yang beririsan dengan periode dan disetujui ≤ cut-off periode.
 func (q *Queries) InputLeaves(ctx context.Context, arg InputLeavesParams) ([]InputLeavesRow, error) {
 	rows, err := q.db.Query(ctx, inputLeaves,
+		arg.TenantID,
 		arg.Ids,
 		arg.CutoffAt,
 		arg.FromDate,
@@ -855,13 +1113,14 @@ func (q *Queries) InputLeaves(ctx context.Context, arg InputLeavesParams) ([]Inp
 
 const inputOvertime = `-- name: InputOvertime :many
 SELECT employee_id, work_date, sum(hours)::numeric AS hours FROM overtime_requests
-WHERE employee_id = ANY ($1::uuid[]) AND status = 'APPROVED' AND approved_at <= $2
-  AND work_date >= $3 AND work_date < $4
+WHERE tenant_id = $1 AND employee_id = ANY ($2::uuid[]) AND status = 'APPROVED' AND approved_at <= $3
+  AND work_date >= $4 AND work_date < $5
 GROUP BY employee_id, work_date
 ORDER BY employee_id, work_date
 `
 
 type InputOvertimeParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	CutoffAt *time.Time
 	FromDate time.Time
@@ -877,6 +1136,7 @@ type InputOvertimeRow struct {
 // PI-08: lembur APPROVED bertanggal di periode dan disetujui ≤ cut-off; jam dijumlah per hari.
 func (q *Queries) InputOvertime(ctx context.Context, arg InputOvertimeParams) ([]InputOvertimeRow, error) {
 	rows, err := q.db.Query(ctx, inputOvertime,
+		arg.TenantID,
 		arg.Ids,
 		arg.CutoffAt,
 		arg.FromDate,
@@ -925,11 +1185,12 @@ func (q *Queries) InputRuleset(ctx context.Context, arg InputRulesetParams) (Inp
 const inputSalary = `-- name: InputSalary :many
 SELECT employee_id, base_salary, lower(valid_during)::date AS from_date, upper_inf(valid_during)::bool AS open_ended,
        coalesce(upper(valid_during), lower(valid_during))::date AS to_date
-FROM salary_assignments WHERE employee_id = ANY($1::uuid[]) AND valid_during && daterange($2::date, $3::date, '[)')
+FROM salary_assignments WHERE tenant_id = $1 AND employee_id = ANY($2::uuid[]) AND valid_during && daterange($3::date, $4::date, '[)')
 ORDER BY employee_id, lower(valid_during)
 `
 
 type InputSalaryParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	FromDate time.Time
 	ToDate   time.Time
@@ -944,7 +1205,12 @@ type InputSalaryRow struct {
 }
 
 func (q *Queries) InputSalary(ctx context.Context, arg InputSalaryParams) ([]InputSalaryRow, error) {
-	rows, err := q.db.Query(ctx, inputSalary, arg.Ids, arg.FromDate, arg.ToDate)
+	rows, err := q.db.Query(ctx, inputSalary,
+		arg.TenantID,
+		arg.Ids,
+		arg.FromDate,
+		arg.ToDate,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1004,11 +1270,12 @@ func (q *Queries) InputSettings(ctx context.Context, tenantID uuid.UUID) (InputS
 
 const inputSpans = `-- name: InputSpans :many
 SELECT employee_id, lower(span)::date AS from_date, upper_inf(span)::bool AS open_ended, coalesce(upper(span), lower(span))::date AS to_date
-FROM employment_spans WHERE employee_id = ANY($1::uuid[]) AND span && daterange($2::date, $3::date, '[)')
+FROM employment_spans WHERE tenant_id = $1 AND employee_id = ANY($2::uuid[]) AND span && daterange($3::date, $4::date, '[)')
 ORDER BY employee_id, lower(span)
 `
 
 type InputSpansParams struct {
+	TenantID uuid.UUID
 	Ids      []uuid.UUID
 	FromDate time.Time
 	ToDate   time.Time
@@ -1022,7 +1289,12 @@ type InputSpansRow struct {
 }
 
 func (q *Queries) InputSpans(ctx context.Context, arg InputSpansParams) ([]InputSpansRow, error) {
-	rows, err := q.db.Query(ctx, inputSpans, arg.Ids, arg.FromDate, arg.ToDate)
+	rows, err := q.db.Query(ctx, inputSpans,
+		arg.TenantID,
+		arg.Ids,
+		arg.FromDate,
+		arg.ToDate,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1094,96 +1366,172 @@ func (q *Queries) InputStatutory(ctx context.Context) ([]InputStatutoryRow, erro
 	return items, nil
 }
 
-const insertItem = `-- name: InsertItem :exec
-INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net,
-                           error_codes, warning_codes, issues, input_fingerprint, employee_no, employee_name, department_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7::numeric, $8::numeric,
-        $9::numeric, $10, $11, $12, $13, $14, $15, $16)
+const insertAdjustment = `-- name: InsertAdjustment :exec
+INSERT INTO adjustments (tenant_id, id, employee_id, origin_period_id, target_year, target_month, component_code,
+                         amount, taxable, reason, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7,
+        $8::numeric, $9, $10, $11)
 `
 
-type InsertItemParams struct {
-	TenantID         uuid.UUID
-	ID               uuid.UUID
-	RunID            uuid.UUID
-	EmployeeID       uuid.UUID
-	CalcVersion      int32
-	Status           string
-	Gross            pgtype.Numeric
-	Deductions       pgtype.Numeric
-	Net              pgtype.Numeric
-	ErrorCodes       []string
-	WarningCodes     []string
-	Issues           []byte
-	InputFingerprint []byte
-	EmployeeNo       string
-	EmployeeName     string
-	DepartmentID     *uuid.UUID
+type InsertAdjustmentParams struct {
+	TenantID       uuid.UUID
+	ID             uuid.UUID
+	EmployeeID     uuid.UUID
+	OriginPeriodID uuid.UUID
+	TargetYear     int16
+	TargetMonth    int16
+	ComponentCode  string
+	Amount         pgtype.Numeric
+	Taxable        bool
+	Reason         string
+	CreatedBy      *uuid.UUID
 }
 
-func (q *Queries) InsertItem(ctx context.Context, arg InsertItemParams) error {
-	_, err := q.db.Exec(ctx, insertItem,
+func (q *Queries) InsertAdjustment(ctx context.Context, arg InsertAdjustmentParams) error {
+	_, err := q.db.Exec(ctx, insertAdjustment,
 		arg.TenantID,
 		arg.ID,
-		arg.RunID,
 		arg.EmployeeID,
-		arg.CalcVersion,
-		arg.Status,
-		arg.Gross,
-		arg.Deductions,
-		arg.Net,
-		arg.ErrorCodes,
-		arg.WarningCodes,
-		arg.Issues,
-		arg.InputFingerprint,
-		arg.EmployeeNo,
-		arg.EmployeeName,
-		arg.DepartmentID,
+		arg.OriginPeriodID,
+		arg.TargetYear,
+		arg.TargetMonth,
+		arg.ComponentCode,
+		arg.Amount,
+		arg.Taxable,
+		arg.Reason,
+		arg.CreatedBy,
 	)
 	return err
 }
 
-const insertLine = `-- name: InsertLine :exec
-INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage,
-                           amount, basis, explanation, taxable, rounding)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11::numeric, $12, $13, $14, $15)
+const insertItemsBatch = `-- name: InsertItemsBatch :exec
+INSERT INTO payroll_items (tenant_id, id, run_id, employee_id, calc_version, status, gross, deductions, net,
+                           error_codes, warning_codes, issues, input_fingerprint, employee_no, employee_name, department_id)
+SELECT $1, u.id, $2, u.employee_id, $3, u.status, u.gross, u.deductions, u.net,
+       CASE WHEN u.errs = '' THEN '{}'::text[] ELSE string_to_array(u.errs, ',') END,
+       CASE WHEN u.warns = '' THEN '{}'::text[] ELSE string_to_array(u.warns, ',') END,
+       u.issues, u.fp, u.no, u.name, nullif(u.dept, '00000000-0000-0000-0000-000000000000'::uuid)
+FROM (SELECT unnest($4::uuid[]) AS id, unnest($5::uuid[]) AS employee_id, unnest($6::text[]) AS status, unnest($7::numeric[]) AS gross, unnest($8::numeric[]) AS deductions, unnest($9::numeric[]) AS net, unnest($10::text[]) AS errs, unnest($11::text[]) AS warns, unnest($12::jsonb[]) AS issues, unnest($13::bytea[]) AS fp, unnest($14::text[]) AS no, unnest($15::text[]) AS name, unnest($16::uuid[]) AS dept) u
 `
 
-type InsertLineParams struct {
+type InsertItemsBatchParams struct {
 	TenantID    uuid.UUID
-	ID          uuid.UUID
 	RunID       uuid.UUID
 	CalcVersion int32
-	ItemID      uuid.UUID
-	SortOrder   int16
-	Code        string
-	Name        string
-	Category    string
-	Stage       string
-	Amount      pgtype.Numeric
-	Basis       []byte
-	Explanation string
-	Taxable     bool
-	Rounding    string
+	Ids         []uuid.UUID
+	EmployeeIds []uuid.UUID
+	Statuses    []string
+	Gross       []pgtype.Numeric
+	Deductions  []pgtype.Numeric
+	Net         []pgtype.Numeric
+	Errs        []string
+	Warns       []string
+	Issues      [][]byte
+	Fps         [][]byte
+	Nos         []string
+	Names       []string
+	Depts       []uuid.UUID
 }
 
-func (q *Queries) InsertLine(ctx context.Context, arg InsertLineParams) error {
-	_, err := q.db.Exec(ctx, insertLine,
+// writeChunk (S9 PR-1): satu INSERT … unnest per chunk (COPY ditolak untuk tabel ber-RLS). error/warning
+// codes dikirim sebagai teks dipisah koma (kode katalog tanpa koma); department nol → NULL.
+func (q *Queries) InsertItemsBatch(ctx context.Context, arg InsertItemsBatchParams) error {
+	_, err := q.db.Exec(ctx, insertItemsBatch,
 		arg.TenantID,
-		arg.ID,
 		arg.RunID,
 		arg.CalcVersion,
-		arg.ItemID,
-		arg.SortOrder,
-		arg.Code,
-		arg.Name,
-		arg.Category,
-		arg.Stage,
-		arg.Amount,
-		arg.Basis,
-		arg.Explanation,
-		arg.Taxable,
-		arg.Rounding,
+		arg.Ids,
+		arg.EmployeeIds,
+		arg.Statuses,
+		arg.Gross,
+		arg.Deductions,
+		arg.Net,
+		arg.Errs,
+		arg.Warns,
+		arg.Issues,
+		arg.Fps,
+		arg.Nos,
+		arg.Names,
+		arg.Depts,
+	)
+	return err
+}
+
+const insertLinesBatch = `-- name: InsertLinesBatch :exec
+INSERT INTO payroll_lines (tenant_id, id, run_id, calc_version, item_id, sort_order, code, name, category, stage,
+                           amount, basis, explanation, taxable, rounding, adjustment_id)
+SELECT $1, u.id, $2, $3, u.item_id, u.sort_order, u.code, u.name, u.category, u.stage,
+       u.amount, u.basis, u.explanation, u.taxable, u.rounding, nullif(u.adj, '00000000-0000-0000-0000-000000000000'::uuid)
+FROM (SELECT unnest($4::uuid[]) AS id, unnest($5::uuid[]) AS item_id, unnest($6::smallint[]) AS sort_order, unnest($7::text[]) AS code, unnest($8::text[]) AS name, unnest($9::text[]) AS category, unnest($10::text[]) AS stage, unnest($11::numeric[]) AS amount, unnest($12::jsonb[]) AS basis, unnest($13::text[]) AS explanation, unnest($14::bool[]) AS taxable, unnest($15::text[]) AS rounding, unnest($16::uuid[]) AS adj) u
+`
+
+type InsertLinesBatchParams struct {
+	TenantID     uuid.UUID
+	RunID        uuid.UUID
+	CalcVersion  int32
+	Ids          []uuid.UUID
+	ItemIds      []uuid.UUID
+	SortOrders   []int16
+	Codes        []string
+	Names        []string
+	Categories   []string
+	Stages       []string
+	Amounts      []pgtype.Numeric
+	Bases        [][]byte
+	Explanations []string
+	Taxables     []bool
+	Roundings    []string
+	Adjs         []uuid.UUID
+}
+
+func (q *Queries) InsertLinesBatch(ctx context.Context, arg InsertLinesBatchParams) error {
+	_, err := q.db.Exec(ctx, insertLinesBatch,
+		arg.TenantID,
+		arg.RunID,
+		arg.CalcVersion,
+		arg.Ids,
+		arg.ItemIds,
+		arg.SortOrders,
+		arg.Codes,
+		arg.Names,
+		arg.Categories,
+		arg.Stages,
+		arg.Amounts,
+		arg.Bases,
+		arg.Explanations,
+		arg.Taxables,
+		arg.Roundings,
+		arg.Adjs,
+	)
+	return err
+}
+
+const insertPayslips = `-- name: InsertPayslips :exec
+INSERT INTO payslips (tenant_id, id, run_id, employee_id, item_id, object_key)
+SELECT $1, u.id, $2, u.employee_id, u.item_id, u.object_key
+FROM (SELECT unnest($3::uuid[]) AS id, unnest($4::uuid[]) AS employee_id, unnest($5::uuid[]) AS item_id,
+             unnest($6::text[]) AS object_key) u
+`
+
+type InsertPayslipsParams struct {
+	TenantID    uuid.UUID
+	RunID       uuid.UUID
+	Ids         []uuid.UUID
+	EmployeeIds []uuid.UUID
+	ItemIds     []uuid.UUID
+	ObjectKeys  []string
+}
+
+// Satu payslip PENDING per item OK (transaksi finalize). object_key dibangun aplikasi, dijaga
+// ck_payslips_object_key (tenants/{tenant}/payslips/{run}/{employee}.pdf).
+func (q *Queries) InsertPayslips(ctx context.Context, arg InsertPayslipsParams) error {
+	_, err := q.db.Exec(ctx, insertPayslips,
+		arg.TenantID,
+		arg.RunID,
+		arg.Ids,
+		arg.EmployeeIds,
+		arg.ItemIds,
+		arg.ObjectKeys,
 	)
 	return err
 }
@@ -1234,34 +1582,35 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) error {
 	return err
 }
 
-const insertSnapshot = `-- name: InsertSnapshot :exec
+const insertSnapshotsBatch = `-- name: InsertSnapshotsBatch :exec
 INSERT INTO payroll_item_snapshots (tenant_id, item_id, run_id, calc_version, snapshot_version, input, ruleset_code, ruleset_version, input_fingerprint)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+SELECT $1, u.item_id, $2, $3, $4, u.input, $5, $6, u.fp
+FROM (SELECT unnest($7::uuid[]) AS item_id, unnest($8::jsonb[]) AS input, unnest($9::bytea[]) AS fp) u
 `
 
-type InsertSnapshotParams struct {
-	TenantID         uuid.UUID
-	ItemID           uuid.UUID
-	RunID            uuid.UUID
-	CalcVersion      int32
-	SnapshotVersion  int16
-	Input            []byte
-	RulesetCode      string
-	RulesetVersion   string
-	InputFingerprint []byte
+type InsertSnapshotsBatchParams struct {
+	TenantID        uuid.UUID
+	RunID           uuid.UUID
+	CalcVersion     int32
+	SnapshotVersion int16
+	RulesetCode     string
+	RulesetVersion  string
+	ItemIds         []uuid.UUID
+	Inputs          [][]byte
+	Fps             [][]byte
 }
 
-func (q *Queries) InsertSnapshot(ctx context.Context, arg InsertSnapshotParams) error {
-	_, err := q.db.Exec(ctx, insertSnapshot,
+func (q *Queries) InsertSnapshotsBatch(ctx context.Context, arg InsertSnapshotsBatchParams) error {
+	_, err := q.db.Exec(ctx, insertSnapshotsBatch,
 		arg.TenantID,
-		arg.ItemID,
 		arg.RunID,
 		arg.CalcVersion,
 		arg.SnapshotVersion,
-		arg.Input,
 		arg.RulesetCode,
 		arg.RulesetVersion,
-		arg.InputFingerprint,
+		arg.ItemIds,
+		arg.Inputs,
+		arg.Fps,
 	)
 	return err
 }
@@ -1288,6 +1637,96 @@ func (q *Queries) ItemFingerprints(ctx context.Context, arg ItemFingerprintsPara
 			return nil, err
 		}
 		items = append(items, input_fingerprint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAdjustments = `-- name: ListAdjustments :many
+SELECT a.id, a.tenant_id, a.employee_id, p.year AS origin_year, p.month AS origin_month, a.target_year, a.target_month,
+       a.component_code, a.amount::text AS amount, a.taxable, a.reason, a.status, a.applied_run_id, a.applied_at,
+       a.cancelled_at, a.created_by, a.created_at
+FROM adjustments a JOIN payroll_periods p ON p.tenant_id = a.tenant_id AND p.id = a.origin_period_id
+WHERE ($1::uuid IS NULL OR a.employee_id = $1)
+  AND ($2::smallint IS NULL OR (a.target_year = $2 AND a.target_month = $3::smallint))
+  AND ($4::text IS NULL OR a.status = $4)
+  AND ($5::timestamptz IS NULL OR (a.created_at, a.id) < ($5, $6::uuid))
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT $7
+`
+
+type ListAdjustmentsParams struct {
+	EmployeeID  *uuid.UUID
+	TargetYear  *int16
+	TargetMonth *int16
+	Status      *string
+	CursorAt    *time.Time
+	CursorID    *uuid.UUID
+	Lim         int32
+}
+
+type ListAdjustmentsRow struct {
+	ID            uuid.UUID
+	TenantID      uuid.UUID
+	EmployeeID    uuid.UUID
+	OriginYear    int16
+	OriginMonth   int16
+	TargetYear    int16
+	TargetMonth   int16
+	ComponentCode string
+	Amount        string
+	Taxable       bool
+	Reason        string
+	Status        string
+	AppliedRunID  *uuid.UUID
+	AppliedAt     *time.Time
+	CancelledAt   *time.Time
+	CreatedBy     *uuid.UUID
+	CreatedAt     time.Time
+}
+
+// J2: cursor (created_at DESC, id DESC); filter opsional.
+func (q *Queries) ListAdjustments(ctx context.Context, arg ListAdjustmentsParams) ([]ListAdjustmentsRow, error) {
+	rows, err := q.db.Query(ctx, listAdjustments,
+		arg.EmployeeID,
+		arg.TargetYear,
+		arg.TargetMonth,
+		arg.Status,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAdjustmentsRow
+	for rows.Next() {
+		var i ListAdjustmentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.EmployeeID,
+			&i.OriginYear,
+			&i.OriginMonth,
+			&i.TargetYear,
+			&i.TargetMonth,
+			&i.ComponentCode,
+			&i.Amount,
+			&i.Taxable,
+			&i.Reason,
+			&i.Status,
+			&i.AppliedRunID,
+			&i.AppliedAt,
+			&i.CancelledAt,
+			&i.CreatedBy,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1380,21 +1819,22 @@ func (q *Queries) ListItems(ctx context.Context, arg ListItemsParams) ([]ListIte
 }
 
 const listLines = `-- name: ListLines :many
-SELECT sort_order, code, name, category, stage, amount, basis, explanation, taxable, rounding
+SELECT sort_order, code, name, category, stage, amount, basis, explanation, taxable, rounding, adjustment_id
 FROM payroll_lines WHERE item_id = $1 ORDER BY sort_order
 `
 
 type ListLinesRow struct {
-	SortOrder   int16
-	Code        string
-	Name        string
-	Category    string
-	Stage       string
-	Amount      pgtype.Numeric
-	Basis       []byte
-	Explanation string
-	Taxable     bool
-	Rounding    string
+	SortOrder    int16
+	Code         string
+	Name         string
+	Category     string
+	Stage        string
+	Amount       pgtype.Numeric
+	Basis        []byte
+	Explanation  string
+	Taxable      bool
+	Rounding     string
+	AdjustmentID *uuid.UUID
 }
 
 func (q *Queries) ListLines(ctx context.Context, itemID uuid.UUID) ([]ListLinesRow, error) {
@@ -1417,6 +1857,152 @@ func (q *Queries) ListLines(ctx context.Context, itemID uuid.UUID) ([]ListLinesR
 			&i.Explanation,
 			&i.Taxable,
 			&i.Rounding,
+			&i.AdjustmentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMyPayslips = `-- name: ListMyPayslips :many
+SELECT p.id, p.tenant_id, per.year, per.month, i.net::text AS net, r.finalized_at, p.status,
+       make_date(per.year, per.month, 1)::timestamptz AS period_at
+FROM payslips p
+JOIN payroll_runs r ON r.tenant_id = p.tenant_id AND r.id = p.run_id
+JOIN payroll_periods per ON per.tenant_id = r.tenant_id AND per.id = r.period_id
+JOIN payroll_items i ON i.tenant_id = p.tenant_id AND i.id = p.item_id
+WHERE p.employee_id = $1
+  AND ($2::smallint IS NULL OR per.year = $2)
+  AND ($3::timestamptz IS NULL
+       OR (make_date(per.year, per.month, 1)::timestamptz, p.id) < ($3, $4::uuid))
+ORDER BY per.year DESC, per.month DESC, p.id DESC
+LIMIT $5
+`
+
+type ListMyPayslipsParams struct {
+	EmployeeID uuid.UUID
+	Year       *int16
+	CursorAt   *time.Time
+	CursorID   *uuid.UUID
+	Lim        int32
+}
+
+type ListMyPayslipsRow struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	Year        int16
+	Month       int16
+	Net         string
+	FinalizedAt *time.Time
+	Status      string
+	PeriodAt    time.Time
+}
+
+// S1: slip FINALIZED milik employee, periode terbaru dulu. Cursor (awal bulan periode, id).
+func (q *Queries) ListMyPayslips(ctx context.Context, arg ListMyPayslipsParams) ([]ListMyPayslipsRow, error) {
+	rows, err := q.db.Query(ctx, listMyPayslips,
+		arg.EmployeeID,
+		arg.Year,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMyPayslipsRow
+	for rows.Next() {
+		var i ListMyPayslipsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Year,
+			&i.Month,
+			&i.Net,
+			&i.FinalizedAt,
+			&i.Status,
+			&i.PeriodAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunPayslips = `-- name: ListRunPayslips :many
+SELECT p.id, p.tenant_id, p.employee_id, i.employee_no, i.employee_name, i.net::text AS net, p.status, p.rendered_at, p.attempts,
+       per.year, per.month
+FROM payslips p
+JOIN payroll_items i ON i.tenant_id = p.tenant_id AND i.id = p.item_id
+JOIN payroll_runs r ON r.tenant_id = p.tenant_id AND r.id = p.run_id
+JOIN payroll_periods per ON per.tenant_id = r.tenant_id AND per.id = r.period_id
+WHERE p.run_id = $1
+  AND ($2::uuid IS NULL OR p.employee_id = $2)
+  AND ($3::text IS NULL OR (i.employee_no, p.id) > ($3, $4::uuid))
+ORDER BY i.employee_no, p.id
+LIMIT $5
+`
+
+type ListRunPayslipsParams struct {
+	RunID      uuid.UUID
+	EmployeeID *uuid.UUID
+	AfterNo    *string
+	AfterID    *uuid.UUID
+	Lim        int32
+}
+
+type ListRunPayslipsRow struct {
+	ID           uuid.UUID
+	TenantID     uuid.UUID
+	EmployeeID   uuid.UUID
+	EmployeeNo   string
+	EmployeeName string
+	Net          string
+	Status       string
+	RenderedAt   *time.Time
+	Attempts     int16
+	Year         int16
+	Month        int16
+}
+
+// S3: ringkasan slip satu run (tanpa baris), urut employee_no. Cursor = id terakhir (urutan employee_no, id).
+func (q *Queries) ListRunPayslips(ctx context.Context, arg ListRunPayslipsParams) ([]ListRunPayslipsRow, error) {
+	rows, err := q.db.Query(ctx, listRunPayslips,
+		arg.RunID,
+		arg.EmployeeID,
+		arg.AfterNo,
+		arg.AfterID,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRunPayslipsRow
+	for rows.Next() {
+		var i ListRunPayslipsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.EmployeeID,
+			&i.EmployeeNo,
+			&i.EmployeeName,
+			&i.Net,
+			&i.Status,
+			&i.RenderedAt,
+			&i.Attempts,
+			&i.Year,
+			&i.Month,
 		); err != nil {
 			return nil, err
 		}
@@ -1492,6 +2078,31 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]ListRunsR
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAdjustment = `-- name: LockAdjustment :one
+SELECT id, employee_id, target_year, target_month, status FROM adjustments WHERE id = $1 FOR UPDATE
+`
+
+type LockAdjustmentRow struct {
+	ID          uuid.UUID
+	EmployeeID  uuid.UUID
+	TargetYear  int16
+	TargetMonth int16
+	Status      string
+}
+
+func (q *Queries) LockAdjustment(ctx context.Context, id uuid.UUID) (LockAdjustmentRow, error) {
+	row := q.db.QueryRow(ctx, lockAdjustment, id)
+	var i LockAdjustmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.EmployeeID,
+		&i.TargetYear,
+		&i.TargetMonth,
+		&i.Status,
+	)
+	return i, err
 }
 
 const lockPeriod = `-- name: LockPeriod :one
@@ -1614,6 +2225,205 @@ func (q *Queries) LockTenantSettings(ctx context.Context, tenantID uuid.UUID) (L
 	row := q.db.QueryRow(ctx, lockTenantSettings, tenantID)
 	var i LockTenantSettingsRow
 	err := row.Scan(&i.Timezone, &i.CutoffDayOfNextMonth, &i.CutoffTime)
+	return i, err
+}
+
+const markPayslipFailed = `-- name: MarkPayslipFailed :exec
+UPDATE payslips SET status = 'FAILED', attempts = attempts + 1, last_error = $1 WHERE id = $2 AND status <> 'RENDERED'
+`
+
+type MarkPayslipFailedParams struct {
+	LastError *string
+	ID        uuid.UUID
+}
+
+func (q *Queries) MarkPayslipFailed(ctx context.Context, arg MarkPayslipFailedParams) error {
+	_, err := q.db.Exec(ctx, markPayslipFailed, arg.LastError, arg.ID)
+	return err
+}
+
+const markPayslipRendered = `-- name: MarkPayslipRendered :execrows
+UPDATE payslips SET status = 'RENDERED', checksum_sha256 = $1, size_bytes = $2, rendered_at = $3,
+                    attempts = attempts + 1, last_error = NULL
+WHERE id = $4 AND status <> 'RENDERED'
+`
+
+type MarkPayslipRenderedParams struct {
+	Checksum  []byte
+	SizeBytes *int32
+	At        *time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) MarkPayslipRendered(ctx context.Context, arg MarkPayslipRenderedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markPayslipRendered,
+		arg.Checksum,
+		arg.SizeBytes,
+		arg.At,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const oKItemsOfVersion = `-- name: OKItemsOfVersion :many
+
+SELECT id, employee_id FROM payroll_items WHERE run_id = $1 AND calc_version = $2 AND status = 'OK'
+ORDER BY employee_id
+`
+
+type OKItemsOfVersionParams struct {
+	RunID       uuid.UUID
+	CalcVersion int32
+}
+
+type OKItemsOfVersionRow struct {
+	ID         uuid.UUID
+	EmployeeID uuid.UUID
+}
+
+// ---------------------------------------------------------------- payslip (S7, PF-15, PF-22)
+func (q *Queries) OKItemsOfVersion(ctx context.Context, arg OKItemsOfVersionParams) ([]OKItemsOfVersionRow, error) {
+	rows, err := q.db.Query(ctx, oKItemsOfVersion, arg.RunID, arg.CalcVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OKItemsOfVersionRow
+	for rows.Next() {
+		var i OKItemsOfVersionRow
+		if err := rows.Scan(&i.ID, &i.EmployeeID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const payslipsForRender = `-- name: PayslipsForRender :many
+SELECT p.id, p.tenant_id, p.status, p.object_key, p.item_id, r.finalized_at, per.year, per.month, t.name AS tenant_name,
+       i.employee_no, i.employee_name, i.gross::text AS gross, i.deductions::text AS deductions, i.net::text AS net,
+       coalesce(r.ruleset_code, '') AS ruleset_code, coalesce(r.ruleset_version, '') AS ruleset_version,
+       e.bank_name, e.bank_account_last4,
+       coalesce((SELECT ps.name FROM org_assignments oa JOIN positions ps ON ps.tenant_id = oa.tenant_id AND ps.id = oa.position_id
+                 WHERE oa.tenant_id = p.tenant_id AND oa.employee_id = p.employee_id
+                   AND oa.valid_during && daterange(make_date(per.year, per.month, 1), (make_date(per.year, per.month, 1) + interval '1 month')::date, '[)')
+                 ORDER BY lower(oa.valid_during) DESC LIMIT 1), '')::text AS position_name,
+       coalesce((SELECT d.name FROM org_assignments oa JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
+                 WHERE oa.tenant_id = p.tenant_id AND oa.employee_id = p.employee_id
+                   AND oa.valid_during && daterange(make_date(per.year, per.month, 1), (make_date(per.year, per.month, 1) + interval '1 month')::date, '[)')
+                 ORDER BY lower(oa.valid_during) DESC LIMIT 1), '')::text AS department_name
+FROM payslips p
+JOIN payroll_runs r ON r.tenant_id = p.tenant_id AND r.id = p.run_id
+JOIN payroll_periods per ON per.tenant_id = r.tenant_id AND per.id = r.period_id
+JOIN payroll_items i ON i.tenant_id = p.tenant_id AND i.id = p.item_id
+JOIN employees e ON e.tenant_id = p.tenant_id AND e.id = p.employee_id
+JOIN tenants t ON t.id = p.tenant_id
+WHERE p.id = ANY($1::uuid[])
+ORDER BY p.employee_id
+`
+
+type PayslipsForRenderRow struct {
+	ID               uuid.UUID
+	TenantID         uuid.UUID
+	Status           string
+	ObjectKey        string
+	ItemID           uuid.UUID
+	FinalizedAt      *time.Time
+	Year             int16
+	Month            int16
+	TenantName       string
+	EmployeeNo       string
+	EmployeeName     string
+	Gross            string
+	Deductions       string
+	Net              string
+	RulesetCode      string
+	RulesetVersion   string
+	BankName         *string
+	BankAccountLast4 *string
+	PositionName     string
+	DepartmentName   string
+}
+
+// Data render PDF per payslip batch. Jabatan/departemen: penempatan terakhir yang beririsan periode.
+func (q *Queries) PayslipsForRender(ctx context.Context, ids []uuid.UUID) ([]PayslipsForRenderRow, error) {
+	rows, err := q.db.Query(ctx, payslipsForRender, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []PayslipsForRenderRow
+	for rows.Next() {
+		var i PayslipsForRenderRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Status,
+			&i.ObjectKey,
+			&i.ItemID,
+			&i.FinalizedAt,
+			&i.Year,
+			&i.Month,
+			&i.TenantName,
+			&i.EmployeeNo,
+			&i.EmployeeName,
+			&i.Gross,
+			&i.Deductions,
+			&i.Net,
+			&i.RulesetCode,
+			&i.RulesetVersion,
+			&i.BankName,
+			&i.BankAccountLast4,
+			&i.PositionName,
+			&i.DepartmentName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pendingPayslipCount = `-- name: PendingPayslipCount :one
+SELECT count(*) FROM payslips WHERE status <> 'RENDERED'
+`
+
+func (q *Queries) PendingPayslipCount(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, pendingPayslipCount)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const periodByMonth = `-- name: PeriodByMonth :one
+
+SELECT id, status FROM payroll_periods WHERE year = $1 AND month = $2
+`
+
+type PeriodByMonthParams struct {
+	Year  int16
+	Month int16
+}
+
+type PeriodByMonthRow struct {
+	ID     uuid.UUID
+	Status string
+}
+
+// ---------------------------------------------------------------- adjustment (S7, PF-19, PI-15)
+func (q *Queries) PeriodByMonth(ctx context.Context, arg PeriodByMonthParams) (PeriodByMonthRow, error) {
+	row := q.db.QueryRow(ctx, periodByMonth, arg.Year, arg.Month)
+	var i PeriodByMonthRow
+	err := row.Scan(&i.ID, &i.Status)
 	return i, err
 }
 
@@ -1816,6 +2626,27 @@ func (q *Queries) RunVersionSummary(ctx context.Context, arg RunVersionSummaryPa
 		&i.ItemCount,
 	)
 	return i, err
+}
+
+const selfEmployee = `-- name: SelfEmployee :one
+SELECT id FROM employees WHERE user_id = $1
+`
+
+func (q *Queries) SelfEmployee(ctx context.Context, userID *uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, selfEmployee, userID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const setCustomPlans = `-- name: SetCustomPlans :exec
+SET LOCAL plan_cache_mode = force_custom_plan
+`
+
+// Lihat loadChunk/customPlans (S9 PR-1): rencana per eksekusi dengan nilai tenant aktual.
+func (q *Queries) SetCustomPlans(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, setCustomPlans)
+	return err
 }
 
 const setPeriodStatus = `-- name: SetPeriodStatus :exec

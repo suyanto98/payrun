@@ -5,19 +5,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel/attribute"
 
 	"payrun/internal/modules/payroll/engine"
 	"payrun/internal/modules/payroll/store"
+	"payrun/internal/platform/clock"
 	"payrun/internal/platform/db"
+	"payrun/internal/platform/faults"
 	"payrun/internal/platform/idgen"
 	"payrun/internal/platform/jobs"
+	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/observability"
+	"payrun/internal/platform/storage"
 	"payrun/internal/platform/testhook"
+	"payrun/internal/platform/tracing"
 )
 
 // Eksekusi run (ADR-P05, Step 7 `22` §3.2):
@@ -53,6 +61,19 @@ type Jobs struct {
 	pool      *pgxpool.Pool
 	ids       idgen.Generator
 	chunkSize int
+	docs      storage.Store // payslip PDF (S7); nil = lane documents tidak dijalankan
+	clock     clock.Clock
+}
+
+// WithDocuments: object storage + jam untuk job payslip.render (lane documents).
+func (j *Jobs) WithDocuments(st storage.Store, c clock.Clock) *Jobs {
+	j.docs, j.clock = st, c
+	return j
+}
+
+// DocumentKinds: payslip.render (lane documents, ADR-012). Timeout 5 menit + heartbeat; 5 percobaan.
+func (j *Jobs) DocumentKinds() []jobs.Kind {
+	return []jobs.Kind{{Name: KindPayslipRender, Handler: j.renderPayslips, MaxAttempts: 5, Timeout: 5 * time.Minute, Heartbeat: true}}
 }
 
 func NewJobs(pool *pgxpool.Pool, ids idgen.Generator, chunkSize int) *Jobs {
@@ -79,7 +100,8 @@ func (j *Jobs) plan(ctx context.Context, job *jobs.Job) error {
 	if err := job.Decode(&p); err != nil {
 		return err
 	}
-	return db.WithTenantTxFor(ctx, j.pool, job.TenantID, func(tx pgx.Tx) error {
+	var done runOutcome
+	err := db.WithTenantTxFor(ctx, j.pool, job.TenantID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		run, err := q.LockRun(ctx, p.RunID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -105,7 +127,7 @@ func (j *Jobs) plan(ctx context.Context, job *jobs.Job) error {
 			return err
 		}
 		if chunks == 0 { // Step 12 R1-3: run 0 karyawan langsung CALCULATED dengan total 0
-			if err := j.finish(ctx, q, job.TenantID, p.RunID, p.CalcVersion, 0, info.Year, info.Month); err != nil {
+			if done, err = j.finish(ctx, q, job.TenantID, p.RunID, p.CalcVersion, 0, info.Year, info.Month); err != nil {
 				return err
 			}
 			return jobs.CompleteInTx(ctx, tx, job)
@@ -120,6 +142,27 @@ func (j *Jobs) plan(ctx context.Context, job *jobs.Job) error {
 		}
 		return jobs.CompleteInTx(ctx, tx, job)
 	})
+	if err == nil {
+		done.emit()
+	}
+	return err
+}
+
+// runOutcome: hasil finish, dicatat ke metrik SETELAH commit (commit yang di-fence tidak terhitung).
+type runOutcome struct {
+	outcome  string // "", calculated, failed
+	eligible int32
+	duration float64
+}
+
+func (o runOutcome) emit() {
+	switch o.outcome {
+	case "calculated":
+		metrics.PayrollRuns.WithLabelValues("calculated").Inc()
+		metrics.PayrollRunDuration.WithLabelValues(metrics.SizeBucket(o.eligible)).Observe(o.duration)
+	case "failed":
+		metrics.PayrollRuns.WithLabelValues("failed").Inc()
+	}
 }
 
 type computed struct {
@@ -139,6 +182,10 @@ func (j *Jobs) chunk(ctx context.Context, job *jobs.Job) error {
 	if err := job.Decode(&p); err != nil {
 		return err
 	}
+	// Span use-case di bawah span "job payroll.calc_chunk" (root baru ber-link ke request calculate, §5.3).
+	ctx, span := tracing.Start(ctx, "payroll.calc_chunk", attribute.String("app.run_id", p.RunID.String()), attribute.Int("app.chunk_no", p.ChunkNo))
+	defer span.End()
+	start := metrics.Start()
 	// txRead: satu snapshot konsisten (RR READ ONLY; 40001 tidak mungkin pada transaksi read-only).
 	var data chunkData
 	var stale bool
@@ -193,7 +240,9 @@ func (j *Jobs) chunk(ctx context.Context, job *jobs.Job) error {
 	}
 
 	// txWrite: run FOR UPDATE lebih dulu (urutan global [3] → [7], D4).
-	return db.WithTenantTxFor(ctx, j.pool, job.TenantID, func(tx pgx.Tx) error {
+	var done runOutcome
+	wrote := false
+	err = db.WithTenantTxFor(ctx, j.pool, job.TenantID, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		run, err := q.LockRun(ctx, p.RunID)
 		if err != nil {
@@ -206,22 +255,35 @@ func (j *Jobs) chunk(ctx context.Context, job *jobs.Job) error {
 		if err := q.DeleteChunkItems(ctx, store.DeleteChunkItemsParams{RunID: p.RunID, CalcVersion: p.CalcVersion, EmployeeIds: p.EmployeeIDs}); err != nil {
 			return err
 		}
-		for _, c := range results {
-			if err := j.writeItem(ctx, q, job.TenantID, p.RunID, p.CalcVersion, c, data); err != nil {
-				return err
-			}
+		if err := j.writeChunk(ctx, q, job.TenantID, p.RunID, p.CalcVersion, results, data); err != nil {
+			return err
 		}
 		prog, err := q.IncrementChunksDone(ctx, p.RunID)
 		if err != nil {
 			return err
 		}
 		if prog.ChunksDone == prog.ChunksTotal {
-			if err := j.finish(ctx, q, job.TenantID, p.RunID, p.CalcVersion, eligibleOf(run), year, month); err != nil {
+			if done, err = j.finish(ctx, q, job.TenantID, p.RunID, p.CalcVersion, eligibleOf(run), year, month); err != nil {
 				return err
 			}
 		}
+		wrote = true
+		// Demo B live (build tag demo saja): worker mati di sini, item chunk ini belum commit (PFS-01).
+		faults.Check(ctx, j.pool, faults.PointChunkBeforeCommit, job.TenantID)
 		return jobs.CompleteInTx(ctx, tx, job) // fencing: lease diambil worker lain → ErrLeaseLost → rollback
 	})
+	if err != nil || !wrote {
+		return err
+	}
+	for _, c := range results {
+		metrics.ItemsCalculated.WithLabelValues(strings.ToLower(string(c.res.Status))).Inc()
+		for _, is := range c.res.Errors {
+			metrics.ItemErrors.WithLabelValues(is.Code).Inc()
+		}
+	}
+	metrics.ChunkDuration.WithLabelValues().Observe(metrics.Since(start))
+	done.emit()
+	return nil
 }
 
 func eligibleOf(r store.LockRunRow) int32 {
@@ -231,28 +293,61 @@ func eligibleOf(r store.LockRunRow) int32 {
 	return *r.EligibleCount
 }
 
-func (j *Jobs) writeItem(ctx context.Context, q *store.Queries, tid, runID uuid.UUID, ver int32, c computed, data chunkData) error {
-	itemID := j.ids.New()
-	status := string(c.res.Status)
-	params := store.InsertItemParams{TenantID: tid, ID: itemID, RunID: runID, EmployeeID: c.id, CalcVersion: ver, Status: status,
-		ErrorCodes: codes(c.res.Errors), WarningCodes: codes(c.res.Warnings), Issues: c.issues, InputFingerprint: c.fp,
-		EmployeeNo: c.meta.no, EmployeeName: c.meta.name, DepartmentID: c.meta.dept}
-	if len(c.res.Lines) > 0 || c.res.Status == engine.StatusOK {
-		params.Gross, params.Deductions, params.Net = toNum(c.res.Gross), toNum(c.res.Deductions), toNum(c.res.Net)
+// writeChunk: item, line, dan snapshot satu chunk lewat TIGA INSERT … unnest (bukan ±7 INSERT per karyawan).
+// txWrite memegang lock baris run (FOR UPDATE) selama menulis; PR-1 (S9) mengukur ±350 INSERT per chunk 50
+// = ±165 ms lock per chunk → keempat worker antre di LockRun (rata-rata 215 ms menunggu). COPY tidak bisa:
+// Postgres menolak COPY FROM ke tabel ber-RLS untuk role tanpa BYPASSRLS. Trigger baris (immutable) tetap
+// berjalan; trigger jumlah item (constraint, deferred) diperiksa saat COMMIT.
+func (j *Jobs) writeChunk(ctx context.Context, q *store.Queries, tid, runID uuid.UUID, ver int32, results []computed, data chunkData) error {
+	if len(results) == 0 {
+		return nil
 	}
-	if err := q.InsertItem(ctx, params); err != nil {
+	it := store.InsertItemsBatchParams{TenantID: tid, RunID: runID, CalcVersion: ver}
+	ln := store.InsertLinesBatchParams{TenantID: tid, RunID: runID, CalcVersion: ver}
+	sn := store.InsertSnapshotsBatchParams{TenantID: tid, RunID: runID, CalcVersion: ver, SnapshotVersion: snapshotVersion,
+		RulesetCode: data.rsCode, RulesetVersion: data.rsVersion}
+	for _, c := range results {
+		itemID := j.ids.New()
+		var gross, ded, net pgtype.Numeric // NULL untuk item ERROR tanpa baris
+		if len(c.res.Lines) > 0 || c.res.Status == engine.StatusOK {
+			gross, ded, net = toNum(c.res.Gross), toNum(c.res.Deductions), toNum(c.res.Net)
+		}
+		dept := uuid.Nil
+		if c.meta.dept != nil {
+			dept = *c.meta.dept
+		}
+		it.Ids, it.EmployeeIds, it.Statuses = append(it.Ids, itemID), append(it.EmployeeIds, c.id), append(it.Statuses, string(c.res.Status))
+		it.Gross, it.Deductions, it.Net = append(it.Gross, gross), append(it.Deductions, ded), append(it.Net, net)
+		it.Errs, it.Warns = append(it.Errs, strings.Join(codes(c.res.Errors), ",")), append(it.Warns, strings.Join(codes(c.res.Warnings), ","))
+		it.Issues, it.Fps = append(it.Issues, c.issues), append(it.Fps, c.fp)
+		it.Nos, it.Names, it.Depts = append(it.Nos, c.meta.no), append(it.Names, c.meta.name), append(it.Depts, dept)
+		for i, l := range c.res.Lines {
+			basis, _ := json.Marshal(l.Basis)
+			adj := uuid.Nil
+			if l.Code == "ADJUSTMENT" {
+				id, err := uuid.Parse(l.Basis["adjustment_id"])
+				if err != nil {
+					return fmt.Errorf("adjustment line without id: %w", err)
+				}
+				adj = id
+			}
+			ln.Ids, ln.ItemIds, ln.SortOrders = append(ln.Ids, j.ids.New()), append(ln.ItemIds, itemID), append(ln.SortOrders, int16(i+1)) //nolint:gosec // G115
+			ln.Codes, ln.Names, ln.Categories = append(ln.Codes, l.Code), append(ln.Names, l.Name), append(ln.Categories, string(l.Category))
+			ln.Stages, ln.Amounts, ln.Bases = append(ln.Stages, string(l.Stage)), append(ln.Amounts, toNum(l.Amount)), append(ln.Bases, basis)
+			ln.Explanations, ln.Taxables = append(ln.Explanations, l.Explanation), append(ln.Taxables, l.Taxable)
+			ln.Roundings, ln.Adjs = append(ln.Roundings, string(l.Rounding)), append(ln.Adjs, adj)
+		}
+		sn.ItemIds, sn.Inputs, sn.Fps = append(sn.ItemIds, itemID), append(sn.Inputs, c.input), append(sn.Fps, c.fp)
+	}
+	if err := q.InsertItemsBatch(ctx, it); err != nil {
 		return err
 	}
-	for i, l := range c.res.Lines {
-		basis, _ := json.Marshal(l.Basis)
-		if err := q.InsertLine(ctx, store.InsertLineParams{TenantID: tid, ID: j.ids.New(), RunID: runID, CalcVersion: ver, ItemID: itemID,
-			SortOrder: int16(i + 1), Code: l.Code, Name: l.Name, Category: string(l.Category), Stage: string(l.Stage), //nolint:gosec // G115
-			Amount: toNum(l.Amount), Basis: basis, Explanation: l.Explanation, Taxable: l.Taxable, Rounding: string(l.Rounding)}); err != nil {
+	if len(ln.Ids) > 0 {
+		if err := q.InsertLinesBatch(ctx, ln); err != nil {
 			return err
 		}
 	}
-	return q.InsertSnapshot(ctx, store.InsertSnapshotParams{TenantID: tid, ItemID: itemID, RunID: runID, CalcVersion: ver,
-		SnapshotVersion: snapshotVersion, Input: c.input, RulesetCode: data.rsCode, RulesetVersion: data.rsVersion, InputFingerprint: c.fp})
+	return q.InsertSnapshotsBatch(ctx, sn)
 }
 
 func codes(is []engine.Issue) []string {
@@ -265,35 +360,45 @@ func codes(is []engine.Issue) []string {
 
 // finish: chunk terakhir (atau plan tanpa karyawan). Total = SUM item OK (PI-05, diverifikasi trigger
 // payroll_runs_totals_check); jumlah item harus = eligible_count, kalau tidak run FAILED.
-func (j *Jobs) finish(ctx context.Context, q *store.Queries, tid, runID uuid.UUID, ver, eligible int32, year, month int16) error {
+func (j *Jobs) finish(ctx context.Context, q *store.Queries, tid, runID uuid.UUID, ver, eligible int32, year, month int16) (runOutcome, error) {
 	sum, err := q.RunVersionSummary(ctx, store.RunVersionSummaryParams{RunID: runID, CalcVersion: ver})
 	if err != nil {
-		return err
+		return runOutcome{}, err
 	}
 	if sum.ItemCount != eligible {
-		_, err := q.FailRun(ctx, store.FailRunParams{Reason: ptr(fmt.Sprintf("item count %d ≠ eligible %d", sum.ItemCount, eligible)), ID: runID, CalcVersion: ver})
-		return err
+		n, err := q.FailRun(ctx, store.FailRunParams{Reason: ptr(fmt.Sprintf("item count %d ≠ eligible %d", sum.ItemCount, eligible)), ID: runID, CalcVersion: ver})
+		if err != nil || n == 0 {
+			return runOutcome{}, err
+		}
+		return runOutcome{outcome: "failed"}, nil
 	}
 	fps, err := q.ItemFingerprints(ctx, store.ItemFingerprintsParams{RunID: runID, CalcVersion: ver})
 	if err != nil {
-		return err
+		return runOutcome{}, err
 	}
 	from, _ := monthRange(int(year), int(month))
 	set, err := q.InputSettings(ctx, tid)
 	if err != nil {
-		return err
+		return runOutcome{}, err
 	}
 	rs, err := loadRuleset(ctx, q, set.RulesetCode, from)
 	if err != nil {
-		return err
+		return runOutcome{}, err
 	}
 	var rsCode, rsVersion *string
 	if rs.Code != "" {
 		rsCode, rsVersion = &rs.Code, &rs.Version
 	}
-	return q.CompleteCalculation(ctx, store.CompleteCalculationParams{Gross: sum.Gross, Deductions: sum.Deductions, Net: sum.Net,
+	secs, err := q.CompleteCalculation(ctx, store.CompleteCalculationParams{Gross: sum.Gross, Deductions: sum.Deductions, Net: sum.Net,
 		OkCount: &sum.OkCount, ErrorCount: &sum.ErrorCount, ExcludedCount: &sum.ExcludedCount, WarningCount: &sum.WarningCount,
 		Fingerprint: runFingerprint(fps), RulesetCode: rsCode, RulesetVersion: rsVersion, ID: runID, CalcVersion: ver})
+	if errors.Is(err, pgx.ErrNoRows) { // status/versi sudah berubah: tidak ada transisi
+		return runOutcome{}, nil
+	}
+	if err != nil {
+		return runOutcome{}, err
+	}
+	return runOutcome{outcome: "calculated", eligible: eligible, duration: secs}, nil
 }
 
 // onDead: job gagal permanen → run FAILED (PFS-05). Transaksi runner tidak punya tenant context, jadi
@@ -306,11 +411,17 @@ func (j *Jobs) onDead(ctx context.Context, _ pgx.Tx, job *jobs.Job) error {
 	if err := json.Unmarshal(job.Payload, &p); err != nil {
 		return nil //nolint:nilerr // payload rusak: tidak ada run yang bisa ditandai
 	}
-	return db.WithTenantTxFor(context.WithoutCancel(ctx), j.pool, job.TenantID, func(tx pgx.Tx) error {
-		_, err := store.New(tx).FailRun(ctx, store.FailRunParams{Reason: ptr(job.Kind + " failed permanently; fix the data and recalculate"),
+	failed := false
+	err := db.WithTenantTxFor(context.WithoutCancel(ctx), j.pool, job.TenantID, func(tx pgx.Tx) error {
+		n, err := store.New(tx).FailRun(ctx, store.FailRunParams{Reason: ptr(job.Kind + " failed permanently; fix the data and recalculate"),
 			ID: p.RunID, CalcVersion: p.CalcVersion})
+		failed = n > 0
 		return err
 	})
+	if err == nil && failed {
+		runOutcome{outcome: "failed"}.emit()
+	}
+	return err
 }
 
 func ptr[T any](v T) *T { return &v }

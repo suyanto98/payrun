@@ -1,0 +1,34 @@
+# Alert domain PayRun (docs/design/24-observability.md §7, Sprint 7).
+groups:
+  - name: payrun
+    rules:
+      # A-13: metrik INV normalnya selalu 0; satu kenaikan = critical. Counter diinisialisasi 0 per label
+      # saat start (internal/platform/metrics), sehingga kenaikan pertama pun tertangkap increase().
+      - alert: PayRunInvariantViolated
+        expr: |
+          sum(increase(payrun_tenant_isolation_violations_total[5m])) > 0
+          or sum(increase(payrun_finalized_mutation_attempts_total[5m])) > 0
+          or sum(increase(payrun_period_lock_bypass_total[5m])) > 0
+          or max(payrun_payroll_total_mismatch_runs) > 0
+          or sum(increase(payrun_reproducibility_failures_total[1h])) > 0
+        for: 0m
+        labels: { severity: critical }
+        annotations:
+          summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
+          runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+      # A-12 (bagian PayRun): run payroll FAILED (job chunk dead, jumlah item ≠ eligible).
+      - alert: BatchJobFailed
+        expr: sum(increase(payrun_payroll_runs_total{outcome="failed"}[15m])) > 0
+        for: 0m
+        labels: { severity: warning }
+        annotations:
+          summary: "A payroll run failed to calculate"
+          runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+      # PF-22 AC4: render PDF gagal berulang (job akan dead → slip tetap PAYSLIP_NOT_READY).
+      - alert: PayslipRenderFailing
+        expr: sum(increase(payrun_payslips_rendered_total{outcome="failed"}[15m])) > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Payslip PDFs keep failing to render for 15 minutes (check object storage)"
+          runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"

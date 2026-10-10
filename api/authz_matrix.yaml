@@ -440,3 +440,55 @@ routes:
     access: tenant
     cases:
       - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+
+  # ---------------------------------------------------------------- adjustments (J1–J3, S7)
+  - id: J1
+    route: "POST /adjustments"
+    access: tenant
+    audit: adjustment.created
+    cases:
+      - idempotency: true
+        body: {employee_id: "{emp_other}", origin_period: "{adj_origin}", target_period: "2026-12", component_code: "MANUAL", amount: "1000.00", reason: "Koreksi"}
+        expect: {O: 201, H: 201, P: 201, M: 403, E: 403}
+  - id: J2
+    route: "GET /adjustments"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 403, E: 403}
+  - id: J3
+    route: "POST /adjustments/{id}/cancel"
+    access: tenant
+    audit: adjustment.cancelled
+    cases:
+      - {target: adjustment, body: {reason: "Salah input"}, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+
+  # ---------------------------------------------------------------- payslips (S1–S5, S7, PI-17)
+  # 👤 pemilik (EMPLOYEE = empSelf) tanpa audit; OWNER/HR/PAYROLL ter-audit setiap akses (ᴬ); lainnya 404.
+  - id: S1
+    route: "GET /me/payslips"
+    access: tenant
+    cases:
+      - expect: {O: 200, H: 200, P: 200, M: 200, E: 200}
+  - id: S2
+    route: "GET /me/payslips/{id}"
+    access: tenant
+    cases:
+      - {target: payslip_self, expect: {E: 200, O: 404, H: 404, P: 404, M: 404}}
+  - id: S3
+    route: "GET /payslips"
+    access: tenant
+    audit: payroll.bulk_read
+    cases:
+      - {query: "run_id={payslip_run}", expect: {O: 200, H: 200, P: 200, M: 403, E: 403}}
+  - id: S4
+    route: "GET /payslips/{id}"
+    access: tenant
+    audit: payslip.viewed_by_admin
+    cases:
+      - {target: payslip_self, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+  - id: S5
+    route: "GET /payslips/{id}/download"
+    access: tenant
+    audit: payslip.downloaded
+    cases:
+      - {target: payslip_self, no_audit: [E], expect: {O: 200, H: 200, P: 200, M: 404, E: 200}}

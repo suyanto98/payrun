@@ -28,6 +28,8 @@ type matrixCase struct {
 	IfMatch     bool           `yaml:"if_match"`
 	Idempotency bool           `yaml:"idempotency"`
 	Expect      map[string]int `yaml:"expect"`
+	// NoAudit: kolom role yang sukses TANPA baris audit (akses pemilik ke slipnya sendiri, file 17 👤).
+	NoAudit []string `yaml:"no_audit"`
 }
 
 type matrixRoute struct {
@@ -112,9 +114,55 @@ type matrixRunner struct {
 	past atomic.Int64 // periode run unik: 2025-12, 2025-11, … (tanpa employee eligible → cepat)
 	cur  atomic.Int64 // periode run_item: 2026-01 … 2026-11 (employee fixture eligible)
 	// items: run → item ERROR miliknya, untuk {item_id}. run/runItem: target baca bersama.
-	items       map[uuid.UUID]uuid.UUID
-	run, runItm uuid.UUID
-	callN       int64 // nomor per panggilan: placeholder tanggal dalam satu body memakai nomor yang sama
+	items         map[uuid.UUID]uuid.UUID
+	run, runItm   uuid.UUID
+	callN         int64  // nomor per panggilan: placeholder tanggal dalam satu body memakai nomor yang sama
+	adjOrigin     string // periode FINALIZED (dibuat sekali) untuk origin_period adjustment
+	slip, slipRun uuid.UUID
+}
+
+// payslipSelf: payslip RENDERED milik empSelf (user EMPLOYEE) di run FINALIZED, dibuat sekali. Gaji
+// empSelf diberikan di sini (item OK; dua employee lain tetap ERROR untuk target run_item). Run
+// difinalisasi lewat superuser (item ERROR menghalangi jalur submit), payslip + objek ditulis langsung.
+func (m *matrixRunner) payslipSelf(t *testing.T) (uuid.UUID, uuid.UUID) {
+	t.Helper()
+	if m.slip != uuid.Nil {
+		return m.slip, m.slipRun
+	}
+	owner := m.f.tokens[roleO]
+	if r, b := m.e.doH(t, http.MethodPost, "/api/v1/employees/"+m.f.empSelf.String()+"/salary-changes", owner, key(),
+		map[string]any{"base_salary": "5000000.00", "valid_from": "2026-01-05"}); r.StatusCode != http.StatusCreated {
+		t.Fatalf("salary: %d %v", r.StatusCode, b)
+	}
+	run, _ := m.e.calculatedRun(t, owner, m.currentPeriod(t))
+	m.e.finalizeRun(t, run)
+	id, objectKey := newID(), ""
+	sp := m.e.tdb.Super(t)
+	if err := sp.QueryRow(context.Background(), `INSERT INTO payrun.payslips (tenant_id, id, run_id, employee_id, item_id, status, object_key,
+			checksum_sha256, size_bytes, rendered_at)
+		SELECT i.tenant_id, $1, i.run_id, i.employee_id, i.id, 'RENDERED',
+		       'tenants/' || i.tenant_id || '/payslips/' || i.run_id || '/' || i.employee_id || '.pdf', '\x00', 5, now()
+		FROM payrun.payroll_items i WHERE i.run_id = $2 AND i.employee_id = $3 AND i.status = 'OK'
+		RETURNING object_key`, id, run, m.f.empSelf).Scan(&objectKey); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.e.docs.Put(context.Background(), objectKey, []byte("%PDF-"), "application/pdf"); err != nil {
+		t.Fatal(err)
+	}
+	m.slip, m.slipRun = id, run
+	return id, run
+}
+
+// adjustmentOrigin: periode lampau FINALIZED tanpa karyawan eligible (dibuat sekali per runner).
+func (m *matrixRunner) adjustmentOrigin(t *testing.T) string {
+	t.Helper()
+	if m.adjOrigin == "" {
+		p := m.pastPeriod()
+		run, _ := m.e.calculatedRun(t, m.f.tokens[roleO], p)
+		m.e.finalizeRun(t, run)
+		m.adjOrigin = p
+	}
+	return m.adjOrigin
 }
 
 // workday: hari kerja (Sen–Jum) unik di 2027 untuk nomor n (cuti/lembur tanpa tumpang tindih).
@@ -167,6 +215,14 @@ func (m *matrixRunner) fill(t *testing.T, v any) any {
 		}
 		x = strings.ReplaceAll(x, "{owner_user}", m.f.users[roleO].String())
 		x = strings.ReplaceAll(x, "{payroll_user}", m.f.users[roleP].String())
+		x = strings.ReplaceAll(x, "{emp_other}", m.f.empOther.String())
+		if strings.Contains(x, "{payslip_run}") {
+			_, run := m.payslipSelf(t)
+			x = strings.ReplaceAll(x, "{payslip_run}", run.String())
+		}
+		if strings.Contains(x, "{adj_origin}") {
+			x = strings.ReplaceAll(x, "{adj_origin}", m.adjustmentOrigin(t))
+		}
 		if strings.Contains(x, "{period}") {
 			x = strings.ReplaceAll(x, "{period}", m.pastPeriod())
 		}
@@ -260,6 +316,13 @@ func (m *matrixRunner) target(t *testing.T, kind string, fresh bool) uuid.UUID {
 			t.Fatalf("target overtime: %d %v", r.StatusCode, b)
 		}
 		return uuid.MustParse(b["id"].(string))
+	case "adjustment": // adjustment PENDING_APPLY untuk empOther, target 2026-12
+		return m.e.mustCreateH(t, owner, "/api/v1/adjustments", map[string]string{"Idempotency-Key": newID().String()},
+			map[string]any{"employee_id": m.f.empOther, "origin_period": m.adjustmentOrigin(t), "target_period": "2026-12",
+				"component_code": "MANUAL", "amount": "1000.00", "reason": "Target"})
+	case "payslip_self":
+		id, _ := m.payslipSelf(t)
+		return id
 	case "run":
 		if !fresh && m.run != uuid.Nil {
 			return m.run
@@ -307,7 +370,7 @@ func (m *matrixRunner) call(t *testing.T, row matrixRoute, c matrixCase, token s
 		}
 	}
 	if c.Query != "" {
-		path += "?" + c.Query
+		path += "?" + m.fill(t, c.Query).(string)
 	}
 	headers := map[string]string{}
 	if c.IfMatch {
@@ -361,8 +424,12 @@ func TestAuthzMatrix(t *testing.T) {
 						t.Fatalf("%s as %s: want %d, got %d %s", row.Route, role, want, r.StatusCode, raw)
 					}
 					if row.Audit != "" && want < 300 {
-						if got := e.auditCount(t, m.f.id, row.Audit); got != before+1 {
-							t.Fatalf("%s as %s: audit %q must grow by exactly 1 (%d → %d)", row.Route, role, row.Audit, before, got)
+						grow := 1
+						if slices.Contains(c.NoAudit, col) {
+							grow = 0
+						}
+						if got := e.auditCount(t, m.f.id, row.Audit); got != before+grow {
+							t.Fatalf("%s as %s: audit %q must grow by exactly %d (%d → %d)", row.Route, role, row.Audit, grow, before, got)
 						}
 					}
 				})
@@ -383,14 +450,18 @@ func TestCrossTenant(t *testing.T) {
 	alphaMember := e.newMember(t, alpha.id, "member@alpha.test", roleE)
 	ma := &matrixRunner{e: e, f: alpha, items: map[uuid.UUID]uuid.UUID{}}
 	ma.seq.Store(9000)
+	ma.cur.Store(5) // alpha sudah memakai 2026-01 (alphaRun)
 	alphaAttendance := ma.target(t, "attendance_other", true)
 	alphaLeave := ma.target(t, "leave_own", true)
 	alphaOvertime := ma.target(t, "overtime_own", true)
 	alphaCalc, _ := e.calculatedRun(t, alpha.tokens[roleO], "2025-06")
 	alphaApproval := e.submitRun(t, alpha.tokens[roleP], alphaCalc, map[string]any{})
+	alphaAdjustment := ma.target(t, "adjustment", true)
+	alphaPayslip := ma.target(t, "payslip_self", false)
 	alphaIDs := map[string]uuid.UUID{"/departments": alpha.dept, "/positions": alpha.pos, "/employees": alpha.empOther,
 		"/holidays": alpha.holiday, "/component-definitions": alpha.comp, "/payroll-runs": alphaRun, "/members": alphaMember,
-		"/approvals": alphaApproval, "/attendance": alphaAttendance, "/leave-requests": alphaLeave, "/overtime-requests": alphaOvertime}
+		"/approvals": alphaApproval, "/attendance": alphaAttendance, "/leave-requests": alphaLeave, "/overtime-requests": alphaOvertime, "/adjustments": alphaAdjustment,
+		"/payslips": alphaPayslip, "/me/payslips": alphaPayslip}
 	tested := 0
 	for _, row := range loadMatrix(t) {
 		if row.Access != "tenant" || !strings.Contains(row.Route, "{id}") {

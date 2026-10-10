@@ -102,6 +102,19 @@ Lembur Tono Maret kurang 2 jam (ditemukan April)
 - **"Bagaimana membuktikan payroll Januari tahun lalu benar?"** → Recompute dari snapshot dengan versi ruleset tersimpan; hasil harus identik.
 - **"Kenapa tidak lock input sejak run dimulai?"** → HR justru menemukan kesalahan data saat review; hard lock memaksa mereka cancel run.
 
+## Amandemen Sprint 9 (PayRun, 2026-10-10): hasil E-2, approve tetap sinkron
+
+Implementasi (S5) tidak menghitung ulang fingerprint seluruh run seperti bagian *Approve guard* di atas. Approve hanya
+memverifikasi **kandidat dari change log** (`payroll_input_changes` sejak `calc_started_at`, O12), maksimal 200
+(Step 12 R1-7); di atas itu langsung `RUN_STALE` tanpa verifikasi. Poin *Trade-offs* ketiga ("load seluruh input run")
+tidak berlaku lagi.
+
+E-2 / PR-4 (tenant 10.000, laptop, `perf/results/2026-10-10-fed1df1/REPORT.md`): approve p95 31 ms (10 perubahan),
+55 ms (200), 11 ms (1.000 → di atas batas); recompute penuh 10.000 karyawan ±1,2 dtk, yang di produksi akan memegang
+lock periode `FOR UPDATE` selama itu. Aturan keputusan (pindah ke job `payroll.verify_stale` + `PENDING_VERIFICATION`
+bila 1.000 perubahan > 2 dtk) **tidak terpicu**: approve tetap satu langkah sinkron. Pemicu peninjauan ulang: batas 200
+dinaikkan, atau p95 approve di VM target > 500 ms.
+
 ## Related
 
 ADR-P03 (pure engine), ADR-P05 (calc_version), ADR-P06 (normalisasi decimal), ADR-P09 (approval), Step 1 `02-payrun.md` W4–W5, Demo C.

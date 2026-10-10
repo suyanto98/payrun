@@ -21,7 +21,7 @@ import (
 // txRead chunk (REPEATABLE READ READ ONLY → satu snapshot konsisten untuk seluruh chunk). Query per
 // jenis data, untuk seluruh employee chunk sekaligus (tanpa N+1).
 //
-// Absensi, cuti, lembur: loadDailyInput (S6). Belum diisi: adjustment (S7).
+// Absensi, cuti, lembur: loadDailyInput (S6). Adjustment PENDING_APPLY untuk bulan ini: loadAdjustments (S7).
 // Engine menganggap hari kerja aktif tanpa catatan = hadir.
 
 const snapshotVersion = 1
@@ -96,7 +96,15 @@ func loadRuleset(ctx context.Context, q *store.Queries, code string, from time.T
 	return rs, nil
 }
 
+// customPlans: query Input* direncanakan dengan nilai parameter aktual (tenant besar vs kecil punya
+// rencana berbeda); generic plan memakai estimasi rata-rata tenant → indeks salah untuk tenant besar (S9).
+// SET LOCAL: hanya untuk sisa transaksi pemanggil.
+func customPlans(ctx context.Context, q *store.Queries) error { return q.SetCustomPlans(ctx) }
+
 func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, month int, ids []uuid.UUID) (chunkData, error) {
+	if err := customPlans(ctx, q); err != nil {
+		return chunkData{}, err
+	}
 	from, to := monthRange(year, month)
 	set, err := q.InputSettings(ctx, tenantID)
 	if err != nil {
@@ -136,7 +144,7 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 	if err != nil {
 		return chunkData{}, err
 	}
-	emps, err := q.InputEmployees(ctx, store.InputEmployeesParams{FromDate: from, ToDate: to, Ids: ids})
+	emps, err := q.InputEmployees(ctx, store.InputEmployeesParams{TenantID: tenantID, FromDate: from, ToDate: to, Ids: ids})
 	if err != nil {
 		return chunkData{}, err
 	}
@@ -166,7 +174,7 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 		}
 		out.meta[e.ID] = m
 	}
-	spans, err := q.InputSpans(ctx, store.InputSpansParams{Ids: ids, FromDate: from, ToDate: to})
+	spans, err := q.InputSpans(ctx, store.InputSpansParams{TenantID: tenantID, Ids: ids, FromDate: from, ToDate: to})
 	if err != nil {
 		return chunkData{}, err
 	}
@@ -175,7 +183,7 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 		in.Employment = append(in.Employment, dateRange(s.FromDate, s.OpenEnded, s.ToDate))
 		out.inputs[s.EmployeeID] = in
 	}
-	sal, err := q.InputSalary(ctx, store.InputSalaryParams{Ids: ids, FromDate: from, ToDate: to})
+	sal, err := q.InputSalary(ctx, store.InputSalaryParams{TenantID: tenantID, Ids: ids, FromDate: from, ToDate: to})
 	if err != nil {
 		return chunkData{}, err
 	}
@@ -184,7 +192,7 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 		in.Salary = append(in.Salary, engine.SalarySpan{Range: dateRange(s.FromDate, s.OpenEnded, s.ToDate), BaseSalary: *toDec(s.BaseSalary)})
 		out.inputs[s.EmployeeID] = in
 	}
-	comps, err := q.InputComponents(ctx, store.InputComponentsParams{Ids: ids, FromDate: from, ToDate: to})
+	comps, err := q.InputComponents(ctx, store.InputComponentsParams{TenantID: tenantID, Ids: ids, FromDate: from, ToDate: to})
 	if err != nil {
 		return chunkData{}, err
 	}
@@ -206,16 +214,42 @@ func loadChunk(ctx context.Context, q *store.Queries, tenantID uuid.UUID, year, 
 			Range: dateRange(c.FromDate, c.OpenEnded, c.ToDate)})
 		out.inputs[c.EmployeeID] = in
 	}
-	if err := loadDailyInput(ctx, q, out.inputs, year, month, ids); err != nil {
+	if err := loadDailyInput(ctx, q, tenantID, out.inputs, year, month, ids); err != nil {
+		return chunkData{}, err
+	}
+	if err := loadAdjustments(ctx, q, tenantID, out.inputs, year, month, ids); err != nil {
 		return chunkData{}, err
 	}
 	return out, nil
 }
 
+// loadAdjustments (S7, PF-19 AC2): adjustment PENDING_APPLY dengan target (year, month) = periode run
+// (R1-4: target disimpan sebagai nilai, bukan FK). Urutan query (origin, id) ikut fingerprint.
+func loadAdjustments(ctx context.Context, q *store.Queries, tenantID uuid.UUID, inputs map[uuid.UUID]engine.Input, year, month int, ids []uuid.UUID) error {
+	rows, err := q.InputAdjustments(ctx, store.InputAdjustmentsParams{TenantID: tenantID, Ids: ids, Year: int16(year), Month: int16(month)}) //nolint:gosec // G115
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		in, ok := inputs[r.EmployeeID]
+		if !ok {
+			continue
+		}
+		amt, err := decimal.NewFromString(r.Amount)
+		if err != nil {
+			return err
+		}
+		in.Adjustments = append(in.Adjustments, engine.Adjustment{ID: r.ID.String(), OriginPeriod: periodText(r.OriginYear, r.OriginMonth),
+			Amount: amt, Taxable: r.Taxable, Reason: r.Reason})
+		inputs[r.EmployeeID] = in
+	}
+	return nil
+}
+
 // loadDailyInput (S6): status harian dan lembur ke engine. Hari kerja aktif tanpa entri = hadir (engine);
 // yang dicantumkan hanya hari yang BUKAN hadir normal. Cuti APPROVED ≤ cut-off menimpa catatan absensi
 // pada hari yang sama. Urutan deterministik (tanggal naik) karena input ikut fingerprint.
-func loadDailyInput(ctx context.Context, q *store.Queries, inputs map[uuid.UUID]engine.Input, year, month int, ids []uuid.UUID) error {
+func loadDailyInput(ctx context.Context, q *store.Queries, tenantID uuid.UUID, inputs map[uuid.UUID]engine.Input, year, month int, ids []uuid.UUID) error {
 	from, to := monthRange(year, month)
 	cutoff, err := q.PeriodCutoff(ctx, store.PeriodCutoffParams{Year: int16(year), Month: int16(month)}) //nolint:gosec // G115
 	if err != nil {
@@ -228,14 +262,14 @@ func loadDailyInput(ctx context.Context, q *store.Queries, inputs map[uuid.UUID]
 		}
 		days[emp][d] = st
 	}
-	inc, err := q.InputIncomplete(ctx, store.InputIncompleteParams{Ids: ids, FromDate: from, ToDate: to})
+	inc, err := q.InputIncomplete(ctx, store.InputIncompleteParams{TenantID: tenantID, Ids: ids, FromDate: from, ToDate: to})
 	if err != nil {
 		return err
 	}
 	for _, r := range inc {
 		set(r.EmployeeID, r.WorkDate, engine.IncompleteRecord)
 	}
-	leaves, err := q.InputLeaves(ctx, store.InputLeavesParams{Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
+	leaves, err := q.InputLeaves(ctx, store.InputLeavesParams{TenantID: tenantID, Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
 	if err != nil {
 		return err
 	}
@@ -263,7 +297,7 @@ func loadDailyInput(ctx context.Context, q *store.Queries, inputs map[uuid.UUID]
 		}
 		inputs[emp] = in
 	}
-	ot, err := q.InputOvertime(ctx, store.InputOvertimeParams{Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
+	ot, err := q.InputOvertime(ctx, store.InputOvertimeParams{TenantID: tenantID, Ids: ids, CutoffAt: &cutoff, FromDate: from, ToDate: to})
 	if err != nil {
 		return err
 	}

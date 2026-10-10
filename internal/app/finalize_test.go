@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -131,9 +132,10 @@ func TestFinalize_StaleAfterApproveRejected(t *testing.T) {
 	}
 }
 
-// TestDemoC_FinalizedPayrollIsImmutable (Demo C bagian 1–3, docs/design/33-demo-script.md): setelah
+// TestDemoC_FinalizedPayrollIsImmutable (Demo C bagian 1–5, docs/design/33-demo-script.md §3.5): setelah
 // finalize lewat API: koreksi absensi Maret → PERIOD_LOCKED; mengubah item → RUN_FINALIZED; UPDATE langsung
-// ke DB sebagai payrun_app → P0001; angka final tetap bisa dihitung ulang dari snapshot.
+// ke DB sebagai payrun_app → P0001; koreksi yang benar = adjustment Maret → April (baris "Koreksi" di run
+// April); Maret tetap identik dan bisa dihitung ulang dari snapshot.
 func TestDemoC_FinalizedPayrollIsImmutable(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())
 	f := e.newTenantFx(t, "alpha")
@@ -163,8 +165,26 @@ func TestDemoC_FinalizedPayrollIsImmutable(t *testing.T) {
 	if !errors.As(err, &pgErr) || pgErr.Code != "P0001" {
 		t.Fatalf("3. direct UPDATE as payrun_app: want P0001, got %v", err)
 	}
-	if rep := e.verifyRun(t, f.id, run); !rep.OK() {
-		t.Fatalf("finalized numbers must be reproducible: %+v", rep)
+	marchNet := e.runPayslips(t, f.tokens[roleP], run)[f.empSelf]["net"]
+
+	r, adj := e.createAdjustment(t, f.tokens[roleH], adjBody(f.empSelf, "2026-03", "2026-04", "76300.58"))
+	if r.StatusCode != http.StatusCreated {
+		t.Fatalf("4. adjustment March → April: want 201, got %d %v", r.StatusCode, adj)
+	}
+	april := e.mustCalculated(t, f, "2026-04")
+	var expl string
+	e.inTenant(t, f.id, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT l.explanation FROM payroll_lines l JOIN payroll_items i ON i.id = l.item_id
+			WHERE l.run_id = $1 AND l.code = 'ADJUSTMENT' AND i.employee_id = $2 AND l.adjustment_id = $3`, april, f.empSelf, adj["id"]).Scan(&expl)
+	})
+	if !strings.HasPrefix(expl, "Koreksi periode 2026-03") {
+		t.Fatalf("4. April line: %q", expl)
+	}
+	if got := e.runPayslips(t, f.tokens[roleP], run)[f.empSelf]["net"]; got != marchNet {
+		t.Fatalf("5. March net changed after the adjustment: %v → %v", marchNet, got)
+	}
+	if rep := e.verifyRun(t, f.id, run); !rep.OK() || rep.Status != "FINALIZED" {
+		t.Fatalf("5. finalized March must stay reproducible: %+v", rep)
 	}
 }
 

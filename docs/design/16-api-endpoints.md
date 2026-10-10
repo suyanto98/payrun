@@ -936,3 +936,26 @@ Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `a
 | Aksi pada run final | `409 INVALID_STATE_TRANSITION` / `RUN_FINALIZED` | calculate, cancel, exclude, submit, finalize ulang pada run `FINALIZED` → **`409 RUN_FINALIZED`** | Demo C bagian 3 ("ubah item → RUN_FINALIZED") |
 | Versi lama | Dibersihkan setelah finalize (R3-2) | Job `payroll.cleanup_versions` (batch 1.000, idempoten) di-enqueue di transaksi finalize bila `calc_version > 1` | Tidak menghapus sambil memegang lock periode |
 | Retensi `payroll_input_changes` | Hapus > 90 hari setelah finalize | **Belum** | Job cleanup bersama retensi lain (S8) |
+
+## Catatan implementasi (Sprint 7: adjustment, payslip, observability)
+
+| Topik | Desain | Implementasi S7 | Alasan |
+|---|---|---|---|
+| Lokasi kode | Modul payslip/adjustment | Di modul `payroll` (`adjustment.go`, `payslip.go`, subpaket `payslippdf`) | Pemilik tabel `payroll_lines`, finalize, dan input kalkulasi; tanpa adapter lintas modul (ADR-001) |
+| `adjustments.cancel_reason` | Tidak ada di skema 12 §7.6 | Kolom `cancel_reason text NULL` | J3 menerima `{reason}`; audit `adjustment.cancelled` juga menyimpannya |
+| J1 target | `PERIOD_LOCKED` bila final | PeriodGuard periode target (`FOR SHARE`, rentang bulan target, employee itu): final → `409 PERIOD_LOCKED`; belum final → `payroll_input_changes` dicatat (run `CALCULATED` jadi stale, PF-19 AC4). Periode target boleh belum ada (R1-4) | Satu mekanisme dengan penulis input lain; menyerial dengan finalize |
+| J1 validasi | — | `origin_period` belum final → `400` field `origin_period` (`NOT_FINALIZED`); target ≤ asal → `400`; employee tidak ada → `404`; tidak bekerja di bulan target → `422 EMPLOYEE_NOT_ACTIVE` | 15 tidak punya kode `ADJUSTMENT_*` |
+| Input kalkulasi | Adjustment `PENDING_APPLY` bulan target | `loadAdjustments` (urut asal, id) masuk `engine.Input.Adjustments` → ikut snapshot dan fingerprint. Baris `ADJUSTMENT` menyimpan `adjustment_id` (`ck_payroll_lines_adjustment`) | Pembatalan setelah kalkulasi → fingerprint kembali sama = tidak stale (false positive tersaring) |
+| Y11 `APPLIED` | `WHERE status = 'PENDING_APPLY'` | Adjustment yang ada di snapshot item **OK** versi final → `APPLIED` (`applied_run_id`, `applied_at`). Item ERROR/EXCLUDED: adjustment tetap `PENDING_APPLY` (bisa dibatalkan; J3 pada target final tanpa PeriodGuard) | PI-15: tepat sekali, hanya bila benar-benar dibayar |
+| Y11 respons | `payslips: {pending}` | **Belum** di respons; status per slip lewat S3 | Menghindari perubahan skema `PayrollRun` di semua endpoint run |
+| Payslip | PENDING di finalize | Satu per item OK + job `payslip.render` per 20 (dedupe `payslip.render:{run}:{batch}`), lane worker `documents` (konkurensi 2, kill switch `PR_PAYSLIP_RENDER_ENABLED`) | Step 7 `23` §3.2 |
+| PDF | Library murni Go (time-box 1 jam) | `go-pdf/fpdf` v0.9.0: tanggal dokumen = `finalized_at`, catalog sort, Helvetica tanpa embed → byte identik (golden) | Lolos evaluasi; PF-22 tidak masuk cut list |
+| S1 | `?year` | Akun tanpa employee → daftar kosong (bukan 403) | Semua role boleh memanggil (👤) |
+| S3 | `payroll.bulk_read` per request | Role pembaca dibaca ulang dari DB; audit `payroll.bulk_read` (`run_id`, jumlah baris); cursor `(employee_no, id)` | R2-6 |
+| S4/S5 audit | ᴬ | S4: `payslip.viewed_by_admin` setiap akses, termasuk OWNER/PAYROLL. S5 non-pemilik: `payslip.downloaded`. Pemilik tidak diaudit. `target_type = payslip_access` | BR10, PI-17 |
+| S5 | Presign 5 menit setelah authz + audit | URL dibuat **setelah** transaksi authz + audit COMMIT; `response-content-disposition: attachment`; PDF belum `RENDERED` (atau storage tidak dikonfigurasi) → `409 PAYSLIP_NOT_READY` + `Retry-After: 30` | C-40, T-PR-09 |
+| Storage | S3 standar | `platform/storage` (minio-go, SigV4, path-style). `S3_PUBLIC_ENDPOINT` = host di URL presign (dev `127.0.0.1:8333`). Tanpa `S3_ENDPOINT` → PDF tidak dirender (peringatan saat start) | ADR-012 |
+| Metrik | 24 §3.3 | `payrun_payroll_runs_total`, `..._run_duration_seconds{size_bucket}`, items/errors/chunk (dicatat **setelah** commit chunk), stale, approvals, payslips, akses slip, INV (`finalized_mutation_attempts`, `period_lock_bypass` dari P0001/P0002 di `db.MapError`, `reproducibility_failures`). Label INV tetap `table` (bukan `site`). **Belum:** `payrun_payroll_total_mismatch_runs`, `payrun_payslips_pending`, `payrun_verification_last_success_timestamp_seconds` | Gauge lintas tenant butuh job verifikasi berkala (S8) |
+| Dashboard | 2 dashboard PayRun (roadmap S7) | "PayRun — Payroll & Tenancy" + "PayRun — Platform (HTTP, DB, Jobs)", di-generate `deploy/grafana/gen_dashboards.py`, provisioning file (`allowUiUpdates: false`) | Step 12 S15 (3 dashboard V1) |
+| Alert | 24 §7 | `deploy/prometheus/rules/{platform,payrun}.yml`; `make test-alerts` (promtool, termasuk A-13 sintetis) + job CI `alerts`; Alertmanager tidak ada (Step 12 S1) | DoD O4 |
+

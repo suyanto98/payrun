@@ -61,6 +61,7 @@ export interface PayrollItem {
 export interface PayrollLine {
   sort_order: number; code: string; name: string; category: 'EARNING' | 'DEDUCTION'; stage: string
   amount: string; basis: Record<string, string>; explanation: string; taxable: boolean; rounding: string
+  adjustment_id: string | null
 }
 
 export interface PayrollItemDetail extends PayrollItem {
@@ -97,4 +98,33 @@ export interface LeaveRequest {
 export interface OvertimeRequest {
   id: string; employee_id: string; work_date: string; start_at: string; end_at: string; hours: string; reason: string
   status: string; approved_at: string | null; approval: SubjectApproval | null; warnings: string[]
+}
+
+// ---------------------------------------------------------------- payslip + adjustment (S7)
+
+export type PdfStatus = 'PENDING' | 'RENDERED' | 'FAILED'
+
+export interface PayslipSummary { id: string; period: string; net: string; finalized_at: string; pdf_status: PdfStatus }
+
+export interface RunPayslip {
+  id: string; employee_id: string; employee_no: string; employee_name: string; period: string; net: string
+  pdf_status: PdfStatus; rendered_at: string | null; attempts: number
+}
+
+export interface Payslip {
+  id: string; run_id: string; employee_id: string; period: string
+  employee: { employee_no: string; full_name: string; position: string; department: string }
+  bank_account_masked: string | null; lines: PayrollLine[]
+  totals: { gross: string; deductions: string; net: string }; ruleset: { code: string; version: string }
+  pdf_status: PdfStatus; finalized_at: string
+}
+
+export interface PayslipDownload { url: string; expires_at: string }
+
+export type AdjustmentComponent = 'OVERTIME_CORRECTION' | 'DEDUCTION_CORRECTION' | 'MANUAL'
+
+export interface Adjustment {
+  id: string; employee_id: string; origin_period: string; target_period: string; component_code: AdjustmentComponent
+  amount: string; taxable: boolean; reason: string; status: 'PENDING_APPLY' | 'APPLIED' | 'CANCELLED'
+  applied_run_id: string | null; applied_at: string | null; cancelled_at: string | null; created_by: string | null; created_at: string
 }

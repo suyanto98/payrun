@@ -95,6 +95,16 @@ func (e env) mustCreate(t *testing.T, token, path string, body any) uuid.UUID {
 	return uuid.MustParse(b["id"].(string))
 }
 
+// mustCreateH: mustCreate dengan header tambahan (contoh Idempotency-Key).
+func (e env) mustCreateH(t *testing.T, token, path string, headers map[string]string, body any) uuid.UUID {
+	t.Helper()
+	r, b := e.doH(t, http.MethodPost, path, token, headers, body)
+	if r.StatusCode != http.StatusCreated {
+		t.Fatalf("POST %s: %d %v", path, r.StatusCode, b)
+	}
+	return uuid.MustParse(b["id"].(string))
+}
+
 func employeeBody(no, name, nik string) map[string]any {
 	return map[string]any{
 		"employee_no": no, "full_name": name, "work_email": "x" + no + "@corp.test", "hire_date": "2026-01-05",

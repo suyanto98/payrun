@@ -84,9 +84,11 @@ func MapError(err error) error {
 		return apperr.ErrNotFound.WithCause(err)
 	case "P0005": // trigger PI-19 forbid_manager_cycle
 		return apperr.ErrManagerCycle.WithCause(err)
-	case "P0001": // trigger PI-04: run/periode final immutable
+	case "P0001": // trigger PI-04/PI-15: run/periode/adjustment final immutable
+		metrics.FinalizedMutationAttempts.WithLabelValues(tableLabel(pgErr)).Inc()
 		return apperr.ErrRunFinalized.WithCause(err)
 	case "P0002": // trigger PI-14 guard_period_*: tanggal di periode FINALIZED
+		metrics.PeriodLockBypass.WithLabelValues(tableLabel(pgErr)).Inc()
 		return apperr.ErrPeriodLocked.WithCause(err)
 	case "P0004": // trigger PI-16: owner terakhir
 		return apperr.ErrLastOwner.WithCause(err)
@@ -98,4 +100,13 @@ func MapError(err error) error {
 func IsUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
+}
+
+// tableLabel: tabel asal error trigger (TG_TABLE_NAME di pesan tidak terstruktur → pakai TableName bila
+// ada), "unknown" bila kosong. Himpunan tabel terbatas (skema), aman sebagai label.
+func tableLabel(e *pgconn.PgError) string {
+	if e.TableName != "" {
+		return e.TableName
+	}
+	return "unknown"
 }

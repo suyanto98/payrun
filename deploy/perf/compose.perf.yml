@@ -1,0 +1,75 @@
+# Perf env lokal (docs/design/26-performance-plan.md §3), di ATAS deploy/compose.yml:
+#   make perf-up / perf-seed / perf-run S=pr1|pr3|pr4 / perf-down
+# Project terpisah `payrun-perf` (volume + port sendiri, lihat PERF di Makefile) supaya data dev tidak
+# tercampur dataset 100.000 karyawan. Angka dari env ini adalah BASELINE MESIN INI, bukan klaim kapasitas.
+services:
+  postgres:
+    # Pengaturan §3 (target VM 4 GB). Pool aplikasi TIDAK diperbesar untuk "memenangkan" benchmark.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements,auto_explain
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=2560MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=100
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - track_io_timing=on
+      - -c
+      - auto_explain.log_min_duration=200ms
+      - -c
+      - auto_explain.log_analyze=on
+    shm_size: 1g # extension pg_stat_statements dibuat oleh `payrun seed` (superuser)
+
+  api:
+    environment:
+      APP_ENV: perf
+      COOKIE_SECURE: "true"
+      RATE_LIMIT_DISABLED: "true" # kapasitas mentah (PR-3: login + baca ratusan VU)
+      PPROF_ENABLED: "true"       # /debug/pprof di port ops (127.0.0.1 saja)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+
+  worker:
+    environment:
+      APP_ENV: perf
+      PPROF_ENABLED: "true"
+      PAYROLL_WORKER_CONCURRENCY: ${PR_PERF_WORKERS:-4}  # PR-1: 1 / 2 / 4
+      PAYROLL_CHUNK_SIZE: ${PR_PERF_CHUNK:-50}          # PR-1: 25 / 50 / 100
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+
+  # Seed dataset: superuser HANYA di container ini (session_replication_role). `run --rm seed perf`.
+  seed:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: payrun }
+    entrypoint: ["/app/payrun", "seed"]
+    command: ["smoke"]
+    environment:
+      APP_ENV: perf
+      DATABASE_URL: postgres://payrun_app:app-dev@postgres:5432/payrun?sslmode=disable
+      SEED_DATABASE_URL: postgres://postgres:postgres-dev@postgres:5432/payrun?sslmode=disable
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: [seed]
+    restart: "no"
+
+  # Eksperimen E-2: `run --rm tools perf-recheck <tenant> <run>` (read-only, role aplikasi).
+  tools:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: payrun }
+    entrypoint: ["/app/payrun"]
+    environment:
+      APP_ENV: perf
+      DATABASE_URL: postgres://payrun_app:app-dev@postgres:5432/payrun?sslmode=disable
+      PII_KEYRING: '{"v1":"cGF5cnVuLWRldi1vbmx5LXBpaS1rZXktMzItYnl0ZXM="}'
+      PII_ACTIVE_KEY_VERSION: v1
+      PII_BLIND_INDEX_KEY: cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=
+    depends_on:
+      postgres: { condition: service_healthy }
+    profiles: [seed]
+    restart: "no"

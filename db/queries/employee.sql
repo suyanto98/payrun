@@ -32,14 +32,30 @@ WHERE e.id = @id;
 SELECT id FROM employees WHERE user_id = @user_id;
 
 -- name: ListEmployeesByNo :many
--- Tanpa q: urut employee_no, id (keyset). Filter status opsional.
+-- Tanpa q: urut employee_no, id (keyset). Filter status/manager/department opsional.
+-- Halaman dipilih DULU (subquery ORDER BY + LIMIT lewat uq_employees_employee_no), baru LATERAL span/org
+-- untuk ≤ lim baris itu. PR-3 (S9): bentuk lama meng-join semua karyawan tenant lalu top-N sort
+-- (10.000 karyawan = ±110.000 buffer, 240 ms per halaman; generic plan mengira 1 baris karena pola
+-- `$n IS NULL OR …`). LIMIT 1 di LATERAL org (aman: ex_org_assignments_no_overlap) mencegah planner
+-- meratakannya menjadi join + Materialize seluruh assignment tenant. Span selalu ada (dibuat di tx yang
+-- sama dengan employee, tidak pernah dihapus), jadi JOIN span di luar halaman tidak memangkas baris.
 SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
        -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
        coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
        coalesce(o.department_name, '')::text AS department_name,
        coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
        coalesce(o.position_name, '')::text AS position_name
-FROM employees e
+FROM (SELECT pe.tenant_id, pe.id, pe.employee_no, pe.full_name, pe.status
+      FROM employees pe
+      WHERE (sqlc.narg(status)::text IS NULL OR pe.status = sqlc.narg(status))
+        AND (sqlc.narg(manager_id)::uuid IS NULL OR pe.manager_employee_id = sqlc.narg(manager_id))
+        AND (sqlc.narg(department_id)::uuid IS NULL OR EXISTS (
+              SELECT 1 FROM org_assignments fa
+              WHERE fa.tenant_id = pe.tenant_id AND fa.employee_id = pe.id
+                AND fa.department_id = sqlc.narg(department_id) AND fa.valid_during @> @as_of::date))
+        AND (sqlc.narg(after_key)::text IS NULL OR (pe.employee_no, pe.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
+      ORDER BY pe.employee_no, pe.id
+      LIMIT @lim) e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
@@ -47,24 +63,31 @@ LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id
                    FROM org_assignments oa
                    JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
                    JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
-                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date) o ON true
-WHERE (sqlc.narg(status)::text IS NULL OR e.status = sqlc.narg(status))
-  AND (sqlc.narg(manager_id)::uuid IS NULL OR e.manager_employee_id = sqlc.narg(manager_id))
-  AND (sqlc.narg(department_id)::uuid IS NULL OR o.department_id = sqlc.narg(department_id))
-  AND (sqlc.narg(after_key)::text IS NULL OR (e.employee_no, e.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
-ORDER BY e.employee_no, e.id
-LIMIT @lim;
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date
+                   LIMIT 1) o ON true
+ORDER BY e.employee_no, e.id;
 
 -- name: ListEmployeesByName :many
 -- Dengan q: prefix pada lower(full_name) atau employee_no (tanpa pg_trgm di V1), urut lower(full_name), id.
--- prefix sudah di-escape aplikasi (%, _, \).
+-- prefix sudah di-escape aplikasi (%, _, \). Halaman dulu, LATERAL sesudahnya (lihat ListEmployeesByNo).
 SELECT e.tenant_id, e.id, e.employee_no, e.full_name, e.status, lower(s.span)::date AS hire_date,
-       lower(e.full_name)::text AS sort_key, -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
+       e.sort_key::text AS sort_key, -- LEFT JOIN LATERAL: sqlc tidak menyimpulkan NULL, jadi tanpa assignment = uuid nol / '' (Go → null).
        coalesce(o.department_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS department_id,
        coalesce(o.department_name, '')::text AS department_name,
        coalesce(o.position_id, '00000000-0000-0000-0000-000000000000'::uuid)::uuid AS position_id,
        coalesce(o.position_name, '')::text AS position_name
-FROM employees e
+FROM (SELECT pe.tenant_id, pe.id, pe.employee_no, pe.full_name, pe.status, lower(pe.full_name) AS sort_key
+      FROM employees pe
+      WHERE (lower(pe.full_name) LIKE @prefix::text || '%' ESCAPE '\' OR lower(pe.employee_no) LIKE @prefix::text || '%' ESCAPE '\')
+        AND (sqlc.narg(status)::text IS NULL OR pe.status = sqlc.narg(status))
+        AND (sqlc.narg(manager_id)::uuid IS NULL OR pe.manager_employee_id = sqlc.narg(manager_id))
+        AND (sqlc.narg(department_id)::uuid IS NULL OR EXISTS (
+              SELECT 1 FROM org_assignments fa
+              WHERE fa.tenant_id = pe.tenant_id AND fa.employee_id = pe.id
+                AND fa.department_id = sqlc.narg(department_id) AND fa.valid_during @> @as_of::date))
+        AND (sqlc.narg(after_key)::text IS NULL OR (lower(pe.full_name), pe.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
+      ORDER BY lower(pe.full_name), pe.id
+      LIMIT @lim) e
 JOIN LATERAL (SELECT span FROM employment_spans sp
               WHERE sp.tenant_id = e.tenant_id AND sp.employee_id = e.id
               ORDER BY lower(sp.span) DESC LIMIT 1) s ON true
@@ -72,14 +95,9 @@ LEFT JOIN LATERAL (SELECT d.id AS department_id, d.name AS department_name, p.id
                    FROM org_assignments oa
                    JOIN departments d ON d.tenant_id = oa.tenant_id AND d.id = oa.department_id
                    JOIN positions p ON p.tenant_id = oa.tenant_id AND p.id = oa.position_id
-                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date) o ON true
-WHERE (lower(e.full_name) LIKE @prefix::text || '%' ESCAPE '\' OR lower(e.employee_no) LIKE @prefix::text || '%' ESCAPE '\')
-  AND (sqlc.narg(status)::text IS NULL OR e.status = sqlc.narg(status))
-  AND (sqlc.narg(manager_id)::uuid IS NULL OR e.manager_employee_id = sqlc.narg(manager_id))
-  AND (sqlc.narg(department_id)::uuid IS NULL OR o.department_id = sqlc.narg(department_id))
-  AND (sqlc.narg(after_key)::text IS NULL OR (lower(e.full_name), e.id) > (sqlc.narg(after_key)::text, sqlc.narg(after_id)::uuid))
-ORDER BY lower(e.full_name), e.id
-LIMIT @lim;
+                   WHERE oa.tenant_id = e.tenant_id AND oa.employee_id = e.id AND oa.valid_during @> @as_of::date
+                   LIMIT 1) o ON true
+ORDER BY e.sort_key, e.id;
 
 -- name: UpdateEmployee :one
 -- PATCH parsial: NULL = tidak diubah. Field PII datang sebagai triple (enc, bidx, last4) yang sudah

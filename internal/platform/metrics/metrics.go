@@ -23,6 +23,7 @@ var Registry = prometheus.NewRegistry()
 var (
 	httpBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 1, 2.5, 5} // 0.2/0.3 = batas SLO
 	jobBuckets  = []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300}
+	runBuckets  = []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800}
 )
 
 func counter(name, help string, labels ...string) *prometheus.CounterVec {
@@ -81,12 +82,63 @@ var (
 	// RLS gagal dengan cara yang tidak terduga → alert critical.
 	TenantIsolationViolations = counter("payrun_tenant_isolation_violations_total",
 		"Rows of another tenant seen by a tenant-scoped repository (must stay 0).", "table")
+	// INVARIANT: trigger DB menolak perubahan yang seharusnya sudah ditolak aplikasi lebih dulu
+	// (P0001 run/adjustment final, P0002 tanggal di periode FINALIZED). > 0 = guard aplikasi bocor.
+	FinalizedMutationAttempts = counter("payrun_finalized_mutation_attempts_total",
+		"Writes to finalized payroll data stopped only by a DB trigger (must stay 0).", "table")
+	PeriodLockBypass = counter("payrun_period_lock_bypass_total",
+		"Writes into a FINALIZED period stopped only by the DB guard trigger (must stay 0).", "table")
+	// INVARIANT: verify-run menemukan hasil yang tidak bisa direproduksi dari snapshot (PI-12).
+	ReproducibilityFailures = counter("payrun_reproducibility_failures_total", "verify-run items whose recomputation differs (must stay 0).")
+
+	// Run payroll (S4–S7, Step 8 `01` §3).
+	PayrollRuns         = counter("payrun_payroll_runs_total", "Payroll run transitions.", "outcome")
+	PayrollRunDuration  = histogram("payrun_payroll_run_duration_seconds", "calc_started_at → CALCULATED.", runBuckets, "size_bucket")
+	ItemsCalculated     = counter("payrun_payroll_items_calculated_total", "Payroll items written by calc chunks.", "status")
+	ItemErrors          = counter("payrun_payroll_item_errors_total", "ERROR item codes from the engine.", "code")
+	ChunkDuration       = histogram("payrun_payroll_chunk_duration_seconds", "payroll.calc_chunk duration (committed).", jobBuckets)
+	StaleRejections     = counter("payrun_run_stale_rejections_total", "Approve/finalize rejected with RUN_STALE.", "action")
+	StaleCandidates     = histogram("payrun_approve_stale_candidates", "Changed-input candidates checked at approve/finalize.", []float64{1, 5, 10, 50, 100, 500, 1000})
+	Approvals           = counter("payrun_approvals_total", "Approval decisions.", "subject", "decision")
+	SelfApproved        = counter("payrun_approval_self_approved_total", "Payroll runs approved by their own submitter (sole admin).")
+	PeriodLockRejection = counter("payrun_period_lock_rejections_total", "Input writes rejected with PERIOD_LOCKED by the app guard.", "source")
 	// Setiap pembacaan PII penuh (W6, S4) dan undangan dibuat/diterima (S2).
 	InvitationsTotal = counter("payrun_invitations_total", "Invitation lifecycle events.", "event")
+
+	// Dokumen (S7, PF-22/PI-17).
+	PayslipsRendered      = counter("payrun_payslips_rendered_total", "Payslip PDFs rendered or failed.", "outcome")
+	PayslipRenderDuration = histogram("payrun_payslip_render_duration_seconds", "payslip.render batch duration (20 slips).", jobBuckets)
+	PayslipAccess         = counter("payrun_payslip_access_total", "Payslip reads/downloads by actor kind (admin = audited).", "actor")
 )
 
 func init() {
 	Registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	// Metrik INV dan outcome diinisialisasi 0 untuk setiap label yang diketahui: increase() pada seri
+	// yang baru lahir di nilai 1 tidak terlihat, dan dashboard perlu "0" bukan "No data".
+	for _, t := range []string{"payroll_runs", "payroll_periods", "payroll_items", "payroll_lines", "adjustments", "payslips", "employees"} {
+		TenantIsolationViolations.WithLabelValues(t)
+		FinalizedMutationAttempts.WithLabelValues(t)
+		PeriodLockBypass.WithLabelValues(t)
+	}
+	for _, o := range []string{"calculated", "failed", "approved", "rejected", "finalized", "cancelled"} {
+		PayrollRuns.WithLabelValues(o)
+	}
+	for _, o := range []string{"rendered", "failed"} {
+		PayslipsRendered.WithLabelValues(o)
+	}
+}
+
+// SizeBucket: label kardinalitas rendah untuk ukuran run (jumlah employee eligible).
+func SizeBucket(n int32) string {
+	switch {
+	case n < 100:
+		return "lt_100"
+	case n < 1000:
+		return "lt_1k"
+	case n < 10000:
+		return "lt_10k"
+	}
+	return "ge_10k"
 }
 
 // SetBuildInfo dipanggil sekali saat start.

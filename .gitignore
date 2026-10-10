@@ -42,3 +42,4 @@ test-results/
 # Secret environment (dibuat deploy/prod/init-env.sh) — JANGAN di-commit
 deploy/prod/env/
 build/
+perf/results/**/*.raw.json

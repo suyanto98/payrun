@@ -96,3 +96,12 @@ export function localDateTime(date: string, time: string): string {
   const mm = String(Math.abs(off) % 60).padStart(2, '0')
   return `${date}T${time}:00${sign}${hh}:${mm}`
 }
+
+export const pdfStatusLabel: Record<string, string> = { PENDING: 'PDF diproses', RENDERED: 'PDF siap', FAILED: 'PDF gagal, dicoba ulang' }
+export const pdfStatusPill: Record<string, string> = { PENDING: 'warn', RENDERED: 'ok', FAILED: 'bad' }
+
+export const adjustmentStatusLabel: Record<string, string> = { PENDING_APPLY: 'Menunggu run', APPLIED: 'Diterapkan', CANCELLED: 'Dibatalkan' }
+export const adjustmentStatusPill: Record<string, string> = { PENDING_APPLY: 'warn', APPLIED: 'ok', CANCELLED: '' }
+export const adjustmentComponentLabel: Record<string, string> = {
+  OVERTIME_CORRECTION: 'Koreksi lembur', DEDUCTION_CORRECTION: 'Koreksi potongan', MANUAL: 'Manual',
+}

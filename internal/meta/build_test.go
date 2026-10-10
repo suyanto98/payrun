@@ -55,3 +55,22 @@ func TestBuild_NoTesthooksInRelease(t *testing.T) {
 		t.Fatal("sanity: the testhooks binary should contain the testhook registry")
 	}
 }
+
+// TestBuild_DemoEndpointsAbsentWithoutDemoMode (27 §9.1, DoD S8): binary release tidak memuat kode demo
+// sama sekali: rute /demo/* (demoPoints), implementasi faults.Check yang membaca demo_faults, dan file SQL
+// migrasi demo. Perilaku HTTP-nya diuji TestDemoMode_ReleaseBuildHasNoDemoRoutes.
+func TestBuild_DemoEndpointsAbsentWithoutDemoMode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds binaries")
+	}
+	demoOnly := []string{"payrun/internal/app.demoPoints", "payrun/db/migrations_demo.files", "payrun/internal/platform/faults.exit"}
+	release, demo := symbols(t, ""), symbols(t, "demo")
+	for _, sym := range demoOnly {
+		if strings.Contains(release, sym) {
+			t.Errorf("release binary contains demo symbol %s", sym)
+		}
+		if !strings.Contains(demo, sym) {
+			t.Errorf("sanity: the demo binary should contain %s", sym)
+		}
+	}
+}

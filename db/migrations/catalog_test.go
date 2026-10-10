@@ -215,6 +215,8 @@ var appGrantMatrix = map[string]string{
 	"leave_balances":            "INSERT,SELECT,UPDATE",
 	"leave_requests":            "INSERT,SELECT,UPDATE",
 	"overtime_requests":         "INSERT,SELECT,UPDATE",
+	"adjustments":               "INSERT,SELECT,UPDATE",
+	"payslips":                  "INSERT,SELECT,UPDATE",
 }
 
 func TestCatalog_AppGrantsMatchMatrix(t *testing.T) {

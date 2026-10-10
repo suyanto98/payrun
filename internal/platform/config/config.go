@@ -61,7 +61,12 @@ type Config struct {
 	// Worker (Sprint 4): ID unik per proses diturunkan dari WORKER_ID (default hostname) + pid + acak.
 	WorkerID           string        `env:"WORKER_ID"` // default: hostname
 	WorkerPollInterval time.Duration `env:"WORKER_POLL_INTERVAL" envDefault:"500ms"`
-	PayrollChunkSize   int           `env:"PAYROLL_CHUNK_SIZE" envDefault:"50"` // demo: 10 (O5)
+	// JobLeaseTTL: lease klaim job. Demo memakai 10s supaya pemulihan setelah worker mati terlihat dalam
+	// hitungan detik (docs/design/23-background-jobs.md §11).
+	JobLeaseTTL time.Duration `env:"JOB_LEASE_TTL" envDefault:"30s"`
+	// PayrollWorkerConcurrency: goroutine lane payroll per proses worker (PR-1: 1 → 2 → 4).
+	PayrollWorkerConcurrency int `env:"PAYROLL_WORKER_CONCURRENCY" envDefault:"4"`
+	PayrollChunkSize         int `env:"PAYROLL_CHUNK_SIZE" envDefault:"50"` // demo: 10 (O5)
 	// Mode demo (O15): endpoint /api/v1/demo/* HANYA di binary build tag `demo` DAN kalau DEMO_MODE=true;
 	// setiap request wajib header X-Demo-Token. DEMO_MODE=true tanpa token (≥ 24 karakter) = gagal start.
 	DemoMode  bool   `env:"DEMO_MODE"`
@@ -80,13 +85,15 @@ type Config struct {
 	MailFrom     string        `env:"MAIL_FROM" envDefault:"PayRun <no-reply@payrun.local>"`
 	MailTimeout  time.Duration `env:"MAIL_TIMEOUT" envDefault:"10s"`
 
-	// Object storage S3-compatible (MinIO di dev, ADR-012). Dipakai payslip PDF (Sprint 7); belum
-	// divalidasi wajib sampai ada kode yang memakainya.
-	S3Endpoint  string `env:"S3_ENDPOINT"`
-	S3Region    string `env:"S3_REGION" envDefault:"us-east-1"`
-	S3Bucket    string `env:"S3_BUCKET"`
-	S3AccessKey string `env:"S3_ACCESS_KEY"`
-	S3SecretKey string `env:"S3_SECRET_KEY"`
+	// Object storage S3-compatible (SeaweedFS di dev, ADR-012) untuk payslip PDF (S7). Kosong = tanpa
+	// PDF: slip web tetap jalan, unduhan → PAYSLIP_NOT_READY, job payslip.render tetap queued.
+	// S3_PUBLIC_ENDPOINT: host yang dijangkau browser di URL presigned (kosong = S3_ENDPOINT).
+	S3Endpoint       string `env:"S3_ENDPOINT"`
+	S3PublicEndpoint string `env:"S3_PUBLIC_ENDPOINT"`
+	S3Region         string `env:"S3_REGION" envDefault:"us-east-1"`
+	S3Bucket         string `env:"S3_BUCKET"`
+	S3AccessKey      string `env:"S3_ACCESS_KEY"`
+	S3SecretKey      string `env:"S3_SECRET_KEY"`
 
 	// OpenTelemetry: contoh http://jaeger:4318/v1/traces. Kosong = tracing nonaktif.
 	OTLPEndpoint string `env:"OTEL_EXPORTER_OTLP_ENDPOINT"`
@@ -214,6 +221,12 @@ func (c *Config) ValidateWorker() error {
 	}
 	if c.PayrollChunkSize < 1 || c.PayrollChunkSize > 500 {
 		errs = append(errs, fmt.Errorf("PAYROLL_CHUNK_SIZE (%d) harus 1..500", c.PayrollChunkSize))
+	}
+	if c.PayrollWorkerConcurrency < 1 || c.PayrollWorkerConcurrency > 32 {
+		errs = append(errs, errors.New("PAYROLL_WORKER_CONCURRENCY harus 1–32"))
+	}
+	if c.JobLeaseTTL < 5*time.Second {
+		errs = append(errs, errors.New("JOB_LEASE_TTL minimal 5s"))
 	}
 	if c.WorkerPollInterval <= 0 {
 		errs = append(errs, errors.New("WORKER_POLL_INTERVAL harus > 0"))

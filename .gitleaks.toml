@@ -6,4 +6,11 @@ useDefault = true
 [[allowlists]]
 description = "Idempotency-Key example values"
 regexTarget = "line"
-regexes = ['''Idempotency-Key''']
+regexes = ['''Idempotency-?Key''']  # header dan nama Go (ErrIdempotencyKeyInvalid)
+
+# Kunci blind index DEV saja: base64 dari literal "payrun-dev-only-blind-index-key!" (compose dev/perf, test config).
+# Production membangkitkan kunci acak sendiri (deploy/prod/init-env.sh). Hanya nilai PERSIS ini yang dikecualikan.
+[[allowlists]]
+description = "Dev-only PII blind index key (base64 of payrun-dev-only-blind-index-key!)"
+regexTarget = "match"
+regexes = ['''cGF5cnVuLWRldi1vbmx5LWJsaW5kLWluZGV4LWtleSE=''']

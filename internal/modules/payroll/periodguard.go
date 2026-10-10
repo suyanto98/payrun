@@ -9,6 +9,7 @@ import (
 	"payrun/internal/modules/payroll/store"
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/db"
+	"payrun/internal/platform/metrics"
 	"payrun/internal/platform/periodguard"
 	"payrun/internal/platform/tenantctx"
 	"payrun/internal/platform/testhook"
@@ -48,6 +49,7 @@ func (PeriodGuard) Lock(ctx context.Context, tx pgx.Tx, c periodguard.Change) (p
 		}
 		for _, r := range rows {
 			if r.Status == "FINALIZED" {
+				metrics.PeriodLockRejection.WithLabelValues("guard").Inc()
 				return nil, apperr.ErrPeriodLocked.WithDetail("The change touches a finalized payroll period; use an adjustment instead")
 			}
 			open = append(open, r.ID)

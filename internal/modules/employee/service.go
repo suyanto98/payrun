@@ -364,7 +364,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, lq ListQuery) ([]L
 	// Go bisa berbeda untuk nama non-ASCII → baris terlewat/berulang (review S2).
 	var sortKeys []string
 	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
-		st := store.New(tx)
+		st := store.New(db.CustomPlan(tx)) // filter opsional → custom plan (PR-3, S9)
 		if q == "" {
 			rs, err := st.ListEmployeesByNo(ctx, store.ListEmployeesByNoParams{AsOf: s.today(), Status: status, ManagerID: managerID,
 				DepartmentID: deptID, AfterKey: afterKey, AfterID: afterID, Lim: lim})

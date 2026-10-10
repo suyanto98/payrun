@@ -44,6 +44,12 @@ async function logout() {
           <RouterLink v-if="canReadPayroll(auth.roles)" to="/payroll" class="nav-link" :class="{ active: route.path.startsWith('/payroll') }">
             <AppIcon name="bank" />Payroll
           </RouterLink>
+          <RouterLink v-if="canReadPayroll(auth.roles)" to="/adjustments" class="nav-link" :class="{ active: route.path === '/adjustments' }">
+            <AppIcon name="undo" />Adjustment
+          </RouterLink>
+          <RouterLink v-if="auth.employeeId" to="/payslips" class="nav-link" :class="{ active: route.path === '/payslips' }">
+            <AppIcon name="download" />Slip gaji
+          </RouterLink>
           <RouterLink v-if="auth.employeeId || canEditEmployees(auth.roles)" to="/attendance" class="nav-link" :class="{ active: route.path === '/attendance' }">
             <AppIcon name="clock" />Absensi
           </RouterLink>
