@@ -1,6 +1,6 @@
 # Step 10.1 — Repository Structure
 
-> **Amandemen (PayRun, 2026-10-10):** tata letak luar repo `payrun` disamakan dengan pola `backend/` + `frontend/`: seluruh Go module (tree `cmd/`, `internal/`, `db/`, `api/` di bawah) berada di `backend/`, SPA (`web/` di bawah) menjadi `frontend/`. Isi dan aturan di dalam module tidak berubah (modul tetap `internal/modules/<x>`, depguard sama). LedgerPay belum diubah.
+> **Amandemen (PayRun, 2026-10-10):** tata letak luar repo `payrun` disamakan dengan pola `backend/` + `frontend/`: seluruh Go module (tree `cmd/`, `internal/`, `db/`, `api/` di bawah) berada di `backend/`, SPA (`web/` di bawah) menjadi `frontend/`. Isi dan aturan di dalam module tidak berubah (modul tetap `internal/modules/<x>`, depguard sama). LedgerPay diubah dengan cara yang sama di hari yang sama.
 
 > Bagian dari [Step 10](00-index.md). Keputusan di `00-index.md` §4 **mengikat**: polyrepo `ledgerpay`, `payrun`, `infra`.
 > Phase 14 master prompt: struktur disesuaikan dengan arsitektur yang dipilih (modular monolith, satu binary per project, ADR-001), tanpa memaksakan monorepo.

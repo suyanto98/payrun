@@ -8,7 +8,7 @@ Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, buka
 ### 0.0.12 — PayRun Sprint 10 (belum di-port ke LedgerPay)
 - **Layout repo (2026-10-10):** Go module pindah ke `backend/` (cmd, internal, db, api, go.mod, sqlc.yaml, .golangci.yml),
   SPA ke `frontend/`; Makefile, Dockerfile (`COPY backend/`), compose, workflow (`working-directory: backend`) menyesuaikan.
-  Meta test membedakan `moduleRoot` (backend/) dan `repoRoot`. Saat port ke LedgerPay: path sumber di sini = `backend/<path LedgerPay>`.
+  Meta test membedakan `moduleRoot` (backend/) dan `repoRoot`. LedgerPay memakai tata letak yang sama sejak 2026-10-10, jadi path port identik.
 - `meta`: `TestTraceability_DocsReferenceExistingTests` versi PayRun (README, docs/*.md, ADR-P*, laporan perf, katalog
   §4.4–4.6, §5.2, §5.3), `TestObservability_AlertsLinkToRunbook` (annotation runbook → heading yang ada di
   `docs/runbook.md`), `TestOpenAPI_MoneyFieldsAreStrings`, `TestSPA_ErrorMessagesCoverCatalogue`. Cek link runbook
