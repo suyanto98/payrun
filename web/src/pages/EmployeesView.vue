@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -25,7 +26,7 @@ async function load(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat karyawan'
+    error.value = errorText(e, 'Gagal memuat karyawan')
   } finally {
     loading.value = false
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref, watch } from 'vue'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -37,7 +38,7 @@ async function load(append = false) {
     if (!form.value.leave_type_id && types.value.length) form.value.leave_type_id = types.value[0].id
     if (auth.employeeId) balances.value = (await api<{ data: LeaveBalance[] }>(`/me/leave-balances?year=${year.value}`)).data
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat cuti'
+    error.value = errorText(e, 'Gagal memuat cuti')
   }
 }
 
@@ -55,7 +56,7 @@ async function submit() {
   } catch (e) {
     if (e instanceof ApiError && e.code === 'OVERLAPPING_LEAVE') error.value = 'Tanggal bertabrakan dengan cuti lain yang menunggu atau sudah disetujui.'
     else if (e instanceof ApiError && e.code === 'NO_APPROVER_AVAILABLE') error.value = 'Tidak ada orang lain di perusahaan yang bisa menyetujui cuti ini.'
-    else error.value = e instanceof ApiError ? (e.fields[0]?.message ?? e.message) : 'Gagal mengajukan cuti'
+    else error.value = errorText(e, 'Gagal mengajukan cuti')
   } finally {
     busy.value = false
   }
@@ -68,7 +69,7 @@ async function cancel(r: LeaveRequest) {
     await api(`/leave-requests/${r.id}/cancel`, { method: 'POST', body: {} })
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal membatalkan'
+    error.value = errorText(e, 'Gagal membatalkan')
   } finally {
     busy.value = false
   }

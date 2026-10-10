@@ -1,0 +1,34 @@
+# Override demo LOKAL (Sprint 10, docs/demo-script.md): image build tag `demo` (endpoint /api/v1/demo/*,
+# titik fault, migrasi demo) + DEMO_MODE, sama dengan VM demo publik (deploy/prod/compose.prod.yml).
+#   make up-demo && make seed-demo
+# Token di bawah hanya untuk laptop (port 127.0.0.1); VM publik memakai token dari secret (DM4).
+x-demo-build: &demo-build
+  build: { context: .., dockerfile: deploy/Dockerfile, target: payrun, args: { BUILD_TAGS: demo } }
+
+services:
+  migrate:
+    <<: *demo-build
+  api:
+    <<: *demo-build
+    environment:
+      DEMO_MODE: "true"
+      DEMO_TOKEN: ${PR_DEMO_TOKEN:-local-demo-token-not-a-secret}
+  worker:
+    <<: *demo-build
+    environment:
+      # Demo B: chunk 10 karyawan, lease 10 dtk → worker yang mati di chunk ke-4 terlihat pulih dalam detik.
+      PAYROLL_CHUNK_SIZE: "10"
+      JOB_LEASE_TTL: 10s
+    restart: unless-stopped   # worker yang di-exit oleh fault demo hidup lagi (seperti systemd/compose di VM)
+  seed:
+    <<: *demo-build
+    entrypoint: ["/app/payrun", "seed"]
+    command: ["demo"]
+    environment:
+      APP_ENV: dev
+      DATABASE_URL: postgres://payrun_app:app-dev@postgres:5432/payrun?sslmode=disable
+      SEED_DATABASE_URL: postgres://postgres:postgres-dev@postgres:5432/payrun?sslmode=disable
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: [seed]
+    restart: "no"

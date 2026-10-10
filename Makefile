@@ -10,7 +10,7 @@ REDOCLY := npx --yes @redocly/cli@1
 TRIVY_FS := docker run --rm -v "$$PWD:/src:ro" aquasec/trivy:0.65.0 fs --no-progress --scanners vuln,misconfig \
 	--severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --skip-dirs docs /src
 
-.PHONY: help tools up up-storage perf-up perf-seed perf-run perf-down up-obs up-obs-full dashboards test-alerts backup-dev restore-drill test-demo images down down-volumes logs ps migrate build test test-integration demo-verify lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
+.PHONY: help tools api-docs up up-demo seed-demo demo-live demo-down up-storage perf-up perf-seed perf-run perf-down up-obs up-obs-full dashboards test-alerts backup-dev restore-drill test-demo images down down-volumes logs ps migrate build test test-integration demo-verify lint lint-go lint-api lint-actions lint-shell gen gen-api gen-sql gen-check security trivy-fs cover web-dev web-check
 
 help: ## Tampilkan daftar target
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-18s %s\n", $$1, $$2}'
@@ -34,6 +34,10 @@ up-storage: ## Object storage S3 (SeaweedFS) + buat bucket private payrun-privat
 # Perf env: project terpisah + port sendiri (stack dev boleh tetap jalan). Baseline mesin ini, bukan klaim kapasitas.
 PERF := PR_HTTP_PORT=8091 PR_OPS_PORT=9290 PR_WORKER_OPS_PORT=9291 PR_PG_PORT=55443 PR_MAILPIT_UI_PORT=8035 PR_S3_PORT=8343 \
 	docker compose -p payrun-perf -f deploy/compose.yml -f deploy/perf/compose.perf.yml
+
+# Demo lokal: project terpisah, port sendiri, data sendiri (docs/demo-script.md). SPA: PR_HTTP_PORT=8082 PR_WEB_PORT=5176 make web-dev.
+DEMO := PR_HTTP_PORT=8082 PR_OPS_PORT=9192 PR_WORKER_OPS_PORT=9193 PR_PG_PORT=55435 PR_MAILPIT_UI_PORT=8026 PR_S3_PORT=8335 PR_WEB_PORT=5176 \
+	docker compose -p payrun-demo -f deploy/compose.yml -f deploy/compose.demo.yml
 
 perf-up: ## Perf env lokal (pg_stat_statements, pprof, rate limit off); PR_PERF_WORKERS/PR_PERF_CHUNK untuk PR-1
 	$(PERF) up -d --build --wait api worker
@@ -89,6 +93,20 @@ test-integration: ## Integration test (butuh Docker), termasuk test interleaving
 demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (final immutable, adjustment ke bulan berikutnya, recompute dari snapshot) secara headless
 	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected|TestDemoC_FinalizedPayrollIsImmutable' ./internal/app/
 
+up-demo: ## Stack demo lokal (project payrun-demo, API :8082, data terpisah dari dev): build tag demo + DEMO_MODE; lalu make seed-demo
+	$(DEMO) --profile storage up -d --wait storage
+	$(DEMO) --profile storage run --rm storage-init
+	$(DEMO) up -d --build --wait api worker
+
+seed-demo: ## Dua tenant demo (seed-0: 100 karyawan, seed-1: 10–50) ke DB demo yang KOSONG; password app.SeedPassword
+	$(DEMO) --profile seed run --rm seed demo
+
+demo-live: ## Demo A–C live dengan asersi terhadap stack demo (S=a|b|c|all; data sekali pakai)
+	./scripts/demo-live.sh $${S:-all}
+
+demo-down: ## Hentikan stack demo DAN hapus datanya (dev stack tidak tersentuh)
+	$(DEMO) --profile seed --profile storage down -v
+
 test-demo: ## Test build tag demo (guard endpoint /demo/*, fault sekali pakai di chunk ke-N)
 	go test -count=1 -tags demo -run 'TestDemo_' ./internal/app/
 
@@ -117,6 +135,9 @@ lint-go: ## golangci-lint (gosec, depguard, ...)
 
 lint-shell: ## shellcheck skrip deploy
 	docker run --rm -v "$$PWD:/w:ro" -w /w koalaman/shellcheck:stable -x -S warning deploy/postgres/init/*.sh deploy/backup/*.sh deploy/prod/*.sh scripts/*.sh perf/*.sh
+
+api-docs: ## Dokumentasi API statis dari api/openapi.yaml → build/api.html
+	mkdir -p build && $(REDOCLY) build-docs api/openapi.yaml -o build/api.html
 
 lint-api: ## Lint kontrak OpenAPI
 	$(REDOCLY) lint api/openapi.yaml

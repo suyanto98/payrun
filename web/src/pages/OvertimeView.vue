@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref, watch } from 'vue'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -26,7 +27,7 @@ async function load(append = false) {
     requests.value = append ? [...requests.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat lembur'
+    error.value = errorText(e, 'Gagal memuat lembur')
   }
 }
 
@@ -47,7 +48,7 @@ async function submit() {
     await load()
   } catch (e) {
     if (e instanceof ApiError && e.code === 'OVERLAPPING_PERIOD') error.value = 'Jam bertabrakan dengan lembur lain yang menunggu atau sudah disetujui.'
-    else error.value = e instanceof ApiError ? (e.fields[0]?.message ?? e.message) : 'Gagal mengajukan lembur'
+    else error.value = errorText(e, 'Gagal mengajukan lembur')
   } finally {
     busy.value = false
   }
@@ -59,7 +60,7 @@ async function cancel(r: OvertimeRequest) {
     await api(`/overtime-requests/${r.id}/cancel`, { method: 'POST', body: {} })
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal membatalkan'
+    error.value = errorText(e, 'Gagal membatalkan')
   } finally {
     busy.value = false
   }

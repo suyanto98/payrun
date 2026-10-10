@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError, newIdempotencyKey } from '../api'
@@ -34,7 +35,7 @@ async function load(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat payroll run'
+    error.value = errorText(e, 'Gagal memuat payroll run')
   } finally {
     loading.value = false
   }
@@ -51,7 +52,7 @@ async function create() {
       router.push(`/payroll/${e.extra.existing_resource_id}`) // admin lain sudah membuatnya: buka run itu
       return
     }
-    createError.value = e instanceof ApiError ? e.message : 'Gagal membuat run'
+    createError.value = errorText(e, 'Gagal membuat run')
   } finally {
     creating.value = false
   }

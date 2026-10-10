@@ -9,9 +9,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"payrun/internal/modules/payroll"
 	"payrun/internal/platform/idgen"
+	"payrun/internal/platform/jobs"
+	"payrun/internal/platform/metrics"
 )
 
 // ---------------------------------------------------------------- recompute-from-snapshot (PI-12)
@@ -166,5 +169,60 @@ func TestFinalizedRun_DirectUpdateRejected(t *testing.T) {
 	}
 	if rep := e.verifyRun(t, f.id, run); !rep.OK() || rep.CalcVersion != calcVersion {
 		t.Fatalf("finalized run must still verify: %+v", rep)
+	}
+}
+
+// TestVerifyRunJob_AfterFinalize_FeedsInvariantMetrics (DoD C3, PI-05, PI-12): finalize meng-enqueue
+// payroll.verify_run di transaksi yang sama; worker memverifikasi run itu di bawah RLS tenant-nya, sehingga
+// metrik INV hidup di proses yang di-scrape (bukan di proses CLI). Data bersih → gauge 0, counter tetap.
+// Total run dimanipulasi langsung di DB → gauge 1; satu baris dimanipulasi → counter reproducibility naik;
+// dipulihkan → gauge kembali 0.
+func TestVerifyRunJob_AfterFinalize_FeedsInvariantMetrics(t *testing.T) {
+	e := newEnvTiers(t, relaxedTiers())
+	f := e.newTenantFx(t, "alpha")
+	run := e.approvedRun(t, f)
+	if r, b := e.finalize(t, f.tokens[roleP], run, key()["Idempotency-Key"]); r.StatusCode != http.StatusOK {
+		t.Fatalf("finalize: %d %v", r.StatusCode, b)
+	}
+	repro := testutil.ToFloat64(metrics.ReproducibilityFailures.WithLabelValues())
+	e.drainJobs(t)
+	jobStatus := func() (n int, status string) {
+		e.inTenant(t, f.id, func(tx pgx.Tx) error {
+			return tx.QueryRow(context.Background(), `SELECT count(*), coalesce(max(status), '') FROM jobs
+				WHERE kind = 'payroll.verify_run' AND payload->>'run_id' = $1`, run.String()).Scan(&n, &status)
+		})
+		return
+	}
+	if n, st := jobStatus(); n != 1 || st != "succeeded" {
+		t.Fatalf("finalize must enqueue exactly one verify_run job that succeeds: %d %q", n, st)
+	}
+	gauge := func() float64 { return testutil.ToFloat64(metrics.PayrollTotalMismatchRuns.WithLabelValues()) }
+	if gauge() != 0 || testutil.ToFloat64(metrics.ReproducibilityFailures.WithLabelValues()) != repro {
+		t.Fatalf("clean run: gauge %v, reproducibility %v → %v", gauge(), repro, testutil.ToFloat64(metrics.ReproducibilityFailures.WithLabelValues()))
+	}
+	verifyAgain := func() { // verifikasi ulang (dedupe finalize hanya sekali; ops bisa mengantrekan lagi)
+		e.inTenant(t, f.id, func(tx pgx.Tx) error {
+			_, err := jobs.Enqueue(context.Background(), tx, jobs.Spec{Kind: "payroll.verify_run", MaxAttempts: 3,
+				Payload: map[string]any{"run_id": run, "calc_version": 1}})
+			return err
+		})
+		e.drainJobs(t)
+	}
+
+	e.tamper(t, `UPDATE payrun.payroll_runs SET total_gross = total_gross + 1, total_net = total_net + 1 WHERE id = $1`, run)
+	verifyAgain()
+	if gauge() != 1 {
+		t.Fatalf("run total tampered: gauge payrun_payroll_total_mismatch_runs want 1, got %v", gauge())
+	}
+	e.tamper(t, `UPDATE payrun.payroll_runs SET total_gross = total_gross - 1, total_net = total_net - 1 WHERE id = $1`, run)
+	var item uuid.UUID
+	e.inTenant(t, f.id, func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT id FROM payroll_items WHERE run_id = $1 AND status = 'OK' LIMIT 1`, run).Scan(&item)
+	})
+	e.tamper(t, `UPDATE payrun.payroll_lines SET amount = amount + 1 WHERE item_id = $1 AND sort_order = 1`, item)
+	verifyAgain()
+	if gauge() != 0 || testutil.ToFloat64(metrics.ReproducibilityFailures.WithLabelValues()) != repro+1 {
+		t.Fatalf("line tampered, totals restored: gauge want 0 got %v; reproducibility want %v got %v",
+			gauge(), repro+1, testutil.ToFloat64(metrics.ReproducibilityFailures.WithLabelValues()))
 	}
 }

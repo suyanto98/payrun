@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
@@ -24,7 +25,7 @@ async function submit() {
     if (auth.pendingInvite) router.push('/invite') // kembali ke undangan yang sedang dibuka
     else router.push(auth.tenant ? safeNext(route.query.next) : '/select-tenant')
   } catch (e) {
-    error.value = (e as Error).message
+    error.value = errorText(e, 'Terjadi kesalahan. Coba lagi.')
   } finally {
     busy.value = false
   }

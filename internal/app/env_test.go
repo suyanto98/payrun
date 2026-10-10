@@ -146,6 +146,7 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 	e := env{srv: httptest.NewServer(h), pool: tdb.App, clk: clk, mailer: deps.Mailer.(*fakeMailer), tdb: tdb, handler: h,
 		worker: app.NewWorker(deps, app.WorkerConfig{ID: "test:" + newID().String()[:8], ChunkSize: 2}), deps: deps,
 		docs: deps.Storage.(*storage.Memory)}
+	t.Cleanup(func() { e.checkInvariants(t) }) // didaftarkan sebelum srv.Close → berjalan sesudahnya (LIFO)
 	t.Cleanup(e.srv.Close)
 	return e
 }

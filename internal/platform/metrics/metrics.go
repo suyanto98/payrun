@@ -90,6 +90,9 @@ var (
 		"Writes into a FINALIZED period stopped only by the DB guard trigger (must stay 0).", "table")
 	// INVARIANT: verify-run menemukan hasil yang tidak bisa direproduksi dari snapshot (PI-12).
 	ReproducibilityFailures = counter("payrun_reproducibility_failures_total", "verify-run items whose recomputation differs (must stay 0).")
+	// INVARIANT (PI-05): run yang verifikasi terakhirnya (job payroll.verify_run) menemukan total ≠ Σ item
+	// atau jumlah item ≠ eligible. Per proses worker; alert memakai max() lintas proses.
+	PayrollTotalMismatchRuns = gauge("payrun_payroll_total_mismatch_runs", "Runs whose latest verification found totals ≠ Σ items (must stay 0).")
 
 	// Run payroll (S4–S7, Step 8 `01` §3).
 	PayrollRuns         = counter("payrun_payroll_runs_total", "Payroll run transitions.", "outcome")
@@ -126,6 +129,8 @@ func init() {
 	for _, o := range []string{"rendered", "failed"} {
 		PayslipsRendered.WithLabelValues(o)
 	}
+	ReproducibilityFailures.WithLabelValues()
+	PayrollTotalMismatchRuns.WithLabelValues()
 }
 
 // SizeBucket: label kardinalitas rendah untuk ukuran run (jumlah employee eligible).

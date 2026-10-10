@@ -15,7 +15,7 @@ groups:
         labels: { severity: critical }
         annotations:
           summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
-          runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+          runbook: "docs/runbook.md#payruninvariantviolated"
       # A-12 (bagian PayRun): run payroll FAILED (job chunk dead, jumlah item ≠ eligible).
       - alert: BatchJobFailed
         expr: sum(increase(payrun_payroll_runs_total{outcome="failed"}[15m])) > 0
@@ -23,7 +23,7 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "A payroll run failed to calculate"
-          runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+          runbook: "docs/runbook.md#batchjobfailed"
       # PF-22 AC4: render PDF gagal berulang (job akan dead → slip tetap PAYSLIP_NOT_READY).
       - alert: PayslipRenderFailing
         expr: sum(increase(payrun_payslips_rendered_total{outcome="failed"}[15m])) > 0
@@ -31,4 +31,4 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Payslip PDFs keep failing to render for 15 minutes (check object storage)"
-          runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+          runbook: "docs/runbook.md#paysliprenderfailing"

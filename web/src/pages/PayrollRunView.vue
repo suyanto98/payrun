@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError, newIdempotencyKey } from '../api'
@@ -27,7 +28,7 @@ async function loadRun() {
     run.value = await api<PayrollRun>(`/payroll-runs/${id.value}`)
     if (run.value.status === 'CALCULATING') poll = setTimeout(loadRun, 2000)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat run'
+    error.value = errorText(e, 'Gagal memuat run')
   }
 }
 onBeforeUnmount(() => clearTimeout(poll))
@@ -49,7 +50,7 @@ async function loadItems(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     itemsPage.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat item'
+    error.value = errorText(e, 'Gagal memuat item')
   } finally {
     itemsLoading.value = false
   }
@@ -62,7 +63,7 @@ async function openItem(it: PayrollItem) {
   try {
     detail.value = await api<PayrollItemDetail>(`/payroll-runs/${id.value}/items/${it.id}`)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat item'
+    error.value = errorText(e, 'Gagal memuat item')
   }
 }
 
@@ -77,7 +78,7 @@ async function exclude(it: PayrollItem) {
     excludeReason.value = ''
     await Promise.all([loadRun(), loadItems()])
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal mengecualikan item'
+    error.value = errorText(e, 'Gagal mengecualikan item')
   } finally {
     busy.value = false
   }
@@ -95,7 +96,7 @@ async function calculate() {
     detail.value = null
     loadRun()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memulai kalkulasi'
+    error.value = errorText(e, 'Gagal memulai kalkulasi')
   } finally {
     busy.value = false
   }
@@ -128,7 +129,7 @@ async function submit() {
     } else if (e.code === 'RUN_HAS_ERRORS') {
       error.value = `${e.extra.error_count} item masih ERROR. Perbaiki datanya lalu hitung ulang, atau kecualikan item tersebut.`
     } else {
-      error.value = e.message
+      error.value = errorText(e, 'Gagal mengajukan run')
     }
   } finally {
     busy.value = false
@@ -161,7 +162,7 @@ async function finalize() {
       const n = (e.extra.employees_changed as unknown[] | undefined)?.length ?? 0
       error.value = `Input berubah setelah approve (${n} karyawan). Tolak approval lalu hitung ulang.`
     } else {
-      error.value = e instanceof ApiError ? e.message : 'Gagal memfinalisasi'
+      error.value = errorText(e, 'Gagal memfinalisasi')
     }
   } finally {
     busy.value = false
@@ -177,7 +178,7 @@ async function cancel() {
     run.value = await api<PayrollRun>(`/payroll-runs/${id.value}/cancel`, { method: 'POST', body: { reason: cancelReason.value } })
     cancelling.value = false
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal membatalkan run'
+    error.value = errorText(e, 'Gagal membatalkan run')
   } finally {
     busy.value = false
   }
@@ -197,7 +198,7 @@ async function loadPayslips(append = false) {
     payslips.value = append ? [...payslips.value, ...res.data] : res.data
     payslipsPage.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat slip gaji'
+    error.value = errorText(e, 'Gagal memuat slip gaji')
   }
 }
 watch(() => run.value?.status, (st) => { if (st === 'FINALIZED') loadPayslips() })

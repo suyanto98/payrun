@@ -102,6 +102,11 @@ func (s *Service) FinalizeTx(ctx context.Context, tx pgx.Tx, actor, runID uuid.U
 			return Run{}, err
 		}
 	}
+	// PI-05/PI-12 setelah final: verifikasi di worker (metrik INV hidup di proses yang di-scrape), satu kali per run.
+	if _, err := jobs.Enqueue(ctx, tx, jobs.Spec{Kind: KindVerifyRun, MaxAttempts: 3, CorrelationID: meta.RequestID,
+		Dedupe: fmt.Sprintf("verify_run:%s", runID), Payload: planPayload{RunID: runID, CalcVersion: run.CalcVersion}}); err != nil {
+		return Run{}, err
+	}
 	if err := audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "payroll_run.finalized",
 		TargetType: "payroll_run", TargetID: runID, Diff: map[string]any{"calc_version": run.CalcVersion, "candidates": changed, "adjustments_applied": applied, "payslips": slips}}, meta); err != nil {
 		return Run{}, err

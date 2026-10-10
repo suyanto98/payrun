@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -34,7 +35,7 @@ async function load(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat approval'
+    error.value = errorText(e, 'Gagal memuat approval')
   } finally {
     loading.value = false
   }
@@ -58,7 +59,7 @@ async function decide(a: ApprovalRequest, approve: boolean) {
       notice.value = 'Approval ini sudah diputuskan sebelumnya.'
       await load()
     } else {
-      error.value = e instanceof ApiError ? e.message : 'Gagal menyimpan keputusan'
+      error.value = errorText(e, 'Gagal menyimpan keputusan')
     }
   } finally {
     busy.value = false

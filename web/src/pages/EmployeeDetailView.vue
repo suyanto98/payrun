@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError } from '../api'
@@ -26,7 +27,7 @@ async function load(id: string) {
   } catch (e) {
     // 404 juga untuk karyawan perusahaan lain atau di luar scope (tidak dibedakan, file 17 §1.3).
     if (e instanceof ApiError && e.status === 404) notFound.value = true
-    else error.value = e instanceof ApiError ? e.message : 'Gagal memuat karyawan'
+    else error.value = errorText(e, 'Gagal memuat karyawan')
   }
 }
 watch(() => route.params.id as string, load, { immediate: true })

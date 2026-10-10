@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { ref } from 'vue'
 import { api, ApiError } from '../api'
 import AuthLayout from '../components/AuthLayout.vue'
@@ -33,7 +34,7 @@ async function verify() {
     } else if (e instanceof ApiError && e.status === 429) {
       error.value = 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.'
     } else {
-      error.value = e instanceof ApiError ? e.message : 'Gagal memverifikasi email'
+      error.value = errorText(e, 'Gagal memverifikasi email')
     }
   } finally {
     busy.value = false

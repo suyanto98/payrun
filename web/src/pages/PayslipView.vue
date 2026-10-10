@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError } from '../api'
@@ -16,7 +17,7 @@ onMounted(async () => {
   try {
     slip.value = await api<Payslip>(`/payslips/${route.params.id}`)
   } catch (e) {
-    error.value = e instanceof ApiError && e.status === 404 ? 'Slip tidak ditemukan.' : e instanceof ApiError ? e.message : 'Gagal memuat slip'
+    error.value = e instanceof ApiError && e.status === 404 ? 'Slip tidak ditemukan.' : errorText(e, 'Gagal memuat slip')
   }
 })
 </script>

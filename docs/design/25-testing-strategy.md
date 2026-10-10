@@ -223,15 +223,13 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 | Test | Membuktikan | Trace | CI |
 |---|---|---|---|
-| `TestEngineGolden/<30 kasus>` | Lihat kelompok di bawah | PI-05, PI-07, PI-08, PI-12 | U |
-| `TestEngine_Recompute_FromCanonicalJSON` | Serialisasi input → deserialisasi → `Calculate` identik untuk semua golden | PI-12 | U |
-| `TestProperty_NetEqualsSumOfLines` | `Net == Σ earning − Σ deduction` untuk input acak | PI-05 | U/N |
-| `TestProperty_Deterministic` | `Calculate(x) == Calculate(x)`; urutan map/slice input tidak memengaruhi hasil | PI-12 | U/N |
-| `TestProperty_ProrationBounds` | Faktor prorata ∈ [0, 1]; Σ faktor segmen ≤ 1 | PI-07 | U/N |
-| `TestFingerprint_StableAndSensitive` | Input sama → hash sama; ubah satu field relevan → hash berubah | PI-13 | U |
-| `TestComponentGraph_CycleDetected` | Alias `TestComponentConfig_Cycle_Rejected` | PFS-07 | U |
-| `TestStateMachine_{PayrollRun,Approval,Adjustment,Period}` | Pasangan from × to | PI-04, PI-11, PI-15 | U |
-| `TestPolicy_*` (relasi manager, SELF, SoD) | Policy relasional | PI-11, PI-17 | U |
+| `TestGolden/<33 kasus>` | Lihat kelompok di bawah | PI-05, PI-07, PI-08, PI-12 | U |
+| `TestGolden` (recompute) | Snapshot `testdata/cases/<nama>.input.json` → deserialisasi → `Calculate` identik dengan golden, untuk semua kasus | PI-12 | U |
+| `TestProperty_Invariants` | Satu property test, setiap iterasi: `Net == Σ earning − Σ deduction`; `Calculate(x)` dua kali → JSON identik; prorata ∈ [0, 1] (Σ baris gaji pokok ≤ gaji tertinggi); baris bilangan bulat ≥ 0; ERROR ⇔ ada errors | PI-05, PI-07, PI-12 | U/N |
+| `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees` | Fingerprint sensitif (ubah input → `RUN_STALE`) dan stabil (ubah lalu kembalikan → approve sukses). Tidak ada unit test fingerprint terpisah | PI-13 | I |
+| `TestValidateGraph` (engine), `TestComponents_GraphAndSystemRules` (API `COMPONENT_CYCLE`), `TestComponents_ParallelCycleRejected` | Siklus referensi komponen ditolak, juga di bawah penulisan paralel | PFS-07 | U/I |
+| (tidak ada test tabel from × to terpisah) | Transisi dijaga guard SQL `WHERE status IN (...)` dan diuji per alur: `TestFinalize_LocksPeriodAndRun`, `TestFinalizedRun_DirectUpdateRejected`, `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestAdjustment_AppliedOnce` | PI-04, PI-11, PI-15 | I |
+| `TestAuthzMatrix` (relasi manager, SELF, SoD) | Policy relasional | PI-11, PI-17 | U |
 | `csv_export_escapes_formula`, `pii_roundtrip`, `pii_aad_swap_fails`, `log_redaction_pii_types` | Encoder CSV, enkripsi PII, redaction | T-PR | U |
 
 **Kelompok golden (30 kasus, Step 3 `06` §17):**
@@ -252,15 +250,15 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 | Test (kanonik) | Alias Step 3 | Membuktikan | Trace | CI |
 |---|---|---|---|---|
-| `TestCrossTenant/<endpoint>` | `TestCrossTenant_PayrollRunEndpoints_Return404` | Semua role Tenant Beta → 404 di setiap endpoint Alpha | PI-01, PFS-09, **Demo A** | I |
+| `TestCrossTenant/<endpoint>` | — | Semua role Tenant Beta → 404 di setiap endpoint Alpha | PI-01, PFS-09, **Demo A** | I |
 | `TestAuthzMatrix` (table-driven dari Step 5 `05`) | — | Endpoint × role sesuai matriks; endpoint tanpa baris → fail | PI-11, PI-17, T-PR | I |
 | `rls_bypass_query_test` | — | Query mentah tanpa filter tenant di `WithTenantTx(Alpha)` → hanya data Alpha | PI-01 | I |
 | `rls_no_context_returns_zero_rows` | — | Tanpa tenant context → 0 baris (*fail closed*) | PI-01 | I |
 | `pool_leakage_after_commit` | `pool_leakage_test` | Koneksi bekas tenant A tidak mewarisi tenant | PI-01 | I |
 | `with_tenant_tx_retry_resets_tenant` | — | Retry `40001` tetap memakai tenant yang benar | PI-01 | I |
-| `TestRLS_CompositeFK_RejectsCrossTenantItem` | `cross_tenant_fk_rejected` | Referensi lintas tenant ditolak FK | PI-02 | I |
+| `TestCatalogue_TenantFKsComposite`, `TestTenantIsolation_DemoA` (langkah 4) | `cross_tenant_fk_rejected` | Semua FK tenant komposit (katalog); referensi departemen tenant lain → 404 (FK `23503` / RLS) | PI-02 | I |
 | `run_create_two_admins_one_wins` | `TestCreateRun_ConcurrentSamePeriod_SingleRun` | Paralel, key berbeda → satu run + `409 ACTIVE_RUN_EXISTS` | PI-03, PFS-06, race (e) | I |
-| `run_create_double_click_replays` | `TestCalculate_DoubleSubmit_SameIdempotencyKey_Replays` | Key sama → replay | PI-03, PFS-02 | I |
+| `run_create_double_click_replays` | `TestCreateRun_DoubleClickReplays` | Key sama → replay | PI-03, PFS-02 | I |
 | `TestFinalizedRun_DirectUpdateRejected` | — | UPDATE/DELETE item/line/snapshot run final → `RUN_FINALIZED` | PI-04 | I |
 | `zombie_chunk_vs_finalize` | — | INSERT item tertahan vs finalize → ditolak (trigger `FOR SHARE`) | PI-04, race (g) | I |
 | `TestRunTotals_EqualSumOfItems` | — | Total run = Σ item setelah kalkulasi; trigger PI-05 menolak item yang tidak konsisten | PI-05 | I |
@@ -272,24 +270,24 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | `leave_parallel_approve_respects_balance` | — | Saldo cuti tidak negatif di bawah approve paralel | PI-10, race (a) | I |
 | `approval_approve_vs_reject_single_winner` | `TestApproval_ApproveVsRejectRace_SingleDecision` | Satu keputusan, lainnya `409` | PI-11, PFS-08, race (b) | I |
 | `TestApproval_SelfApprovalRejectedByDB` | — | Self-approval cuti ditolak CHECK; pengecualian run hanya untuk tenant satu admin (dihitung server) | PI-11 | I |
-| `TestReject_RequiresNote` / `TestRunApprove_BySubmitter_Forbidden` | — | `422 DECISION_NOTE_REQUIRED`; SoD | PFS-08 | I |
-| `TestEngine_RecomputeFromStoredSnapshot` | — | Untuk run final di DB: `Calculate(snapshot, ruleset_version)` = item tersimpan | PI-12 | I |
+| `TestSubmit_SelfApprovalOnlyForSingleAdminTenant` (reject tanpa catatan) / `TestRunApprove_BySubmitter_Forbidden` | — | `422 DECISION_NOTE_REQUIRED`; SoD | PFS-08 | I |
+| `TestRecompute_FromSnapshotMatchesStoredResults` | — | Untuk run final di DB: `Calculate(snapshot, ruleset_version)` = item tersimpan | PI-12 | I |
 | `approve_blocks_concurrent_input_write` | — | Approve memegang period `FOR UPDATE`, penulis input menunggu | PI-13, O3, race (c) | I |
 | `stale_detected_for_writer_committed_after_chunk_read` | `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees` | Penulis commit setelah chunk membaca → `RUN_STALE` | PI-13, O12, PFS-03 | I |
 | `stale_detected_when_period_created_concurrently` | — | Celah D1 tertutup | PI-13, D1 | I |
 | `stale_false_positive_filtered` | — | Ubah lalu kembalikan nilai → approve sukses | PI-13, O12 | I |
 | `stale_detects_new_hire_and_termination` | — | Eligibility berubah setelah kalkulasi | PI-07, PI-13, D6 | I |
-| `TestPeriodGuard_FinalizedPeriodRejected` | `TestAttendanceEdit_FinalizedPeriod_PeriodLocked` | Absensi, gaji surut, import CSV ke period final → `PERIOD_LOCKED` | PI-14, PFS-03 | I |
-| `TestPeriodGuard_RaiseAfterFinalizedPeriodsAllowed` | — | Hanya rentang yang berubah diperiksa | PI-14 | I |
+| `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` | `TestAttendanceEdit_FinalizedPeriod_PeriodLocked` | Absensi dan gaji surut ke period final → `PERIOD_LOCKED` (import CSV: P2, belum dibangun) | PI-14, PFS-03 | I |
+| `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` (kenaikan gaji mulai bulan setelah periode final → 201) | — | Hanya rentang yang berubah diperiksa | PI-14 | I |
 | `TestAdjustment_AppliedOnce` | — | Adjustment masuk tepat satu run final; batal setelah kalkulasi → run stale | PI-15 | I |
 | `owner_parallel_revoke_keeps_one` | — | Advisory lock: dua owner saling cabut → satu gagal `409 LAST_OWNER` | PI-16 | I |
 | `TestPayslipAccess_Matrix` | — | Pemilik / karyawan lain / manager / HR; HR ter-audit | PI-17 | I |
 | `TestEmployee_NikUniquePerTenant` | — | NIK format berbeda → ditolak; tenant lain → boleh | PI-18 | I |
 | `manager_cycle_parallel_rejected` | — | Siklus manager (termasuk paralel) → `422 MANAGER_CYCLE` | PI-19, race (i) | I |
-| `TestCalcChunk_TransientError_RetriesWithBackoff` / `TestCalcChunk_PanicExhaustsAttempts_RunFailed` | — | Retry transient; permanent → dead → run `FAILED` | PFS-05 | I |
+| `TestJobRunner_RetryThenDead_PanicSurvives` (runner) / `TestCalcChunk_PanicExhaustsAttempts_RunFailed` | — | Retry transient; permanent → dead → run `FAILED` | PFS-05 | I |
 | `TestSubmit_RunWithErrorItems_Rejected` | — | `422 RUN_HAS_ERRORS` | PFS-07 | I |
 | `TestJob_TenantRunMismatch_NoOpAndAlert` | — | Payload job yang tidak cocok dengan tenant → no-op + alert | PFS-09, C-43 | I |
-| `TestInvitation_EmailMismatchRejected` | — | Accept dengan email berbeda → `410 INVITATION_INVALID` | T-PR | I |
+| `TestInvitation_InviteAcceptAndLinkEmployee` (email berbeda) | — | Accept dengan email berbeda → `410 INVITATION_INVALID` | T-PR | I |
 | `upload_validation_*` | — | Ukuran, MIME + magic bytes, baris, encoding | T-PR, C-38 | I |
 
 ### 4.6 PayRun — chaos & E2E
@@ -297,7 +295,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | Test | Membuktikan | Trace | CI |
 |---|---|---|---|
 | `crash_resume_identical_result` | Alias `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`. Kill di chunk ke-4, bandingkan dengan run tanpa crash → identik | PI-06, PFS-01, **Demo B** | X |
-| `TestCalcChunk_ConnectionDropped_RetriedSafely` | Hook `testhooks` (Step 12: pengganti Toxiproxy) memutus koneksi di tengah chunk | PFS-04 | X |
+| `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates` | Proses worker mati tepat sebelum COMMIT txWrite (hook `testhooks`, Step 12: pengganti Toxiproxy): koneksi putus di tengah chunk, rollback, worker lain melanjutkan | PFS-04 | X |
 | `TestFinalize_RetryAfterUnknownCommit_Idempotent` | Hasil commit finalize tidak diketahui → retry → replay / state sudah final | PFS-04 | X |
 | `TestPayslipRender_CrashMidBatch_ResumesIdempotently` | Object key deterministik; tidak ada PDF dobel | PFS-10 | X |
 | `TestPayslipPDF_DeterministicBytes` | Input sama → byte PDF sama (golden) | PFS-10, PI-12 | U |
@@ -378,25 +376,25 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 
 | Invariant | Test |
 |---|---|
-| PI-01 Satu tenant per baris | `TestCrossTenant/<endpoint>`, `rls_bypass_query_test`, `rls_no_context_returns_zero_rows`, `pool_leakage_after_commit`, `with_tenant_tx_retry_resets_tenant`, `rls_catalogue_test` |
-| PI-02 Tanpa referensi lintas tenant | `TestRLS_CompositeFK_RejectsCrossTenantItem`, `TestCatalogue_TenantFKsComposite` |
+| PI-01 Satu tenant per baris | ✅ `TestCrossTenant/<endpoint>`, `TestRLS_UnfilteredQuerySeesOnlyActiveTenant`, `TestRLS_NoContextReturnsZeroRows`, `TestRLS_PoolLeakageAfterCommit`, `TestWithTenantTx_RetryKeepsTenant`, `TestCatalog_EveryTableHasForcedRLS`, `TestJob_TenantRunMismatch_NoOpAndAlert` |
+| PI-02 Tanpa referensi lintas tenant | ✅ `TestCatalogue_TenantFKsComposite`, `TestTenantIsolation_DemoA` |
 | PI-03 Satu run aktif per period | ✅ `TestCreateRun_ConcurrentSamePeriod_SingleRun`, `TestCreateRun_DoubleClickReplays`, `TestPayrollRun_CrashAndResume` (run ganda) |
 | PI-04 Run final immutable | ✅ `TestFinalizedRun_DirectUpdateRejected` (API + SQL langsung + chunk zombie), `TestFinalize_LocksPeriodAndRun`, `TestDemoC_FinalizedPayrollIsImmutable`, `TestFinalize_RetryAfterUnknownCommit_Idempotent` |
-| PI-05 Total = Σ | ✅ `TestRunTotals_EqualSumOfItems`, `TestProperty_Invariants` (net = Σ lines), `TestGolden`, `TestTonoMarch2026_LineByLine` |
+| PI-05 Total = Σ | ✅ `TestRunTotals_EqualSumOfItems`, `TestVerifyRunJob_AfterFinalize_FeedsInvariantMetrics` (verifikasi setelah finalize → gauge INV), `TestProperty_Invariants` (net = Σ lines), `TestGolden`, `TestTonoMarch2026_LineByLine` |
 | PI-06 Satu item per (run, employee, version) | ✅ `TestCalcChunk_StaleCalcVersion_NoOp`, `TestCalcChunk_LeaseStolen_FencedCommitRollsBack`, `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`, `TestPayrollRun_CrashAndResume` |
 | PI-07 Eligibility & prorata | ✅ `TestEligibility_JoinerLeaverIncludedExactly`, `TestProperty_Invariants`, `TestGolden`, `TestApprove_StaleDetectsHireAndTermination` |
 | PI-08 Hanya approved ≤ cut-off | ✅ `TestCutoff_ApprovedAfterCutoff_NextPeriod`, `TestInputProvider_AttendanceLeaveOvertimeFlowIntoEngine`; golden "Lembur" + "Absensi & cuti" (`TestGolden`) |
-| PI-09 Effective dating tanpa overlap | `salary_change_parallel_one_wins`, golden "Effective dating" |
+| PI-09 Effective dating tanpa overlap | ✅ `TestSalary_ConcurrentChangesOneWins`, `TestSalary_EffectiveDatedChange`, golden "Effective dating" (`TestGolden`) |
 | PI-10 Saldo cuti ≥ 0 | ✅ `TestLeave_ParallelApproveRespectsBalance`, `TestLeave_SubmitApproveRejectCancel` |
 | PI-11 Approval sekali, tanpa self-approval | ✅ `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestApproval_SelfApprovalRejectedByDB`, `TestRunApprove_BySubmitter_Forbidden`, `TestSubmit_SelfApprovalOnlyForSingleAdminTenant`, `TestApproval_HROverrideLeaveOnly`, `TestApprover_FallbackAndNoApprover`, `TestAuthzMatrix` |
-| PI-12 Determinisme | ✅ `TestProperty_Invariants` (determinisme), `TestGolden` (recompute dari snapshot JSON), `TestRecompute_FromSnapshotMatchesStoredResults` (`payrun verify-run`), `TestPayslipPDF_DeterministicBytes` (golden PDF), `TestPayslipRender_CrashMidBatch_ResumesIdempotently` |
+| PI-12 Determinisme | ✅ `TestProperty_Invariants` (determinisme), `TestVerifyRunJob_AfterFinalize_FeedsInvariantMetrics` (job worker → `payrun_reproducibility_failures_total`), `TestGolden` (recompute dari snapshot JSON), `TestRecompute_FromSnapshotMatchesStoredResults` (`payrun verify-run`), `TestPayslipPDF_DeterministicBytes` (golden PDF), `TestPayslipRender_CrashMidBatch_ResumesIdempotently` |
 | PI-13 Approve hanya jika input tidak berubah | ✅ `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees`, `TestApprove_BlocksConcurrentInputWrite` (O3), `TestApprove_StaleDetectedForWriterCommittedAfterChunkRead` (O12 d1), `TestCreateRun_WaitsForInputWriterOfMissingPeriod` (D1), `TestApprove_StaleFalsePositiveFiltered`, `TestApprove_StaleDetectsHireAndTermination` (D6), `TestPeriodGuard_RecordsInputChanges` |
 | PI-14 Period final terkunci | ✅ `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` (termasuk kenaikan gaji setelah periode final dan trigger DB), `TestAttendanceEdit_FinalizedPeriod_PeriodLocked`, `TestFinalize_LocksPeriodAndRun` |
 | PI-15 Adjustment sekali | ✅ `TestAdjustment_AppliedOnce` (stale saat dibuat/dibatalkan setelah kalkulasi, APPLIED tepat sekali, trigger immutable), `TestDemoC_FinalizedPayrollIsImmutable` (bagian 4–5), golden "Adjustment" |
 | PI-16 ≥ 1 owner | ✅ `TestMembership_OwnerParallelRevokeKeepsOne`, `TestMemberRoles_LastOwnerGuard` |
 | PI-17 Akses slip | ✅ `TestPayslipAccess_Matrix` (termasuk `payslip_download_requires_authz`), `TestAuthzMatrix` (S1–S5, `no_audit` untuk pemilik), `TestCrossTenant`, `TestPayslipPresignedURLTTL` (C-40) |
-| PI-18 Unik per tenant | `TestEmployee_NikUniquePerTenant` |
-| PI-19 Manager asiklik | `manager_cycle_parallel_rejected` |
+| PI-18 Unik per tenant | ✅ `TestEmployee_NikUniquePerTenant` |
+| PI-19 Manager asiklik | ✅ `TestOrg_ManagerCycleRejectedEvenInParallel` |
 
 ### 5.3 Failure scenarios
 
@@ -414,13 +412,13 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | FS-10 Partial processing | `TestPartial/<checkpoint>`, `TestTopupRecover_StuckCreated_Completed` |
 | PFS-01 Job crash | `crash_resume_identical_result` |
 | PFS-02 Duplicate execution | `run_create_double_click_replays`, `calc_chunk_zombie_fenced` |
-| PFS-03 Employee berubah | `stale_detected_for_writer_committed_after_chunk_read`, `TestPeriodGuard_FinalizedPeriodRejected` |
-| PFS-04 Database failure | `TestCalcChunk_ConnectionDropped_RetriedSafely`, `TestFinalize_RetryAfterUnknownCommit_Idempotent` |
-| PFS-05 Worker retry | `TestCalcChunk_TransientError_RetriesWithBackoff`, `TestCalcChunk_PanicExhaustsAttempts_RunFailed` |
+| PFS-03 Employee berubah | `stale_detected_for_writer_committed_after_chunk_read`, `TestPeriodGuard_FinalizedPeriodRejectsInputWrites` |
+| PFS-04 Database failure | `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates` (koneksi putus sebelum COMMIT), `TestFinalize_RetryAfterUnknownCommit_Idempotent` |
+| PFS-05 Worker retry | `TestJobRunner_RetryThenDead_PanicSurvives`, `TestCalcChunk_PanicExhaustsAttempts_RunFailed` |
 | PFS-06 Concurrent execution | `run_create_two_admins_one_wins`, `calc_chunk_old_version_noop` |
-| PFS-07 Konfigurasi salah | golden "Error & warning", `TestSubmit_RunWithErrorItems_Rejected`, `TestComponentGraph_CycleDetected` |
-| PFS-08 Approval rejection | `approval_approve_vs_reject_single_winner`, `TestReject_RequiresNote`, `TestRunApprove_BySubmitter_Forbidden` |
-| PFS-09 Tenant access violation | `TestCrossTenant/<endpoint>`, `TestJob_TenantRunMismatch_NoOpAndAlert`, `TestRLS_CompositeFK_RejectsCrossTenantItem` |
+| PFS-07 Konfigurasi salah | golden "Error & warning", `TestSubmit_RunWithErrorItems_Rejected`, `TestValidateGraph`, `TestComponents_GraphAndSystemRules` |
+| PFS-08 Approval rejection | `approval_approve_vs_reject_single_winner`, `TestSubmit_SelfApprovalOnlyForSingleAdminTenant` (catatan wajib), `TestRunApprove_BySubmitter_Forbidden` |
+| PFS-09 Tenant access violation | `TestCrossTenant/<endpoint>`, `TestJob_TenantRunMismatch_NoOpAndAlert`, `TestCatalogue_TenantFKsComposite` |
 | PFS-10 Partial processing | `TestPayslipRender_CrashMidBatch_ResumesIdempotently`, `TestPayslipPDF_DeterministicBytes` |
 
 ### 5.4 Threat MVP (Step 6) per kategori
@@ -441,7 +439,7 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | T-LP API key / ops insider | `api_key_hashed_at_rest`, `api_key_slot_limit`, `ops_route_rejects_user_role`, `ops_resolution_requires_evidence`, `ops_action_audited` |
 | T-LP demo/admin endpoint terekspos | `TestBuild_DemoEndpointsAbsentWithoutDemoMode`, `mock_admin_requires_token` |
 | T-PR cross-tenant / RLS misconfiguration | §4.5 PI-01/PI-02, §4.7 Migration |
-| T-PR privilege escalation / SoD / undangan | `TestAuthzMatrix`, `TestRunApprove_BySubmitter_Forbidden`, `TestInvitation_EmailMismatchRejected`, `role_grant_rules_enforced` |
+| T-PR privilege escalation / SoD / undangan | `TestAuthzMatrix`, `TestRunApprove_BySubmitter_Forbidden`, `TestInvitation_InviteAcceptAndLinkEmployee`, `role_grant_rules_enforced` |
 | T-PR PII / payslip URL | `pii_*`, `TestPayslipAccess_Matrix`, `payslip_presigned_url_ttl` |
 | T-PR upload / CSV injection | `upload_validation_*`, `csv_export_escapes_formula` |
 | T-PR job tenant confusion | `TestJob_TenantRunMismatch_NoOpAndAlert`, `jobs_enforce_tenant_trigger` |

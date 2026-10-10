@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -36,7 +37,7 @@ async function load(append = false) {
     list.value = append ? [...list.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat adjustment'
+    error.value = errorText(e, 'Gagal memuat adjustment')
   }
 }
 
@@ -62,7 +63,7 @@ async function submit() {
   } catch (e) {
     if (e instanceof ApiError && e.code === 'PERIOD_LOCKED') error.value = `Payroll ${formatPeriod(f.target_period)} sudah final. Pilih periode target berikutnya.`
     else if (e instanceof ApiError && e.code === 'EMPLOYEE_NOT_ACTIVE') error.value = 'Karyawan tidak bekerja di periode target.'
-    else error.value = e instanceof ApiError ? (e.fields[0] ? `${e.fields[0].field}: ${e.fields[0].message ?? e.fields[0].code}` : e.message) : 'Gagal menyimpan'
+    else error.value = errorText(e, 'Gagal menyimpan')
   } finally {
     busy.value = false
   }
@@ -79,7 +80,7 @@ async function cancel(a: Adjustment) {
     cancelReason.value = ''
     await load()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal membatalkan'
+    error.value = errorText(e, 'Gagal membatalkan')
   } finally {
     busy.value = false
   }

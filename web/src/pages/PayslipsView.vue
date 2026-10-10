@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -29,7 +30,7 @@ async function load(append = false) {
     page.value = res.page
     if (!append && !selected.value && res.data.length) await open(res.data[0].id)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat slip gaji'
+    error.value = errorText(e, 'Gagal memuat slip gaji')
   } finally {
     loading.value = false
   }
@@ -39,7 +40,7 @@ async function open(id: string) {
   try {
     selected.value = await api<Payslip>(`/me/payslips/${id}`)
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat slip'
+    error.value = errorText(e, 'Gagal memuat slip')
   }
 }
 

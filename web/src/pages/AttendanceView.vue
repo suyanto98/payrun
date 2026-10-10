@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { computed, onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -27,7 +28,7 @@ async function loadMine() {
     mine.value = res.data
     summary.value = res.summary ?? null
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat absensi'
+    error.value = errorText(e, 'Gagal memuat absensi')
   }
 }
 
@@ -40,7 +41,7 @@ async function clock(kind: 'in' | 'out') {
     notice.value = kind === 'in' ? `Clock in ${formatTime(r.clock_in_at)} tercatat.` : `Clock out ${formatTime(r.clock_out_at)} tercatat.`
     await loadMine()
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal menyimpan'
+    error.value = errorText(e, 'Gagal menyimpan')
   } finally {
     busy.value = false
   }
@@ -62,7 +63,7 @@ async function loadDaily() {
     daily.value = res.data
     dailyPage.value = res.page
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Gagal memuat rekap'
+    error.value = errorText(e, 'Gagal memuat rekap')
   }
 }
 
@@ -89,7 +90,7 @@ async function saveFix(r: AttendanceRecord) {
     editing.value = null
     await Promise.all([loadDaily(), loadMine()])
   } catch (e) {
-    error.value = e instanceof ApiError ? (e.code === 'VERSION_CONFLICT' ? 'Catatan sudah diubah orang lain. Muat ulang.' : e.message) : 'Gagal menyimpan koreksi'
+    error.value = errorText(e, 'Gagal menyimpan koreksi')
   } finally {
     busy.value = false
   }

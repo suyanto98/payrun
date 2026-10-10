@@ -458,3 +458,30 @@ func TestWithTenantTx_FailsClosedWithoutTenant(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestWithTenantTx_RetryKeepsTenant (PI-01, `with_tenant_tx_retry_resets_tenant`): WithTx mengulang fn setelah
+// 40001/40P01 di transaksi BARU. Tenant harus disetel ulang di setiap percobaan (bukan sekali di luar loop),
+// kalau tidak percobaan kedua berjalan tanpa tenant (0 baris) atau dengan sisa tenant koneksi lain.
+func TestWithTenantTx_RetryKeepsTenant(t *testing.T) {
+	dbtest.SkipIfShort(t)
+	tdb := dbtest.New(t)
+	f := seed(t, tdb.App)
+	attempts := 0
+	err := db.WithTenantTxFor(context.Background(), tdb.App, f.alpha, func(tx pgx.Tx) error {
+		attempts++
+		var got string
+		if err := tx.QueryRow(context.Background(), `SELECT coalesce(payrun.current_tenant()::text, '')`).Scan(&got); err != nil {
+			return err
+		}
+		if got != f.alpha.String() {
+			t.Errorf("attempt %d: current_tenant() = %q, want Alpha", attempts, got)
+		}
+		if attempts == 1 {
+			return &pgconn.PgError{Code: "40001", Message: "simulated serialization failure"}
+		}
+		return nil
+	})
+	if err != nil || attempts != 2 {
+		t.Fatalf("want success on the 2nd attempt, got attempts=%d err=%v", attempts, err)
+	}
+}

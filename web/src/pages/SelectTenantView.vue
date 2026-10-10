@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
@@ -25,7 +26,7 @@ async function choose(m: Membership) {
     await auth.switchTenant(m.tenant_id)
     router.push('/')
   } catch (e) {
-    error.value = (e as Error).message
+    error.value = errorText(e, 'Terjadi kesalahan. Coba lagi.')
   } finally {
     busyId.value = ''
   }

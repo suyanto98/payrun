@@ -35,15 +35,24 @@ type Mismatch struct {
 }
 
 type VerifyReport struct {
-	RunID        uuid.UUID  `json:"run_id"`
-	Status       string     `json:"status"`
-	CalcVersion  int32      `json:"calc_version"`
-	ItemsChecked int        `json:"items_checked"`
-	Mismatches   []Mismatch `json:"mismatches"`
+	RunID        uuid.UUID    `json:"run_id"`
+	Status       string       `json:"status"`
+	CalcVersion  int32        `json:"calc_version"`
+	ItemsChecked int          `json:"items_checked"`
+	Mismatches   []Mismatch   `json:"mismatches"`
+	Totals       TotalsResult `json:"totals"`
 }
 
-// OK: tidak ada perbedaan.
-func (r VerifyReport) OK() bool { return len(r.Mismatches) == 0 }
+// TotalsResult (PI-05): total run = Σ item OK dan jumlah item = eligible. Terpisah dari Mismatches
+// (per item): selisih total adalah sifat run, dan dihitung ke metrik yang berbeda.
+type TotalsResult struct {
+	OK       bool  `json:"ok"`
+	Items    int32 `json:"items"`
+	Eligible int32 `json:"eligible"`
+}
+
+// OK: tidak ada perbedaan item dan total run konsisten.
+func (r VerifyReport) OK() bool { return len(r.Mismatches) == 0 && r.Totals.OK }
 
 // VerifyRun membaca di transaksi tenant tenantID (dipanggil perintah ops dan test; bukan endpoint API).
 func (s *Service) VerifyRun(ctx context.Context, tenantID, runID uuid.UUID) (VerifyReport, error) {
@@ -58,6 +67,11 @@ func (s *Service) VerifyRun(ctx context.Context, tenantID, runID uuid.UUID) (Ver
 			return fmt.Errorf("payroll: run %s was never calculated", runID)
 		}
 		rep.Status, rep.CalcVersion = run.Status, run.CalcVersion
+		tot, err := q.VerifyRunTotals(ctx, runID)
+		if err != nil {
+			return err
+		}
+		rep.Totals = TotalsResult{OK: tot.TotalsEqual && tot.CountsEqual, Items: tot.Items, Eligible: tot.Eligible}
 		items, err := q.VerifyItems(ctx, store.VerifyItemsParams{RunID: runID, CalcVersion: run.CalcVersion})
 		if err != nil {
 			return err

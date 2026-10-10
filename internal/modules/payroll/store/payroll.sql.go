@@ -2764,7 +2764,6 @@ func (q *Queries) UpdateRunCounts(ctx context.Context, id uuid.UUID) error {
 }
 
 const verifyItems = `-- name: VerifyItems :many
-
 SELECT i.id, i.employee_no, i.status, i.gross, i.deductions, i.net, i.error_codes, i.warning_codes,
        i.input_fingerprint, s.item_id AS snapshot_item_id, s.snapshot_version, s.input, s.ruleset_code, s.ruleset_version,
        s.input_fingerprint AS snapshot_fingerprint
@@ -2797,7 +2796,6 @@ type VerifyItemsRow struct {
 	SnapshotFingerprint []byte
 }
 
-// ---------------------------------------------------------------- verify-run (S5, PI-12, ADR-P07)
 // Item versi terkini + snapshot-nya (LEFT JOIN: snapshot hilang juga dilaporkan).
 func (q *Queries) VerifyItems(ctx context.Context, arg VerifyItemsParams) ([]VerifyItemsRow, error) {
 	rows, err := q.db.Query(ctx, verifyItems, arg.RunID, arg.CalcVersion)
@@ -2888,4 +2886,43 @@ func (q *Queries) VerifyLines(ctx context.Context, arg VerifyLinesParams) ([]Ver
 		return nil, err
 	}
 	return items, nil
+}
+
+const verifyRunTotals = `-- name: VerifyRunTotals :one
+
+SELECT (coalesce(r.total_gross, 0) = s.gross AND coalesce(r.total_deductions, 0) = s.deductions
+        AND coalesce(r.total_net, 0) = s.net)::bool AS totals_equal,
+       (coalesce(r.item_ok_count, 0) + coalesce(r.item_error_count, 0) + coalesce(r.item_excluded_count, 0) = s.items
+        AND s.items = coalesce(r.eligible_count, -1))::bool AS counts_equal,
+       s.items::int AS items, coalesce(r.eligible_count, 0)::int AS eligible
+FROM payroll_runs r,
+     LATERAL (SELECT count(*) AS items,
+                     coalesce(sum(gross) FILTER (WHERE status = 'OK'), 0) AS gross,
+                     coalesce(sum(deductions) FILTER (WHERE status = 'OK'), 0) AS deductions,
+                     coalesce(sum(net) FILTER (WHERE status = 'OK'), 0) AS net
+              FROM payroll_items i WHERE i.run_id = r.id AND i.calc_version = r.calc_version) s
+WHERE r.id = $1
+`
+
+type VerifyRunTotalsRow struct {
+	TotalsEqual bool
+	CountsEqual bool
+	Items       int32
+	Eligible    int32
+}
+
+// ---------------------------------------------------------------- verify-run (S5, PI-12, ADR-P07)
+// PI-05 (verify-run + job payroll.verify_run): total run = Σ item OK versi terkini dan satu item per
+// karyawan eligible. Trigger payroll_runs_totals_check menjaganya saat menulis; ini memeriksa data yang
+// sudah tersimpan (manipulasi langsung, bug trigger, restore).
+func (q *Queries) VerifyRunTotals(ctx context.Context, id uuid.UUID) (VerifyRunTotalsRow, error) {
+	row := q.db.QueryRow(ctx, verifyRunTotals, id)
+	var i VerifyRunTotalsRow
+	err := row.Scan(
+		&i.TotalsEqual,
+		&i.CountsEqual,
+		&i.Items,
+		&i.Eligible,
+	)
+	return i, err
 }

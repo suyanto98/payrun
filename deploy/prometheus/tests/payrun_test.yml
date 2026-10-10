@@ -20,7 +20,7 @@ tests:
           - exp_labels: { severity: critical }
             exp_annotations:
               summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
-              runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+              runbook: "docs/runbook.md#payruninvariantviolated"
       - { eval_time: 9m, alertname: PayRunInvariantViolated, exp_alerts: [] }
 
   # A-13 lewat lapis DB: trigger P0002 menahan tulisan ke periode FINALIZED (guard aplikasi bocor).
@@ -38,7 +38,7 @@ tests:
           - exp_labels: { severity: critical }
             exp_annotations:
               summary: "PayRun invariant violated (tenant isolation / finalized mutation / period lock bypass / total mismatch / reproducibility)"
-              runbook: "docs/design/24-observability.md#86-payruninvariantviolated"
+              runbook: "docs/runbook.md#payruninvariantviolated"
 
   # Semua 0 (kondisi normal) → tidak ada alert.
   - interval: 1m
@@ -63,7 +63,7 @@ tests:
           - exp_labels: { severity: warning }
             exp_annotations:
               summary: "A payroll run failed to calculate"
-              runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+              runbook: "docs/runbook.md#batchjobfailed"
 
   # A-04: job dead per kind.
   - interval: 1m
@@ -77,4 +77,4 @@ tests:
           - exp_labels: { severity: warning, kind: payslip.render }
             exp_annotations:
               summary: "Jobs moved to dead (payslip.render)"
-              runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed"
+              runbook: "docs/runbook.md#jobsdeadlettered"

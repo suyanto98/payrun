@@ -9,40 +9,40 @@ groups:
             / sum by (service) (rate(app_http_requests_total[5m])) > 0.02
         for: 5m
         labels: { severity: critical }
-        annotations: { summary: "More than 2% of requests fail with 5xx", runbook: "docs/design/24-observability.md#84-high5xxratio--transferlatencyslo--dbpoolsaturated--servicenotready" }
+        annotations: { summary: "More than 2% of requests fail with 5xx", runbook: "docs/runbook.md#high5xxratio" }
       # A-08
       - alert: DBPoolSaturated
         expr: max by (service) (app_db_pool_acquired_conns / app_db_pool_max_conns) > 0.9
         for: 5m
         labels: { severity: warning }
-        annotations: { summary: "DB pool above 90% for 5 minutes", runbook: "docs/design/24-observability.md#84-high5xxratio--transferlatencyslo--dbpoolsaturated--servicenotready" }
+        annotations: { summary: "DB pool above 90% for 5 minutes", runbook: "docs/runbook.md#dbpoolsaturated" }
       # A-09
       - alert: ServiceNotReady
         expr: min by (service) (app_ready) == 0 or up{job=~"payrun-.*"} == 0
         for: 2m
         labels: { severity: critical }
-        annotations: { summary: "{{ $labels.job }} is not ready or not scraped", runbook: "docs/design/24-observability.md#84-high5xxratio--transferlatencyslo--dbpoolsaturated--servicenotready" }
+        annotations: { summary: "{{ $labels.job }} is not ready or not scraped", runbook: "docs/runbook.md#servicenotready" }
       # A-03
       - alert: OutboxLagHigh
         expr: max(app_outbox_lag_seconds) > 30
         for: 5m
         labels: { severity: warning }
-        annotations: { summary: "Side effects delayed more than 30s after commit", runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed" }
+        annotations: { summary: "Side effects delayed more than 30s after commit", runbook: "docs/runbook.md#outboxlaghigh" }
       # A-04
       - alert: JobsDeadLettered
         expr: sum by (kind) (increase(app_job_dead_total[10m])) > 0
         for: 0m
         labels: { severity: warning }
-        annotations: { summary: "Jobs moved to dead ({{ $labels.kind }})", runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed" }
+        annotations: { summary: "Jobs moved to dead ({{ $labels.kind }})", runbook: "docs/runbook.md#jobsdeadlettered" }
       # A-05
       - alert: JobBacklogOld
         expr: max by (kind) (app_job_oldest_age_seconds) > 300
         for: 10m
         labels: { severity: warning }
-        annotations: { summary: "Oldest queued {{ $labels.kind }} job waits more than 5 minutes", runbook: "docs/design/24-observability.md#83-outboxlaghigh--jobsdeadlettered--jobbacklogold--batchjobfailed" }
+        annotations: { summary: "Oldest queued {{ $labels.kind }} job waits more than 5 minutes", runbook: "docs/runbook.md#jobbacklogold" }
       # A-11
       - alert: RefreshTokenReuseSpike
         expr: increase(app_refresh_reuse_detected_total[15m]) > 5
         for: 0m
         labels: { severity: warning }
-        annotations: { summary: "Refresh token reuse detected more than 5 times in 15 minutes", runbook: "docs/design/24-observability.md#85-webhooksignaturefailures--refreshtokenreusespike" }
+        annotations: { summary: "Refresh token reuse detected more than 5 times in 15 minutes", runbook: "docs/runbook.md#refreshtokenreusespike" }

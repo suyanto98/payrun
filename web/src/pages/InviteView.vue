@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorText } from '../errors'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api'
@@ -25,7 +26,7 @@ async function accept() {
     if (e instanceof ApiError && e.code === 'INVITATION_INVALID') error.value = 'Undangan tidak valid, sudah dipakai, kedaluwarsa, atau ditujukan ke email lain.'
     else if (e instanceof ApiError && e.status === 403) error.value = 'Verifikasi email akunmu dulu, lalu buka lagi link undangan ini.'
     else if (e instanceof ApiError && e.code === 'MEMBERSHIP_EXISTS') error.value = 'Kamu sudah menjadi anggota perusahaan ini.'
-    else error.value = (e as Error).message
+    else error.value = errorText(e, 'Terjadi kesalahan. Coba lagi.')
   } finally {
     busy.value = false
   }

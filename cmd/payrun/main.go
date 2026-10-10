@@ -362,11 +362,11 @@ func objectStorage(cfg config.Config, logger *slog.Logger) (storage.Store, error
 // (superuser, HANYA di container perf/dev) dan DATABASE_URL (payrun_app, untuk gate lewat RLS).
 func runSeed(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: payrun seed <smoke|perf>")
+		return errors.New("usage: payrun seed <demo|smoke|perf>")
 	}
 	profile, ok := app.SeedProfiles[args[0]]
 	if !ok {
-		return fmt.Errorf("unknown seed profile %q (smoke | perf)", args[0])
+		return fmt.Errorf("unknown seed profile %q (demo | smoke | perf)", args[0])
 	}
 	cfg, err := config.Load()
 	if err != nil {

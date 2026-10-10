@@ -27,8 +27,10 @@ type SeedProfile struct {
 }
 
 // Profil seed. "perf" = 1.000 tenant / 100.000 karyawan (900 kecil, 95 sedang, 4 besar, 1 × 10.000);
-// "smoke" untuk CI dan uji cepat.
+// "smoke" untuk CI dan uji cepat; "demo" = dua tenant untuk demo live (seed-0 100 karyawan = Alpha,
+// seed-1 10–50 = Beta; docs/demo-script.md).
 var SeedProfiles = map[string]SeedProfile{
+	"demo":  {Name: "demo", Small: 1, Big: 100},
 	"smoke": {Name: "smoke", Small: 15, Medium: 3, Large: 1, Big: 500, Employees: 2_000},
 	"perf":  {Name: "perf", Small: 900, Medium: 95, Large: 4, Big: 10_000, Employees: 100_000},
 }

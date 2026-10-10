@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -71,6 +72,62 @@ func TestBuild_DemoEndpointsAbsentWithoutDemoMode(t *testing.T) {
 		}
 		if !strings.Contains(demo, sym) {
 			t.Errorf("sanity: the demo binary should contain %s", sym)
+		}
+	}
+}
+
+// TestOpenAPI_MoneyFieldsAreStrings (DoD V3, ADR-P06): setiap field uang di kontrak adalah string desimal —
+// schema Money, atau string nullable — dan tidak pernah number/integer (float membulatkan rupiah diam-diam).
+// Respons nyata divalidasi terhadap spec ini oleh TestContract_*.
+func TestOpenAPI_MoneyFieldsAreStrings(t *testing.T) {
+	spec := read(t, repoRoot(t), "api/openapi.yaml")
+	field := regexp.MustCompile(`^\s+(amount|base_salary|gross|deductions|net|default_amount|total_(?:gross|deductions|net)|[a-z_]+_amount):\s*(.*)$`)
+	checked := 0
+	lines := strings.Split(spec, "\n")
+	for i, l := range lines {
+		m := field.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		def := m[2]
+		if def == "" && i+1 < len(lines) { // bentuk multi-baris
+			def = lines[i+1]
+		}
+		checked++
+		isString := strings.Contains(def, "schemas/Money") || regexp.MustCompile(`type: (\[\s*)?'?string`).MatchString(def)
+		if !isString || strings.Contains(def, "number") || strings.Contains(def, "integer") {
+			t.Errorf("openapi.yaml:%d: money field %q must be a decimal string (Money), got %s", i+1, m[1], strings.TrimSpace(def))
+		}
+	}
+	if checked < 15 {
+		t.Fatalf("only %d money fields found: the scanner is probably broken", checked)
+	}
+}
+
+// TestSPA_ErrorMessagesCoverCatalogue: setiap code error di internal/platform/apperr punya pesan Indonesia di
+// web/src/errors.ts, dan tidak ada pesan untuk code yang sudah tidak ada. Tanpa ini, code baru muncul di UI
+// sebagai `detail` berbahasa Inggris dari server.
+func TestSPA_ErrorMessagesCoverCatalogue(t *testing.T) {
+	root := repoRoot(t)
+	codes := map[string]bool{}
+	for _, m := range regexp.MustCompile(`def\(http\.\w+, "([A-Z][A-Z_]+)"`).FindAllStringSubmatch(read(t, root, "internal/platform/apperr/apperr.go"), -1) {
+		codes[m[1]] = true
+	}
+	ui := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(?m)^\s+([A-Z][A-Z_]+): '`).FindAllStringSubmatch(read(t, root, "web/src/errors.ts"), -1) {
+		ui[m[1]] = true
+	}
+	if len(codes) < 40 {
+		t.Fatalf("only %d codes parsed from apperr.go: the scanner is probably broken", len(codes))
+	}
+	for c := range codes {
+		if !ui[c] {
+			t.Errorf("error code %s has no Indonesian message in web/src/errors.ts", c)
+		}
+	}
+	for c := range ui {
+		if !codes[c] {
+			t.Errorf("web/src/errors.ts has a message for %s, which is not in the error catalogue", c)
 		}
 	}
 }
