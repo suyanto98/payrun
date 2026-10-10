@@ -99,6 +99,6 @@ dari versi lama atau dengan lease yang dicuri tidak bisa commit.
 | `payroll` | engine (pure), run, chunk, stale detection, finalize, payslip, adjustment, verify |
 
 Aturan import (`depguard`, `.golangci.yml`): `platform` tidak meng-import modul atau composition root; modul tidak
-meng-import `internal/app`; `payroll/engine` tidak boleh meng-import db, pgx, `net`, `os`, `math/rand`, atau clock.
-Ketergantungan antarmodul lewat interface yang dirakit di `internal/app` (contoh: `payroll.Approvals`,
+meng-import `backend/internal/app`; `payroll/engine` tidak boleh meng-import db, pgx, `net`, `os`, `math/rand`, atau clock.
+Ketergantungan antarmodul lewat interface yang dirakit di `backend/internal/app` (contoh: `payroll.Approvals`,
 `attendanceEmployees`).

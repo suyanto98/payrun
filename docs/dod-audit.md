@@ -15,7 +15,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | ID | Fitur | Status | Bukti |
 |---|---|---|---|
 | PF-01…PF-14, PF-17, PF-18, PF-20 | P0 | ✅ | Test per modul (katalog `docs/design/25-testing-strategy.md` §4), Demo A–C (`make demo-verify`, `make demo-live`) |
-| PF-15, PF-16, PF-19, PF-22, PF-24, PF-29 | P1: slip web, audit akses slip, adjustment, slip PDF, metrik/dashboard tenant, rate limit | ✅ | `TestPayslipAccess_Matrix`, `TestPayslipPDF_DeterministicBytes`, `TestAdjustment_AppliedOnce`, dashboard *Payroll & Tenancy*, tier rate limit di `internal/platform/ratelimit` |
+| PF-15, PF-16, PF-19, PF-22, PF-24, PF-29 | P1: slip web, audit akses slip, adjustment, slip PDF, metrik/dashboard tenant, rate limit | ✅ | `TestPayslipAccess_Matrix`, `TestPayslipPDF_DeterministicBytes`, `TestAdjustment_AppliedOnce`, dashboard *Payroll & Tenancy*, tier rate limit di `backend/internal/platform/ratelimit` |
 | PF-21, PF-23, PF-25…PF-28 | P2 | ✅ didaftar | README "Deliberately not built" (PF-21/PF-23 diturunkan di Step 12) |
 | PF-30…PF-33 | P3 | ✅ didaftar | README |
 
@@ -25,7 +25,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 |---|---|---|---|
 | P1–P4 | Fitur P0/P1, P2/P3 didaftar, tanpa fitur di luar matrix | ✅ | Tabel di atas |
 | C1 | Setiap PI-01…PI-19 punya test yang lulus | ✅ | 19/19 baris §5.2 bertanda ✅; nama dicek `TestTraceability_DocsReferenceExistingTests` |
-| C2 | Invariant checker di `t.Cleanup` setiap test integrasi | ✅ | `internal/app/invariants_test.go` (PI-04, PI-05, PI-16, sebagai superuser lintas tenant); dibuktikan menangkap total run yang dirusak oleh test yang lolos |
+| C2 | Invariant checker di `t.Cleanup` setiap test integrasi | ✅ | `backend/internal/app/invariants_test.go` (PI-04, PI-05, PI-16, sebagai superuser lintas tenant); dibuktikan menangkap total run yang dirusak oleh test yang lolos |
 | C3 | Metrik INV = 0 selama 7 hari di environment demo | ⏳ | Metrik sekarang diisi oleh proses worker (job `payroll.verify_run` setelah finalize, `TestVerifyRunJob_AfterFinalize_FeedsInvariantMetrics`); 7 hari butuh environment publik |
 | C4 | Golden ≥ 30 kasus | ✅ | `TestGolden` 33 kasus, `TestTonoMarch2026_LineByLine` |
 | C5 | Property test 1 juta iterasi di nightly | ⚠️ | `TestProperty_Invariants` 10.000 iterasi per run di CI; varian 1 juta di nightly belum dibuat |
@@ -75,7 +75,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | DM3 | URL publik | ⏳ | Setelah deploy |
 | DM4 | Token demo aman | ✅ | Tidak ada di README; VM memakai secret (`init-env.sh`); token default `compose.demo.yml` hanya untuk stack lokal di 127.0.0.1 |
 | H1 | Lisensi | ⚠️ | `LICENSE` MIT, nama pemilik masih placeholder `<NAMA ANDA>` (diisi pemilik) |
-| H2 | Tanpa TODO/FIXME di jalur kritis | ✅ | `grep` kosong di `internal`, `cmd`, `db`, `web/src` |
+| H2 | Tanpa TODO/FIXME di jalur kritis | ✅ | `grep` kosong di `internal`, `cmd`, `db`, `frontend/src` |
 | H3 | Dependency di-pin + Dependabot | ✅ | `go.sum`, action di-pin ke SHA, `.github/dependabot.yml` |
 | H4 | Tidak ada kode/penamaan dari pekerjaan kantor | ✅ | Review diri |
 | H5 | Conventional commits | ✅ | `feat(sN)`, `fix(sN)`, `docs(sN)`; S7–S9 satu commit gabungan (pilihan pemilik) |

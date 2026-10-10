@@ -21,7 +21,7 @@ Production-oriented, small in scope, strict about isolation and reproducibility.
 |---|---|---|---|
 | One forgotten `WHERE tenant_id = ?` leaks a company's payroll | Isolation does not depend on every query being right | Pooled schema + `ENABLE`/`FORCE ROW LEVEL SECURITY` on every tenant table, app connects as `payrun_app` (`NOBYPASSRLS`, not the owner, checked at startup), tenant set per transaction with `set_config(..., true)`; no tenant → zero rows ([ADR-P01](docs/adr/ADR-P01-multi-tenancy-pooled-rls.md), [ADR-P02](docs/adr/ADR-P02-tenant-context.md)) | `TestRLS_UnfilteredQuerySeesOnlyActiveTenant`, `TestRLS_NoContextReturnsZeroRows`, `TestRLS_PoolLeakageAfterCommit`, `TestCatalog_EveryTableHasForcedRLS`, `TestCrossTenant`, Demo A |
 | A reference to another tenant's row (department, manager, run) | Cross-tenant references are impossible | Composite foreign keys `(tenant_id, id)` on every tenant relation; repositories compare each decoded row's `tenant_id` (C-46) | `TestCatalogue_TenantFKsComposite`, `TestTenantIsolation_DemoA`, `TestJob_TenantRunMismatch_NoOpAndAlert` |
-| Role checks scattered across handlers | Every route has an explicit authorization rule | Authorization matrix as data (`api/authz_matrix.yaml`); a route without a row fails CI; sensitive operations re-read roles from the DB ([ADR-010](docs/adr/ADR-010-authorization.md)) | `TestAuthzMatrix`, `TestAuthzMatrix_CoversEveryRoute` |
+| Role checks scattered across handlers | Every route has an explicit authorization rule | Authorization matrix as data (`backend/api/authz_matrix.yaml`); a route without a row fails CI; sensitive operations re-read roles from the DB ([ADR-010](docs/adr/ADR-010-authorization.md)) | `TestAuthzMatrix`, `TestAuthzMatrix_CoversEveryRoute` |
 | Payroll math that is "almost right" | Deterministic, explainable results, no floats | Pure engine (no DB, clock or randomness; enforced by `depguard`), decimal with explicit rounding, versioned ruleset ([ADR-P03](docs/adr/ADR-P03-payroll-engine.md), [ADR-P06](docs/adr/ADR-P06-decimal-rounding.md)) | `TestGolden` (33 cases), `TestTonoMarch2026_LineByLine`, `TestProperty_Invariants` |
 | A worker dies halfway through a 10,000-employee run | Resume without duplicates or gaps | Run split into chunk jobs; each chunk reads in one snapshot, computes outside a transaction, writes in one transaction with **fenced** completion and `calc_version` ([ADR-P05](docs/adr/ADR-P05-payroll-run-execution.md)) | `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`, `TestPayrollRun_CrashAndResume`, `TestCalcChunk_PanicExhaustsAttempts_RunFailed` |
 | Two admins start the same month's payroll | One run per period | Partial unique index + idempotency keys; the loser gets `409 ACTIVE_RUN_EXISTS` pointing to the winner | `TestCreateRun_ConcurrentSamePeriod_SingleRun` |
@@ -82,7 +82,7 @@ Full list with tests: [traceability matrix](docs/design/25-testing-strategy.md#5
 
 ## Run it
 
-Requirements: Go (toolchain from `go.mod`), Docker with Compose, Node 22 + Yarn (SPA), `jq`.
+Requirements: Go (toolchain from `backend/go.mod`), Docker with Compose, Node 22 + Yarn (SPA), `jq`. Layout: Go module in `backend/`, Vue SPA in `frontend/`; run `make` targets from the repo root (they `cd` into the right folder), plain `go` commands from `backend/`.
 
 ```bash
 make up                 # storage + postgres + migrations + api + worker (API 127.0.0.1:8081)
@@ -171,20 +171,23 @@ Threat model: [docs/design/19-security-threat-model.md](docs/design/19-security-
 ## Project structure
 
 ```text
-cmd/payrun           api · worker · migrate · seed · verify-run · healthcheck (one binary)
-internal/modules     tenancy · iam · org · employee · compensation · attendance · leave · overtime · approval · payroll
-internal/platform    db (RLS tx, tenant guard, custom plan) · jobs · auth · idempotency · crypto · storage · faults · metrics · …
-db/migrations        goose migrations (embedded); db/migrations_demo for the demo build only
-api/                 openapi.yaml (source of truth) + authz_matrix.yaml
-web/                 Vue SPA
-deploy/              compose (dev, demo, perf, prod), Caddy, backup image, Prometheus rules + tests, Grafana dashboards
-perf/                k6 scripts, run.sh, results
-docs/                ADRs, design documents, runbook, demo script, DoD audit
+backend/                     Go module (go.mod, sqlc.yaml, .golangci.yml)
+  cmd/payrun                 api · worker · migrate · seed · verify-run · healthcheck (one binary)
+  internal/modules           tenancy · iam · org · employee · compensation · attendance · leave · overtime · approval · payroll
+  internal/platform          db (RLS tx, tenant guard, custom plan) · jobs · auth · idempotency · crypto · storage · faults · metrics · …
+  internal/app               composition root (routers, worker lanes)
+  db/migrations              goose migrations (embedded); db/migrations_demo for the demo build only
+  api/                       openapi.yaml (source of truth) + authz_matrix.yaml
+frontend/                    Vue SPA
+deploy/                      compose (dev, demo, perf, prod), Caddy, backup image, Prometheus rules + tests, Grafana dashboards
+perf/                        k6 scripts, run.sh, results
+scripts/                     demo-live, restore drill, image build
+docs/                        ADRs, design documents, runbook, demo script, DoD audit
 ```
 
 ## Docs
 
-[Architecture](docs/architecture.md) · [Design documents](docs/design/) · [ADRs](docs/adr/) · [OpenAPI](api/openapi.yaml) · [Demo script](docs/demo-script.md) · [Runbook](docs/runbook.md) · [Performance report](perf/results/2026-10-10-fed1df1/REPORT.md) · [DoD audit](docs/dod-audit.md) · [Changelog (shared skeleton)](CHANGELOG.md)
+[Architecture](docs/architecture.md) · [Design documents](docs/design/) · [ADRs](docs/adr/) · [OpenAPI](backend/api/openapi.yaml) · [Demo script](docs/demo-script.md) · [Runbook](docs/runbook.md) · [Performance report](perf/results/2026-10-10-fed1df1/REPORT.md) · [DoD audit](docs/dod-audit.md) · [Changelog (shared skeleton)](CHANGELOG.md)
 
 ## License
 

@@ -17,7 +17,7 @@ ENV_DIR=${ENV_DIR:-$(dirname "$0")/env}
 ROOT=${PR_ROOT:-/srv/payrun}
 USER_AT=${DEPLOY_USER:-deploy}@${HOST}
 [ -n "${PR_SKIP_ENV:-}" ] || [ -f "$ENV_DIR/api.env" ] || { echo "missing $ENV_DIR — run deploy/prod/init-env.sh first"; exit 1; }
-git diff --quiet "$SHA" -- deploy/ db/ cmd/ internal/ web/ 2>/dev/null || echo "note: working tree differs from $SHA; deploying the COMMITTED $SHA"
+git diff --quiet "$SHA" -- deploy/ backend/ frontend/ 2>/dev/null || echo "note: working tree differs from $SHA; deploying the COMMITTED $SHA"
 
 run() { if [ "$HOST" = local ]; then bash -c "$1"; else ssh -o BatchMode=yes "$USER_AT" "$1"; fi; }
 echo "== upload release $SHA"

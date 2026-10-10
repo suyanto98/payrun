@@ -7,4 +7,4 @@ spikes
 *.md
 
 # Frontend dibangun terpisah (bukan bagian image Go); node_modules bisa ratusan MB.
-web/
+frontend/

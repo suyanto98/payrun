@@ -31,8 +31,8 @@ func TestObservability_RulesAndDashboardsUseDefinedMetrics(t *testing.T) {
 			defined[m[1]] = true
 		}
 	}
-	files, _ := filepath.Glob("../../deploy/prometheus/rules/*.yml")
-	dash, _ := filepath.Glob("../../deploy/grafana/dashboards/*.json")
+	files, _ := filepath.Glob("../../../deploy/prometheus/rules/*.yml")
+	dash, _ := filepath.Glob("../../../deploy/grafana/dashboards/*.json")
 	files = append(files, dash...)
 	if len(files) < 3 {
 		t.Fatalf("expected alert rules and dashboards, found %v", files)
@@ -65,7 +65,7 @@ func TestObservability_RulesAndDashboardsUseDefinedMetrics(t *testing.T) {
 // TestObservability_AlertsLinkToRunbook (DoD OP4): setiap alert punya annotation runbook yang menunjuk ke
 // heading yang ADA di docs/runbook.md. Link mati ditemukan saat alert menyala jam 3 pagi; di sini lebih murah.
 func TestObservability_AlertsLinkToRunbook(t *testing.T) {
-	book, err := os.ReadFile("../../docs/runbook.md")
+	book, err := os.ReadFile("../../../docs/runbook.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestObservability_AlertsLinkToRunbook(t *testing.T) {
 		a := strings.ToLower(strings.TrimSpace(m[1])) // heading alert = nama alert (tanpa spasi/tanda baca)
 		anchors[regexp.MustCompile(`[^a-z0-9 -]`).ReplaceAllString(strings.ReplaceAll(a, " ", "-"), "")] = true
 	}
-	rules, _ := filepath.Glob("../../deploy/prometheus/rules/*.yml")
+	rules, _ := filepath.Glob("../../../deploy/prometheus/rules/*.yml")
 	alertRe := regexp.MustCompile(`(?m)^\s*- alert: (\w+)$`)
 	linkRe := regexp.MustCompile(`runbook: "docs/runbook\.md#([a-z0-9-]+)"`)
 	checked := 0

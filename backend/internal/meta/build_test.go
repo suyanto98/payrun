@@ -20,7 +20,7 @@ func symbols(t *testing.T, tags string) string {
 	}
 	args = append(args, "./cmd/payrun")
 	build := exec.CommandContext(t.Context(), "go", args...)
-	build.Dir = repoRoot(t)
+	build.Dir = moduleRoot(t)
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build -tags %q: %v\n%s", tags, err, out)
@@ -32,13 +32,20 @@ func symbols(t *testing.T, tags string) string {
 	return string(out)
 }
 
-func repoRoot(t *testing.T) string {
+// moduleRoot: folder Go module (backend/): go build, api/, internal/.
+func moduleRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
 	return root
+}
+
+// repoRoot: akar repo (README, docs/, deploy/, perf/, frontend/).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	return filepath.Dir(moduleRoot(t))
 }
 
 // TestBuild_NoTesthooksInRelease: titik hook test concurrency tidak bisa dipasang di binary release.
@@ -80,7 +87,7 @@ func TestBuild_DemoEndpointsAbsentWithoutDemoMode(t *testing.T) {
 // schema Money, atau string nullable — dan tidak pernah number/integer (float membulatkan rupiah diam-diam).
 // Respons nyata divalidasi terhadap spec ini oleh TestContract_*.
 func TestOpenAPI_MoneyFieldsAreStrings(t *testing.T) {
-	spec := read(t, repoRoot(t), "api/openapi.yaml")
+	spec := read(t, moduleRoot(t), "api/openapi.yaml")
 	field := regexp.MustCompile(`^\s+(amount|base_salary|gross|deductions|net|default_amount|total_(?:gross|deductions|net)|[a-z_]+_amount):\s*(.*)$`)
 	checked := 0
 	lines := strings.Split(spec, "\n")
@@ -105,16 +112,16 @@ func TestOpenAPI_MoneyFieldsAreStrings(t *testing.T) {
 }
 
 // TestSPA_ErrorMessagesCoverCatalogue: setiap code error di internal/platform/apperr punya pesan Indonesia di
-// web/src/errors.ts, dan tidak ada pesan untuk code yang sudah tidak ada. Tanpa ini, code baru muncul di UI
+// frontend/src/errors.ts, dan tidak ada pesan untuk code yang sudah tidak ada. Tanpa ini, code baru muncul di UI
 // sebagai `detail` berbahasa Inggris dari server.
 func TestSPA_ErrorMessagesCoverCatalogue(t *testing.T) {
 	root := repoRoot(t)
 	codes := map[string]bool{}
-	for _, m := range regexp.MustCompile(`def\(http\.\w+, "([A-Z][A-Z_]+)"`).FindAllStringSubmatch(read(t, root, "internal/platform/apperr/apperr.go"), -1) {
+	for _, m := range regexp.MustCompile(`def\(http\.\w+, "([A-Z][A-Z_]+)"`).FindAllStringSubmatch(read(t, moduleRoot(t), "internal/platform/apperr/apperr.go"), -1) {
 		codes[m[1]] = true
 	}
 	ui := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?m)^\s+([A-Z][A-Z_]+): '`).FindAllStringSubmatch(read(t, root, "web/src/errors.ts"), -1) {
+	for _, m := range regexp.MustCompile(`(?m)^\s+([A-Z][A-Z_]+): '`).FindAllStringSubmatch(read(t, root, "frontend/src/errors.ts"), -1) {
 		ui[m[1]] = true
 	}
 	if len(codes) < 40 {
@@ -122,12 +129,12 @@ func TestSPA_ErrorMessagesCoverCatalogue(t *testing.T) {
 	}
 	for c := range codes {
 		if !ui[c] {
-			t.Errorf("error code %s has no Indonesian message in web/src/errors.ts", c)
+			t.Errorf("error code %s has no Indonesian message in frontend/src/errors.ts", c)
 		}
 	}
 	for c := range ui {
 		if !codes[c] {
-			t.Errorf("web/src/errors.ts has a message for %s, which is not in the error catalogue", c)
+			t.Errorf("frontend/src/errors.ts has a message for %s, which is not in the error catalogue", c)
 		}
 	}
 }

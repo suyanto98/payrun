@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 # Image web = build statis SPA + Caddy file server (port 8080, non-root). TLS dan header keamanan
 # dipasang di edge bersama (Caddy LedgerPay, site payrun.caddy); container ini hanya di network `edge`.
-# Context: root repo. web.Dockerfile.dockerignore menggantikan .dockerignore root (yang mengecualikan web/).
+# Context: root repo. web.Dockerfile.dockerignore menggantikan .dockerignore root (yang mengecualikan frontend/).
 FROM node:22-bookworm-slim AS web
 WORKDIR /web
-COPY web/package.json web/yarn.lock ./
+COPY frontend/package.json frontend/yarn.lock ./
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn install --frozen-lockfile
-COPY web/ .
+COPY frontend/ .
 RUN yarn build
 
 FROM caddy:2.10-alpine

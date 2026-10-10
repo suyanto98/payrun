@@ -24,11 +24,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: Install tools
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
       - name: golangci-lint (gosec, depguard, ...)
+        working-directory: backend
         run: |
           "$(go env GOPATH)/bin/golangci-lint" run ./...
       - name: Generated code is up to date (oapi-codegen + sqlc)
@@ -44,8 +45,9 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: Unit tests (race detector, no Docker)
+        working-directory: backend
         run: go test -race -short ./...
 
   integration:
@@ -55,8 +57,9 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: Integration tests (Postgres via testcontainers, race detector)
+        working-directory: backend
         run: go test -race -count=1 -tags testhooks ./internal/...
 
   migration:
@@ -66,8 +69,9 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: Migrations up-from-zero + catalogue checks
+        working-directory: backend
         run: go test -race -count=1 ./db/...
 
   lint-workflows:
@@ -77,7 +81,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: actionlint
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -110,8 +114,9 @@ jobs:
           fetch-depth: 0 # gitleaks memindai semua commit, bukan hanya diff
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
       - name: govulncheck (hanya kerentanan yang benar-benar terpanggil)
+        working-directory: backend
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           "$(go env GOPATH)/bin/govulncheck" ./...
@@ -129,6 +134,7 @@ jobs:
         with:
           node-version: '22'
       - name: Redocly lint
+        working-directory: backend
         run: npx --yes @redocly/cli@1 lint api/openapi.yaml
 
   frontend:
@@ -136,14 +142,14 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: web
+        working-directory: frontend
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: yarn
-          cache-dependency-path: web/yarn.lock
+          cache-dependency-path: frontend/yarn.lock
       - run: yarn install --frozen-lockfile
       - name: Typecheck, unit test, build
         run: |

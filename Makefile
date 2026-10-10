@@ -82,16 +82,16 @@ migrate: ## Jalankan migrasi lagi (one-shot container, role owner)
 
 # ------------------------------------------------------------------ build & test
 build: ## Build binary ke bin/payrun
-	CGO_ENABLED=0 go build -trimpath -o bin/payrun ./cmd/payrun
+	cd backend && CGO_ENABLED=0 go build -trimpath -o ../bin/payrun ./cmd/payrun
 
 test: ## Unit test (tanpa Docker), dengan race detector
-	go test -race -short ./...
+	cd backend && go test -race -short ./...
 
 test-integration: ## Integration test (butuh Docker), termasuk test interleaving (build tag testhooks)
-	go test -race -count=1 -tags testhooks ./...
+	cd backend && go test -race -count=1 -tags testhooks ./...
 
 demo-verify: ## Demo A (isolasi tenant), Demo B (crash & resume + run ganda), Demo C (final immutable, adjustment ke bulan berikutnya, recompute dari snapshot) secara headless
-	go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected|TestDemoC_FinalizedPayrollIsImmutable' ./internal/app/
+	cd backend && go test -count=1 -tags testhooks -v -run 'TestTenantIsolation_DemoA|TestPayrollRun_CrashAndResume|TestRecompute_FromSnapshotMatchesStoredResults|TestFinalizedRun_DirectUpdateRejected|TestDemoC_FinalizedPayrollIsImmutable' ./internal/app/
 
 up-demo: ## Stack demo lokal (project payrun-demo, API :8082, data terpisah dari dev): build tag demo + DEMO_MODE; lalu make seed-demo
 	$(DEMO) --profile storage up -d --wait storage
@@ -108,7 +108,7 @@ demo-down: ## Hentikan stack demo DAN hapus datanya (dev stack tidak tersentuh)
 	$(DEMO) --profile seed --profile storage down -v
 
 test-demo: ## Test build tag demo (guard endpoint /demo/*, fault sekali pakai di chunk ke-N)
-	go test -count=1 -tags demo -run 'TestDemo_' ./internal/app/
+	cd backend && go test -count=1 -tags demo -run 'TestDemo_' ./internal/app/
 
 backup-dev: ## Backup terenkripsi DB dev ke build/backups (key drill di build/backups/drill.agekey)
 	mkdir -p build/backups && chmod 777 build/backups
@@ -124,29 +124,29 @@ images: ## Bangun image rilis lokal (app demo, web, backup) untuk SHA HEAD
 	scripts/build-images.sh "" "$$(git rev-parse HEAD)"
 
 cover: ## Laporan coverage (indikatif, bukan gate) → build/coverage.html
-	mkdir -p build && go test -tags testhooks -coverprofile=build/coverage.out ./internal/... >/dev/null && \
-	  go tool cover -func=build/coverage.out | tail -1 && go tool cover -html=build/coverage.out -o build/coverage.html
+	mkdir -p build && cd backend && go test -tags testhooks -coverprofile=../build/coverage.out ./internal/... >/dev/null && \
+	  go tool cover -func=../build/coverage.out | tail -1 && go tool cover -html=../build/coverage.out -o ../build/coverage.html
 
 # ------------------------------------------------------------------ lint, codegen, security
 lint: lint-go lint-api lint-actions lint-shell ## Semua lint
 
 lint-go: ## golangci-lint (gosec, depguard, ...)
-	golangci-lint run ./...
+	cd backend && golangci-lint run ./...
 
 lint-shell: ## shellcheck skrip deploy
 	docker run --rm -v "$$PWD:/w:ro" -w /w koalaman/shellcheck:stable -x -S warning deploy/postgres/init/*.sh deploy/backup/*.sh deploy/prod/*.sh scripts/*.sh perf/*.sh
 
-api-docs: ## Dokumentasi API statis dari api/openapi.yaml → build/api.html
-	mkdir -p build && $(REDOCLY) build-docs api/openapi.yaml -o build/api.html
+api-docs: ## Dokumentasi API statis dari backend/api/openapi.yaml → build/api.html
+	mkdir -p build && cd backend && $(REDOCLY) build-docs api/openapi.yaml -o ../build/api.html
 
 lint-api: ## Lint kontrak OpenAPI
-	$(REDOCLY) lint api/openapi.yaml
+	cd backend && $(REDOCLY) lint api/openapi.yaml
 
 lint-actions: ## Lint workflow GitHub Actions
 	actionlint
 
 security: ## govulncheck + gitleaks (seluruh history) + trivy fs — sama dengan job CI `security`
-	govulncheck ./...
+	cd backend && govulncheck ./...
 	docker run --rm -v "$$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts=--all --redact --config /repo/.gitleaks.toml
 	$(MAKE) trivy-fs
 
@@ -155,20 +155,20 @@ trivy-fs: ## trivy fs: vuln dependency + misconfig (Dockerfile, compose, workflo
 
 gen: gen-api gen-sql ## Semua codegen (OpenAPI + SQL)
 
-gen-api: ## Generate types Go dari api/openapi.yaml (oapi-codegen) → api/gen
-	oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+gen-api: ## Generate types Go dari backend/api/openapi.yaml (oapi-codegen) → backend/api/gen
+	cd backend && oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
 
-gen-sql: ## Generate kode dari SQL (sqlc) → internal/modules/*/store
-	sqlc generate
+gen-sql: ## Generate kode dari SQL (sqlc) → backend/internal/modules/*/store
+	cd backend && sqlc generate
 
 gen-check: gen ## Pastikan kode hasil generate (oapi-codegen + sqlc) sudah di-commit (dipakai CI)
 	@# git diff saja tidak melihat file BARU yang belum di-commit; status --porcelain melihat keduanya.
-	@test -z "$$(git status --porcelain -- api/gen internal/)" || { git status --porcelain -- api/gen internal/; git diff -- api/gen internal/; echo "kode generate tidak sinkron: jalankan make gen-api dan commit"; exit 1; }
+	@test -z "$$(git status --porcelain -- backend/api/gen backend/internal/)" || { git status --porcelain -- backend/api/gen backend/internal/; git diff -- backend/api/gen backend/internal/; echo "kode generate tidak sinkron: jalankan make gen-api dan commit"; exit 1; }
 
-# ------------------------------------------------------------------ web (SPA, web/)
+# ------------------------------------------------------------------ frontend (SPA, frontend/)
 web-dev: ## SPA dev server (proxy /api ke API lokal); PR_WEB_PORT harus sama dengan saat `make up`
-	cd web && yarn install --frozen-lockfile && yarn dev
+	cd frontend && yarn install --frozen-lockfile && yarn dev
 
 web-check: ## Typecheck + unit test + build SPA (sama dengan job CI frontend)
-	cd web && yarn install --frozen-lockfile && yarn typecheck && yarn test:unit && yarn build
+	cd frontend && yarn install --frozen-lockfile && yarn typecheck && yarn test:unit && yarn build
 

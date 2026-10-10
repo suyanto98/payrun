@@ -5,7 +5,8 @@
 
 FROM golang:1.26.6-alpine AS build
 WORKDIR /src
-COPY . .
+# Context = akar repo; hanya Go module (backend/) yang masuk ke stage build.
+COPY backend/ .
 ARG VERSION=dev
 # BUILD_TAGS=demo → image demo (Sprint 8). Image release dibangun TANPA tag.
 ARG BUILD_TAGS=""

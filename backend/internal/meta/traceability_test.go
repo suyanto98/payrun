@@ -90,7 +90,7 @@ func definedTests(t *testing.T, root string) map[string]bool {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && (d.Name() == "node_modules" || d.Name() == ".git" || d.Name() == "web") {
+		if d.IsDir() && (d.Name() == "node_modules" || d.Name() == ".git" || d.Name() == "frontend") {
 			return filepath.SkipDir
 		}
 		if strings.HasSuffix(path, "_test.go") {

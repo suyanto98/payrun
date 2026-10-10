@@ -18,9 +18,9 @@ go.work.sum
 *.pem
 *.key
 
-# Node / web
+# Node / frontend
 node_modules/
-web/dist/
+frontend/dist/
 .vite/
 playwright-report/
 test-results/
