@@ -7,7 +7,14 @@ Design documents were written before coding, step by step (product → architect
 > Cross-links inside the documents still use the original archive naming (`Step N`, `step-0N-…/file.md`); use the mapping table below.
 > Some documents cover both projects (shared tables, API conventions, error catalogue, shared threats, security controls, transaction rules, background jobs, observability, testing, DevOps). The LedgerPay sections there are context only.
 
-## Start here
+## Operating docs (written from the implementation, Sprint 10)
+- [`architecture.md`](architecture.md): containers, tenant context per request, run state machine, modules
+- [`demo-script.md`](demo-script.md): 10-minute demo, executed with assertions by `make demo-live`
+- [`runbook.md`](runbook.md): one section per alert + procedures (every alert links here, checked by a test)
+- [`dod-audit.md`](dod-audit.md): Definition of Done audit for M7
+- Performance: [`../perf/results/2026-10-10-fed1df1/REPORT.md`](../perf/results/2026-10-10-fed1df1/REPORT.md)
+
+## Start here (design)
 1. [`design/00-prd.md`](design/00-prd.md): what we build and why
 2. [`design/30-roadmap.md`](design/30-roadmap.md): sprint plan (read the Step 12 amendment banner first)
 3. [`design/31-definition-of-done.md`](design/31-definition-of-done.md): what "done" means
