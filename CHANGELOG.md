@@ -8,15 +8,16 @@ Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, buka
 ### 0.0.12 — PayRun Sprint 10 (belum di-port ke LedgerPay)
 - `meta`: `TestTraceability_DocsReferenceExistingTests` versi PayRun (README, docs/*.md, ADR-P*, laporan perf, katalog
   §4.4–4.6, §5.2, §5.3), `TestObservability_AlertsLinkToRunbook` (annotation runbook → heading yang ada di
-  `docs/runbook.md`), `TestOpenAPI_MoneyFieldsAreStrings`, `TestSPA_ErrorMessagesCoverCatalogue`. LedgerPay: port cek
-  link runbook (annotation-nya juga masih menunjuk dokumen desain).
+  `docs/runbook.md`), `TestOpenAPI_MoneyFieldsAreStrings`, `TestSPA_ErrorMessagesCoverCatalogue`. Cek link runbook
+  sudah di-port ke LedgerPay 2026-10-10 (annotation LedgerPay memang sudah menunjuk `docs/runbook.md`; yang belum ada
+  hanya test penjaganya).
 - `metrics`: `payrun_payroll_total_mismatch_runs` (gauge) diisi; `ReproducibilityFailures` diinisialisasi 0.
 - `db`: `TestWithTenantTx_RetryKeepsTenant` (tenant disetel ulang di setiap percobaan retry).
 - Test env: invariant checker di `t.Cleanup` (pola LedgerPay, invariant PayRun).
 - `deploy/compose.demo.yml` + `make up-demo` / `seed-demo` / `demo-live` / `demo-down` (stack demo lokal terpisah);
   `make api-docs`.
 
-### 0.0.11 — PayRun Sprint 9 (belum di-port ke LedgerPay — PERLU: bug yang sama ada di LedgerPay)
+### 0.0.11 — PayRun Sprint 9 (perbaikan `jobs.Runner.Run` + test-nya sudah di-port ke LedgerPay 2026-10-10; item lain belum)
 - **`jobs.Runner.Run`: tidak lagi tidur selama interval polling saat semua slot penuh.** Goroutine yang selesai
   memberi sinyal slot kosong; interval hanya saat antrean kosong. Terukur di PR-1: run 10.000 karyawan 26 → 10 dtk
   (loop lama membatasi ±concurrency job per interval berapa pun cepatnya job). Test
