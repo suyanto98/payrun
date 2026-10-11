@@ -4,7 +4,7 @@ Status: Accepted · Tanggal: 2026-10-01 · Berlaku untuk: LedgerPay, PayRun
 
 ## Context / Problem
 
-Hampir semua invariant di Step 1 bergantung pada transaksi yang benar: journal + saldo + idempotency + outbox harus atomik (LedgerPay C1, C3, C4); transisi run + item + audit harus atomik dan berjalan di bawah tenant context (PayRun C2, C5, C7). Ada empat pertanyaan:
+Hampir semua invariant di strategi produk bergantung pada transaksi yang benar: journal + saldo + idempotency + outbox harus atomik (LedgerPay C1, C3, C4); transisi run + item + audit harus atomik dan berjalan di bawah tenant context (PayRun C2, C5, C7). Ada empat pertanyaan:
 
 1. Siapa yang membuka dan menutup transaksi?
 2. Isolation level apa yang dipakai?
@@ -80,4 +80,4 @@ func (db *DB) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) error 
 
 ## Related
 
-- [ADR-L03](ADR-L03-concurrency-pessimistic-locking.md) · [ADR-L02](ADR-L02-idempotency.md) · [ADR-006](ADR-006-background-processing-postgres-queue.md) · [ADR-P02](ADR-P02-tenant-context.md) · [ADR-P05](ADR-P05-payroll-run-execution.md)
+- ADR-L03 · ADR-L02 · [ADR-006](ADR-006-background-processing-postgres-queue.md) · [ADR-P02](ADR-P02-tenant-context.md) · [ADR-P05](ADR-P05-payroll-run-execution.md)

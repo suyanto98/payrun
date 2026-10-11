@@ -574,7 +574,7 @@ SELECT pg_advisory_xact_lock(hashtextextended('comp:' || $1::text, 0))
 `
 
 // Perubahan dependensi diserialkan per tenant: dua PATCH paralel (A→B dan B→A) tidak bisa sama-sama
-// lolos validasi siklus di Read Committed (Step 7 `22` §1, review S3).
+// lolos validasi siklus di Read Committed (`22-tx-concurrency.md` §1, review S3).
 func (q *Queries) LockComponentGraph(ctx context.Context, tenantID string) error {
 	_, err := q.db.Exec(ctx, lockComponentGraph, tenantID)
 	return err

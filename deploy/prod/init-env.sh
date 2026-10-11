@@ -56,7 +56,7 @@ $(s3env)
 # Toolbar demo (O15): presenter menempelkan token ini di tab; TIDAK PERNAH masuk bundle SPA.
 DEMO_MODE=true
 DEMO_TOKEN=${DEMO_TOKEN}
-# Demo (Step 12 R2-8): Mailpit menangkap email verifikasi/undangan; UI via SSH tunnel (127.0.0.1:8026).
+# Demo (final review R2-8): Mailpit menangkap email verifikasi/undangan; UI via SSH tunnel (127.0.0.1:8026).
 SMTP_ADDR=mailpit:1025
 MAIL_FROM=no-reply@${DOMAIN}
 E

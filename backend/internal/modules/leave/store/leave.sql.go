@@ -359,7 +359,7 @@ type ListLeaveTypesRow struct {
 }
 
 // Modul leave (PF-09). Semua [tenant]. Approve: [1b][2] PeriodGuard → [4] approval → [5] saldo FOR UPDATE
-// → [6] request → [7] change log/audit (Step 7 `22` §3.1).
+// → [6] request → [7] change log/audit (`22-tx-concurrency.md` §3.1).
 func (q *Queries) ListLeaveTypes(ctx context.Context) ([]ListLeaveTypesRow, error) {
 	rows, err := q.db.Query(ctx, listLeaveTypes)
 	if err != nil {

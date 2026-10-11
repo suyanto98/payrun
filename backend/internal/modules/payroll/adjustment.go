@@ -21,7 +21,7 @@ import (
 	"payrun/internal/platform/tenantctx"
 )
 
-// Adjustment (PF-19, Step 3 `07` §11, PI-15): koreksi periode FINALIZED yang masuk ke run periode
+// Adjustment (PF-19, `08-invariants.md` §11, PI-15): koreksi periode FINALIZED yang masuk ke run periode
 // target sebagai baris ADJUSTMENT. Target disimpan sebagai (tahun, bulan) (R1-4). Pembuatan dan
 // pembatalan lewat PeriodGuard periode target: target FINALIZED → 409 PERIOD_LOCKED; target yang
 // sudah dikalkulasi tercatat di payroll_input_changes → run stale (PF-19 AC4, ADR-P07). PENDING_APPLY

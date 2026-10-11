@@ -126,7 +126,7 @@ type Credentials struct {
 
 // VerifyCredentials memeriksa email + password. Semua kegagalan (email tidak ada, password salah,
 // akun tidak aktif, akun terkunci) menghasilkan error yang SAMA PERSIS (401 INVALID_CREDENTIALS, tanpa
-// Retry-After: header itu sendiri membocorkan akun yang terkunci; Step 12 R2-5 + catatan LedgerPay),
+// Retry-After: header itu sendiri membocorkan akun yang terkunci; final review R2-5 + catatan LedgerPay),
 // dan argon2 SELALU dijalankan (dummy hash untuk email tak dikenal) supaya waktu respons juga tidak
 // membocorkan email terdaftar (T-SH-01, C-03). Gagal password menaikkan counter lockout.
 // Dipakai login dan signup dengan akun yang sudah ada.

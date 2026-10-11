@@ -43,7 +43,7 @@ func TestMigrations_UpFromZero(t *testing.T) {
 	}
 }
 
-// Step 12 C4: setiap FK harus punya index (non-partial) yang diawali kolom FK-nya. Tanpa itu,
+// final review C4: setiap FK harus punya index (non-partial) yang diawali kolom FK-nya. Tanpa itu,
 // DELETE/UPDATE di tabel induk memicu seq scan di tabel anak untuk SETIAP baris.
 func TestCatalog_EveryFKHasIndex(t *testing.T) {
 	dbtest.SkipIfShort(t)

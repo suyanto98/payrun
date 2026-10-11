@@ -1,6 +1,6 @@
-# Step 5 — API Contract
+# API Contract
 
-> Input: Step 2 (feature spec, ADR-003 REST/OpenAPI, ADR-009 auth, ADR-010 authz), Step 3 (state machine, failure scenario), Step 4 (skema, constraint → error).
+> Input: desain fitur & arsitektur (feature spec, ADR-003 REST/OpenAPI, ADR-009 auth, ADR-010 authz), desain domain (state machine, failure scenario), desain database (skema, constraint → error).
 > Prinsip dari master prompt: **endpoint hanya untuk use case yang benar-benar diperlukan.** Setiap endpoint harus bisa ditelusuri ke fitur P0/P1. Tidak ada CRUD generik "karena biasanya ada".
 > Sumber kebenaran saat coding adalah `api/openapi.yaml` per project (spec-first, ADR-003). Dokumen ini menjadi acuan untuk menulis spec tersebut.
 
@@ -8,11 +8,11 @@
 
 | File | Isi |
 |---|---|
-| [`01-error-catalogue.md`](01-error-catalogue.md) | Katalog error code kedua project: HTTP status, arti, retryable, tindakan client, sumber |
-| [`02-ledgerpay-api.md`](02-ledgerpay-api.md) | Kontrak endpoint LedgerPay (user, merchant, webhook masuk, ops, health) |
-| [`03-ledgerpay-external-contracts.md`](03-ledgerpay-external-contracts.md) | Kontrak ke luar: mock-provider API, payload webhook masuk, payload webhook keluar ke merchant |
-| [`04-payrun-api.md`](04-payrun-api.md) | Kontrak endpoint PayRun |
-| [`05-payrun-authorization-matrix.md`](05-payrun-authorization-matrix.md) | Matriks endpoint × role (input untuk authorization matrix test, PF-04) |
+| [`15-api-error-catalogue.md`](15-api-error-catalogue.md) | Katalog error code kedua project: HTTP status, arti, retryable, tindakan client, sumber |
+| `02-ledgerpay-api.md` | Kontrak endpoint LedgerPay (user, merchant, webhook masuk, ops, health) |
+| `03-ledgerpay-external-contracts.md` | Kontrak ke luar: mock-provider API, payload webhook masuk, payload webhook keluar ke merchant |
+| [`16-api-endpoints.md`](16-api-endpoints.md) | Kontrak endpoint PayRun |
+| [`17-api-authorization-matrix.md`](17-api-authorization-matrix.md) | Matriks endpoint × role (input untuk authorization matrix test, PF-04) |
 
 ---
 
@@ -79,7 +79,7 @@ Pemisahan prefix path per jenis principal (`/merchant`, `/ops`, `/webhooks`) mem
 
 ### 6. Pagination, filter, sort
 - **Cursor:** `?limit=20&cursor=<opaque>`. Default 20, maksimal 100. Cursor = base64url dari `(sort_key, id)`, dan tidak boleh dirakit sendiri oleh client.
-- **Sort tetap per endpoint** (biasanya `created_at DESC, id DESC`). Tidak ada `?sort=` bebas: setiap urutan butuh index yang sesuai (Step 4).
+- **Sort tetap per endpoint** (biasanya `created_at DESC, id DESC`). Tidak ada `?sort=` bebas: setiap urutan butuh index yang sesuai (desain database).
 - **Filter eksplisit** per endpoint (contoh: `?status=PENDING&from=2026-03-01&to=2026-03-31`). Filter yang tidak dikenal → `400 VALIDATION_ERROR`.
 - Rentang tanggal maksimal 366 hari pada endpoint riwayat.
 
@@ -95,7 +95,7 @@ Pemisahan prefix path per jenis principal (`/merchant`, `/ops`, `/webhooks`) mem
 | `heavy` (PayRun) | tenant | calculate 10/jam; import 10/jam; finalize 5/jam | `/payroll-runs/*/calculate`, `/attendance-imports`, finalize |
 | `webhook-in` | — | Tidak dibatasi per provider (hanya ukuran body + signature) | `/webhooks/provider` |
 
-Angka ini titik awal, ditinjau ulang setelah load test (Step 9). Rate limit adalah **perlindungan**, bukan mekanisme correctness. Idempotency dan lock tetap menjadi jaminan utama.
+Angka ini titik awal, ditinjau ulang setelah load test (desain DevOps). Rate limit adalah **perlindungan**, bukan mekanisme correctness. Idempotency dan lock tetap menjadi jaminan utama.
 
 ### 8. Format penulisan endpoint (dipakai di file 02 dan 04)
 ```text
@@ -119,7 +119,7 @@ Catatan               : (transaksi, async, failure scenario terkait)
 
 | # | Keputusan |
 |---|---|
-| O1 | Katalog error lengkap di [`01-error-catalogue.md`](01-error-catalogue.md) |
+| O1 | Katalog error lengkap di [`15-api-error-catalogue.md`](15-api-error-catalogue.md) |
 | O8 | `X-Active-Tenant` hanya di `POST /auth/refresh` PayRun (§3) |
 | O9 | `IMPORT_DUPLICATE` masuk katalog. Pemetaan error trigger DB: `42501` (append-only/forbidden change) → `409 IMMUTABLE_RECORD`; `P0001` dari trigger run final → `409 RUN_FINALIZED`; trigger PeriodGuard → `409 PERIOD_LOCKED` |
 
@@ -134,7 +134,7 @@ Catatan               : (transaksi, async, failure scenario terkait)
 
 ---
 
-## Keputusan selama Step 5
+## Keputusan selama kontrak API
 
 | Item | Keputusan | Di mana |
 |---|---|---|
@@ -145,18 +145,18 @@ Catatan               : (transaksi, async, failure scenario terkait)
 | Webhook payout dari provider | Tidak ada di V1. Status query adalah jalur utama (ADR-L06) | `03` |
 | Header signature webhook masuk | `Provider-Signature` (ADR-L05/L08 diselaraskan) | `03` |
 | Nama skenario mock | Kanonik dari ADR-L05; LF-06 diselaraskan | `03` §1.7 |
-| Tenant context PayRun | **Hanya** dari claim `tid`. Path tidak memakai `/tenants/{id}`; body yang mengirim `tenant_id` → `400` | `04-payrun-api.md` |
+| Tenant context PayRun | **Hanya** dari claim `tid`. Path tidak memakai `/tenants/{id}`; body yang mengirim `tenant_id` → `400` | `16-api-endpoints.md` |
 | Approval payroll run | Lewat `/approvals/{id}/approve\|reject` (satu mesin approval); alasan self-approval diisi saat submit | `04`, amandemen ADR-P09 |
 | Periode payroll | Dibuat otomatis oleh `POST /payroll-runs`; tidak ada endpoint create period | `04` |
 | Separation of duties | `HR_ADMIN` + `PAYROLL_ADMIN` pada satu orang diizinkan, tetapi diaudit (`membership.sod_conflict`) | `05`, amandemen ADR-010 |
-| Code baru | `409 DUPLICATE_CODE`, `409 PAYSLIP_NOT_READY` | `01-error-catalogue.md` |
-| Nama constraint di katalog | Dicocokkan satu per satu dengan skema Step 4 (7 nama diperbaiki) | `01` |
+| Code baru | `409 DUPLICATE_CODE`, `409 PAYSLIP_NOT_READY` | `15-api-error-catalogue.md` |
+| Nama constraint di katalog | Dicocokkan satu per satu dengan skema desain database (7 nama diperbaiki) | `01` |
 
 ## Open items untuk step berikutnya
 
-Masih berlaku dari step sebelumnya: **O3** (sebagian selesai: approve sudah mengunci `payroll_periods FOR UPDATE`; penulis input mengambil `FOR SHARE` lewat `PeriodGuard`, diformalkan di Step 7), **O4** (metrik, Step 8), **O5** (chunk size demo, Step 11), **O10** (refresh token/undangan → threat model, Step 6), **O11** (hot row wallet merchant, Step 7/9).
+Masih berlaku dari step sebelumnya: **O3** (sebagian selesai: approve sudah mengunci `payroll_periods FOR UPDATE`; penulis input mengambil `FOR SHARE` lewat `PeriodGuard`, diformalkan di desain transaksi & concurrency), **O4** (metrik, desain observability & testing), **O5** (chunk size demo, demo script), **O10** (refresh token/undangan → threat model, threat model), **O11** (hot row wallet merchant, desain transaksi & concurrency, desain DevOps).
 
 | # | Item | Step |
 |---|---|---|
-| O12 | Approve run menghitung ulang fingerprint seluruh karyawan secara sinkron. Untuk tenant 10.000 karyawan ini bisa memakan beberapa detik. Opsi: tandai item *dirty* saat input berubah (via `PeriodGuard`), lalu hitung ulang hanya yang dirty. Ukur dulu | Step 7 / Step 9 |
-| O13 | Threat model untuk capability URL checkout (entropi ID, TTL intent, tidak membocorkan data merchant sensitif) | Step 6 |
+| O12 | Approve run menghitung ulang fingerprint seluruh karyawan secara sinkron. Untuk tenant 10.000 karyawan ini bisa memakan beberapa detik. Opsi: tandai item *dirty* saat input berubah (via `PeriodGuard`), lalu hitung ulang hanya yang dirty. Ukur dulu | Desain transaksi & concurrency / desain DevOps |
+| O13 | Threat model untuk capability URL checkout (entropi ID, TTL intent, tidak membocorkan data merchant sensitif) | Threat model |

@@ -1,9 +1,9 @@
-# Step 9.2 — CI/CD Pipeline
+# CI/CD Pipeline
 
-> Bagian dari [Step 9](00-index.md). Mengikat: GitHub Actions, GHCR, tag = git SHA, deploy via SSH dengan health gate + rollback otomatis, tanpa staging di V1, secret lewat sops + age, image `release` dan `demo` dibangun terpisah.
+> Bagian dari desain DevOps. Mengikat: GitHub Actions, GHCR, tag = git SHA, deploy via SSH dengan health gate + rollback otomatis, tanpa staging di V1, secret lewat sops + age, image `release` dan `demo` dibangun terpisah.
 >
-> **Amandemen Step 12 (otoritatif):** (R4-7) secret V1 dari GitHub environment secrets, sops + age = Production Enhancement; (R4-9) image `release` dibangun + dipindai trivy tetapi **tidak di-push** di V1, hanya `<sha>-demo` yang di-push dan di-deploy; (S5) forced command `deploy-gate` = Production Enhancement, V1 memakai user `deploy` dengan SSH key khusus dan `deploy.sh` dipanggil langsung; (S16) ruleset Redocly kustom ditunda; (S19) perf smoke nightly ditunda sampai setelah M4/M7; restore drill mingguan di repo `infra` baru ada setelah PayRun S0 (sebelum itu dijalankan manual).
-> Sumber gate: Step 6 `04` §3 (security pipeline), Step 8 `02` §7 (gating test), Step 8 `03` §9 (perf smoke), Step 4 `07` §2.5 (katalog RLS), ADR-013.
+> **Amandemen final review (otoritatif):** (R4-7) secret V1 dari GitHub environment secrets, sops + age = Production Enhancement; (R4-9) image `release` dibangun + dipindai trivy tetapi **tidak di-push** di V1, hanya `<sha>-demo` yang di-push dan di-deploy; (S5) forced command `deploy-gate` = Production Enhancement, V1 memakai user `deploy` dengan SSH key khusus dan `deploy.sh` dipanggil langsung; (S16) ruleset Redocly kustom ditunda; (S19) perf smoke nightly ditunda sampai setelah M4/M7; restore drill mingguan di repo `infra` baru ada setelah PayRun S0 (sebelum itu dijalankan manual).
+> Sumber gate: `20-security-controls.md` §3 (security pipeline), `25-testing-strategy.md` §7 (gating test), `26-performance-plan.md` §9 (perf smoke), `13-db-rls-consistency-indexing.md` §2.5 (katalog RLS), ADR-013.
 
 ---
 
@@ -62,13 +62,13 @@ INFRA REPO:     deploy-infra.yml (Caddy, compose shared, konfigurasi observabili
 | 1 | `lint` (infra) | `actionlint` (workflow), `hadolint` (Dockerfile), `pinned_actions_check` (semua `uses:` di-pin ke SHA, C-27) | Fail | |
 | 2 | `unit` | `go test -race -short -count=1 ./...` via `gotestsum --junitfile`; termasuk golden test payroll dan property test 10k iterasi | Fail; timeout 2 mnt | Tanpa Docker |
 | 2 | `security-static` | `govulncheck ./...` (fail jika vuln **terjangkau**), `osv-scanner` untuk `package-lock.json` (fail HIGH/CRITICAL), `gitleaks detect` (C-19), `trivy fs --scanners vuln,misconfig` (fail CRITICAL/HIGH yang punya fix) | Fail | C-26 |
-| 3 | `integration` | `go test -race -count=1 -tags integration ./...`, paralel per package (`-p 4`); **testcontainers-go**, bukan GitHub service container | Fail; timeout 10 mnt | Alasan memilih testcontainers: setiap package membuat DB template dan clone per test (Step 8 `02`), terhubung sebagai `<proj>_app`; perilaku sama persis di laptop dan CI |
+| 3 | `integration` | `go test -race -count=1 -tags integration ./...`, paralel per package (`-p 4`); **testcontainers-go**, bukan GitHub service container | Fail; timeout 10 mnt | Alasan memilih testcontainers: setiap package membuat DB template dan clone per test (`25-testing-strategy.md`), terhubung sebagai `<proj>_app`; perilaku sama persis di laptop dan CI |
 | 3 | `integration` (contract) | Test kontrak terhadap `openapi.yaml` (client hasil generate) + kontrak mock-provider | Fail | Satu job dengan integration agar container Postgres dipakai ulang |
-| 3 | `integration` (migration catalogue) | Migrasi dari nol → query katalog: RLS + `FORCE` di semua tabel ber-`tenant_id` (PayRun, Step 4 `07` §2.5), tidak ada `SECURITY DEFINER` selain allowlist `payrun.auth_lookup_user`, `<proj>_app` bukan owner dan tanpa `BYPASSRLS`, tabel append-only tanpa grant UPDATE/DELETE, setiap FK tenant-scoped menyertakan `tenant_id`; `TestDBErrorMapping_AllCatalogueConstraints` | Fail | |
+| 3 | `integration` (migration catalogue) | Migrasi dari nol → query katalog: RLS + `FORCE` di semua tabel ber-`tenant_id` (PayRun, `13-db-rls-consistency-indexing.md` §2.5), tidak ada `SECURITY DEFINER` selain allowlist `payrun.auth_lookup_user`, `<proj>_app` bukan owner dan tanpa `BYPASSRLS`, tabel append-only tanpa grant UPDATE/DELETE, setiap FK tenant-scoped menyertakan `tenant_id`; `TestDBErrorMapping_AllCatalogueConstraints` | Fail | |
 | 4 | `build-local` | `docker buildx build --load` untuk image `release` dan `demo` (`--build-arg BUILD_TAGS=demo`); **tidak di-push** | Fail | Tidak ada tag `pr-<n>` di GHCR: menghindari sampah registry dan kebutuhan secret di PR fork |
 | 4 | `build-local` (meta) | `TestBuild_NoTesthooksInRelease`, `TestBuild_DemoEndpointsAbsentWithoutDemoMode` (cek simbol/rute di binary `release`) | Fail | O15 |
 | 4 | `scan-local` | `trivy image` untuk kedua image hasil `--load` | Fail CRITICAL/HIGH yang punya fix | Sama dengan gate di `main` |
-| 5 | `e2e` | `docker compose -f compose.yml -f compose.ci.yml up -d --wait` → `npx playwright test` (jalur kritis: login, transfer, top-up via checkout mock, payment checkout / PayRun: login, clock-in, request & approve cuti, run payroll kecil, lihat slip) + `headers_*_present` | Fail; timeout 10 mnt | **Berjalan di setiap PR.** Suite dijaga kecil (Step 8: < 5 mnt) agar budget tetap aman |
+| 5 | `e2e` | `docker compose -f compose.yml -f compose.ci.yml up -d --wait` → `npx playwright test` (jalur kritis: login, transfer, top-up via checkout mock, payment checkout / PayRun: login, clock-in, request & approve cuti, run payroll kecil, lihat slip) + `headers_*_present` | Fail; timeout 10 mnt | **Berjalan di setiap PR.** Suite dijaga kecil (desain observability & testing: < 5 mnt) agar budget tetap aman |
 | 6 | `chaos` | Suite chaos (toxiproxy, kill worker via `demo_faults`) | Fail **jika dijalankan** | Hanya jika PR berlabel `chaos` **atau** menyentuh path `internal/platform/jobs/`, `modules/payout/`, `modules/payroll/run/`, `modules/webhook/` (filter `dorny/paths-filter` yang di-pin SHA) |
 
 **Urutan dan biaya:** job 1–2 paralel (±3 mnt), integration (±4 mnt), build + E2E (±4 mnt). Total ±10 mnt. Chaos menambah ±6 mnt bila aktif.
@@ -82,7 +82,7 @@ INFRA REPO:     deploy-infra.yml (Caddy, compose shared, konfigurasi observabili
 | Job | Isi | Gate |
 |---|---|---|
 | `verify` | Lint, unit, security-static, integration (sama dengan PR, dijalankan ulang di commit hasil merge untuk menangkap konflik semantik antar-PR). E2E **tidak** diulang di sini, karena sudah lewat di PR dan akan diwakili smoke test pasca-deploy | Wajib hijau |
-| `build-push` | (Step 12: R4-9) varian **release** dibangun + dipindai saja (tidak di-push); `docker buildx build --push` hanya `ghcr.io/<owner>/<proj>:<sha>-demo` (**demo**, yang di-deploy). Rencana awal dua varian: `ghcr.io/<owner>/<proj>:<sha>` (**release**) dan `ghcr.io/<owner>/<proj>:<sha>-demo` (**demo**), plus tag bergerak `main` / `main-demo` (hanya informatif, deploy tidak pernah memakainya). `--provenance=mode=max --sbom=true` (attestation buildx). Web SPA ikut sebagai stage di image yang sama atau image `-web` terpisah (diputuskan di `01`) | — |
+| `build-push` | (final review R4-9) varian **release** dibangun + dipindai saja (tidak di-push); `docker buildx build --push` hanya `ghcr.io/<owner>/<proj>:<sha>-demo` (**demo**, yang di-deploy). Rencana awal dua varian: `ghcr.io/<owner>/<proj>:<sha>` (**release**) dan `ghcr.io/<owner>/<proj>:<sha>-demo` (**demo**), plus tag bergerak `main` / `main-demo` (hanya informatif, deploy tidak pernah memakainya). `--provenance=mode=max --sbom=true` (attestation buildx). Web SPA ikut sebagai stage di image yang sama atau image `-web` terpisah (diputuskan di `01`) | — |
 | `scan` | `trivy image` pada digest yang baru di-push | Fail CRITICAL/HIGH yang punya fix → **tidak deploy** |
 | `deploy` | Environment `demo` (protection: hanya branch `main`; reviewer manual **opsional**, default nonaktif agar alur demo cepat). Menjalankan `deploy.sh` di VM (§5, §11) dengan image **`-demo`** | Health gate di dalam skrip; gagal → rollback otomatis + job merah |
 | `post-deploy-smoke` | Dari runner GitHub (sudut pandang internet): `GET https://<host>/api/v1/healthz` (via Caddy), lalu skrip smoke (§4.3) | Gagal → panggil rollback + job merah |
@@ -100,7 +100,7 @@ INFRA REPO:     deploy-infra.yml (Caddy, compose shared, konfigurasi observabili
        pending berlabel *_contract_* ? → hanya boleh jika SEMUA kode yang berjalan sudah ≥ rilis yang berhenti memakai kolom itu
        (aturan: migrasi contract dikirim di rilis TERPISAH setelah rilis expand sudah live; skrip menolak expand+contract dalam satu deploy)
  5. docker compose run --rm migrate up         ← one-shot, role <proj>_owner, timeout 5 mnt
- 6. post-migrate check (PayRun): query katalog RLS (Step 4 `07` §2.5) → harus 0 baris
+ 6. post-migrate check (PayRun): query katalog RLS (`13-db-rls-consistency-indexing.md` §2.5) → harus 0 baris
  7. docker compose up -d --no-deps worker       ← worker dulu: graceful shutdown 25 dtk (stop_grace_period 30s)
  8. tunggu worker sehat (heartbeat claim loop di /readyz internal)
  9. docker compose up -d --no-deps api          ← downtime api beberapa detik (diterima V1, lihat 00-index §4)
@@ -129,8 +129,8 @@ Akun smoke dibuat oleh seed `--profile=demo`, berupa user seed biasa dengan emai
 |---|---|
 | Koneksi | `ssh` biasa (tanpa action pihak ketiga, mengurangi permukaan supply chain), dengan `StrictHostKeyChecking=yes` dan `known_hosts` dari secret `DEPLOY_KNOWN_HOSTS` (host key di-pin) |
 | User VM | `deploy`: bukan root, anggota grup `docker` (risiko ini diterima dan dicatat: akses docker ≈ root; mitigasinya key khusus + forced command) |
-| Forced command (Step 12: S5 → Production Enhancement; V1 tanpa forced command) | `authorized_keys`: `command="/opt/app/bin/deploy-gate",no-port-forwarding,no-agent-forwarding,no-pty,no-X11-forwarding ssh-ed25519 …`. `deploy-gate` hanya menerima perintah dari allowlist (`deploy <proj> <sha>`, `rollback <proj> <sha>`, `status <proj>`) dan memvalidasi `<sha>` dengan regex `^[0-9a-f]{40}$` |
-| Kunci | Key SSH deploy terpisah per environment, tanpa passphrase (disimpan sebagai environment secret), dirotasi setiap 90 hari (Step 6 `04` §6) |
+| Forced command (final review S5 → Production Enhancement; V1 tanpa forced command) | `authorized_keys`: `command="/opt/app/bin/deploy-gate",no-port-forwarding,no-agent-forwarding,no-pty,no-X11-forwarding ssh-ed25519 …`. `deploy-gate` hanya menerima perintah dari allowlist (`deploy <proj> <sha>`, `rollback <proj> <sha>`, `status <proj>`) dan memvalidasi `<sha>` dengan regex `^[0-9a-f]{40}$` |
+| Kunci | Key SSH deploy terpisah per environment, tanpa passphrase (disimpan sebagai environment secret), dirotasi setiap 90 hari (`20-security-controls.md` §6) |
 | Konkurensi | `concurrency: { group: deploy-demo-<proj>, cancel-in-progress: false }` di GitHub (antre, tidak dibatalkan) **ditambah** `flock` di VM (lintas repo, karena dua project + infra berbagi satu VM) |
 | Catatan rilis | `/opt/app/<proj>/current_sha`, `/opt/app/<proj>/releases.log` (append: waktu UTC, SHA, actor, hasil, durasi), dan GitHub Deployments API (`environment: demo`, status `success/failure`) agar riwayat terlihat di UI repo |
 | Pencarian SHA sebelumnya | `current_sha` sebelum deploy = `PREV_SHA`. Rollback manual bisa memilih SHA mana pun dari `releases.log` yang statusnya `success` |
@@ -159,11 +159,11 @@ Rollback skema (down-migration) **tidak** didukung lewat pipeline. Kalau migrasi
 
 | Job | Isi | Gagal berarti |
 |---|---|---|
-| `demo-verify` | Compose efemeral di runner + seed `--profile=demo` + `make demo-verify`: Demo A–D LedgerPay dan A–C PayRun dijalankan headless dengan assertion (Step 8 `02` §8) | Demo live berisiko gagal: perbaiki sebelum interview |
+| `demo-verify` | Compose efemeral di runner + seed `--profile=demo` + `make demo-verify`: Demo A–D LedgerPay dan A–C PayRun dijalankan headless dengan assertion (`25-testing-strategy.md` §8) | Demo live berisiko gagal: perbaiki sebelum interview |
 | `property-long` | Property test 1 juta iterasi (journal seimbang, konservasi saldo, `net == Σ lines`, recompute-from-snapshot) | Bug correctness langka |
 | `chaos-full` | Seluruh suite chaos, termasuk test karantina (untuk mengumpulkan data flaky) | — |
 | `restore-drill` (**repo `infra`, workflow mingguan `restore-drill.yml`**) | Unduh backup terbaru dari object storage (kredensial read-only) → dekripsi age → restore ke Postgres sementara → jalankan invariant checker (LedgerPay: Σ debit = Σ kredit, drift saldo 0; PayRun: Σ item = total run, isolasi katalog) → laporkan ukuran dan durasi restore | Backup tidak bisa dipakai: RPO yang diklaim palsu |
-| `perf-smoke` | k6 mini (Step 8 `03` §9): threshold fungsional keras, regresi performa > 30% = peringatan | — |
+| `perf-smoke` | k6 mini (`26-performance-plan.md` §9): threshold fungsional keras, regresi performa > 30% = peringatan | — |
 | `rescan` | `govulncheck`, `osv-scanner`, `trivy image` pada digest yang sedang berjalan di VM (diambil dari `current_sha`) | CVE baru di image live → issue otomatis |
 | `traceability` | `TestTraceability_DocsReferenceExistingTests`: setiap nama test yang dirujuk di dokumen benar-benar ada | Dokumen dan kode tidak sinkron |
 | `zap-baseline` (P2) | OWASP ZAP baseline terhadap URL demo | Laporan; fail hanya untuk HIGH |
@@ -194,7 +194,7 @@ Target: umpan balik PR **≤ 10 menit**, `main` sampai deploy **≤ 15 menit**. 
 | Branch `main` | Protected: wajib PR, minimal **1 approval** (self-review dengan checklist untuk proyek solo; GitHub tidak mengizinkan approve PR sendiri, jadi aturan ini diganti dengan "require conversation resolution" + checklist PR wajib terisi), tanpa force push, linear history (squash merge) |
 | Required checks | `lint`, `unit`, `security-static`, `integration`, `build-local`, `scan-local`, `e2e`, dan `chaos` *jika dijalankan* (memakai job ringkasan `pr-gate` yang menilai hasil kondisional, agar check opsional tidak memblok selamanya) |
 | Commit | Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `ci:`), dicek oleh `commitlint` di PR (judul PR, karena squash) |
-| Rilis | Tag semver **opsional**, hanya untuk milestone portfolio (`v0.1.0` = Demo A–C siap, `v1.0.0` = Definition of Done Step 10 terpenuhi). Changelog dibuat dari conventional commits dengan `git-cliff` saat tag. Deploy tidak bergantung pada tag |
+| Rilis | Tag semver **opsional**, hanya untuk milestone portfolio (`v0.1.0` = Demo A–C siap, `v1.0.0` = Definition of Done roadmap terpenuhi). Changelog dibuat dari conventional commits dengan `git-cliff` saat tag. Deploy tidak bergantung pada tag |
 
 ---
 
@@ -205,7 +205,7 @@ Target: umpan balik PR **≤ 10 menit**, `main` sampai deploy **≤ 15 menit**. 
 | `GITHUB_TOKEN` | Default `permissions: {}` di level workflow. Per job hanya yang perlu: `contents: read` (semua), `packages: write` (`build-push`), `id-token: write` (hanya jika cosign keyless P2), `deployments: write` (`deploy`), `issues: write` (nightly/rollback), `pull-requests: write` (ringkasan di PR, hanya untuk PR dari repo sendiri) |
 | Environment `demo` | `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `SOPS_AGE_KEY` (private key age untuk mendekripsi `secrets/*.env.enc`), kredensial akun smoke. Hanya bisa dipakai oleh job yang berjalan dari branch `main` |
 | Environment `perf` | Token API penyedia VM (scope minimal: create/delete server), SSH key perf |
-| Environment `restore-drill` (repo `infra`) | `BACKUP_S3_ACCESS_KEY`/`SECRET` **read-only**, `BACKUP_DRILL_AGE_KEY` (private key **drill**, recipient kedua; key operator tetap offline, Step 9 `03`). Risiko ini diterima karena data demo sintetis, dan bisa dipersempit di V2 dengan menjalankan drill di VM terpisah yang menyimpan key sendiri |
+| Environment `restore-drill` (repo `infra`) | `BACKUP_S3_ACCESS_KEY`/`SECRET` **read-only**, `BACKUP_DRILL_AGE_KEY` (private key **drill**, recipient kedua; key operator tetap offline, `29-deploy-migrations-backup.md`). Risiko ini diterima karena data demo sintetis, dan bisa dipersempit di V2 dengan menjalankan drill di VM terpisah yang menyimpan key sendiri |
 | PR dari fork | `pull_request` (bukan `pull_request_target`), sehingga **tidak ada secret** yang tersedia. Semua job PR dirancang berjalan tanpa secret |
 | Registry | Push ke GHCR memakai `GITHUB_TOKEN` (`packages: write`). VM menarik image dengan token read-only (PAT fine-grained `read:packages`, atau paket dibuat publik karena berisi kode open-source portfolio. Keputusan: **paket publik**, tanpa kredensial pull di VM) |
 | V2 cloud | OIDC GitHub → peran cloud (AWS/GCP) dengan kredensial jangka pendek, menggantikan SSH key statis |

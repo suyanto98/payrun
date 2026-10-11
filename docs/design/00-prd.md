@@ -1,6 +1,6 @@
 # PRD — PayRun: Workforce & Payroll Platform (Multi-Tenant SaaS)
 
-> PRD terpadu, disusun dari keadaan **final** Step 1–11, setelah semua amandemen dan penyelarasan. Kalau isinya berbeda dengan dokumen step lama, yang berlaku adalah PRD ini dan dokumen yang dirujuknya.
+> PRD terpadu, disusun dari keadaan **final** dokumen desain, setelah semua amandemen dan penyelarasan. Kalau isinya berbeda dengan dokumen step lama, yang berlaku adalah PRD ini dan dokumen yang dirujuknya.
 > Status: Final draft untuk coding · Tanggal: 2026-10-02 · Pemilik: (penulis portfolio) · Project kedua, dikerjakan setelah LedgerPay M4.
 
 ---
@@ -13,7 +13,7 @@
 
 **Posisi dalam portfolio:** PayRun menunjukkan **breadth**: domain bisnis yang luas, isolasi tenant, rule engine yang reproducible, dan batch processing. Ini melengkapi LedgerPay yang menunjukkan **depth** (correctness di bawah concurrency dan failure).
 
-**Bentuk sistem:** modular monolith Go + PostgreSQL (pooled tables + `tenant_id` + Row-Level Security), worker async berbasis Postgres job queue, object storage S3-compatible untuk dokumen, dan SPA Vue 3. Detail di Step 2 `04-payrun-architecture.md` dan ADR-P01…P09.
+**Bentuk sistem:** modular monolith Go + PostgreSQL (pooled tables + `tenant_id` + Row-Level Security), worker async berbasis Postgres job queue, object storage S3-compatible untuk dokumen, dan SPA Vue 3. Detail di `04-architecture.md` dan ADR-P01…P09.
 
 ---
 
@@ -36,7 +36,7 @@
 
 ### 2.3 Non-Goals
 - Bukan HRIS lengkap (tidak ada recruitment, performance review, training, KPI).
-- **Tidak mengklaim kepatuhan pajak/BPJS.** Aturan PPh21 dan BPJS adalah versi *simplified* yang dapat dikonfigurasi, **tidak tersertifikasi** (Step 11 §2).
+- **Tidak mengklaim kepatuhan pajak/BPJS.** Aturan PPh21 dan BPJS adalah versi *simplified* yang dapat dikonfigurasi, **tidak tersertifikasi** (demo script §2).
 - **Tidak mengklaim kepatuhan UU PDP.** PayRun "menerapkan praktik perlindungan data": enkripsi PII, masking, audit akses (O17).
 - Tidak ada disbursement ke bank sungguhan di V1.
 - Tidak ada klaim kapasitas production. Angka performa adalah baseline lingkungan uji.
@@ -77,7 +77,7 @@
 
 ## 5. Functional Requirements (ringkas)
 
-> Spesifikasi lengkap beserta acceptance criteria ada di Step 2 `03-payrun-features.md`. Kontrak endpoint ada di Step 5 `04-payrun-api.md`, dan matriks role di `05-payrun-authorization-matrix.md`.
+> Spesifikasi lengkap beserta acceptance criteria ada di `03-features.md`. Kontrak endpoint ada di `16-api-endpoints.md`, dan matriks role di `17-api-authorization-matrix.md`.
 
 | ID | Requirement inti | Acceptance (ringkas) |
 |---|---|---|
@@ -110,7 +110,7 @@
 
 ## 6. Business Rules & Invariants
 
-| Business rule (Step 1) | Invariant penjaga (Step 3 `07`) |
+| Business rule (strategi produk) | Invariant penjaga (`08-invariants.md`) |
 |---|---|
 | BR1 Data milik tepat satu tenant | PI-01 (RLS + context), PI-02 (composite FK) |
 | BR2 Satu run aktif per periode | PI-03 (partial unique index) |
@@ -125,7 +125,7 @@
 | BR11 Determinisme | PI-12, PI-13 (stale guard), PI-14 (period lock) |
 | — | PI-16 (≥ 1 OWNER, advisory lock), PI-18 (keunikan per tenant), PI-19 (atasan asiklik) |
 
-Setiap invariant P0 punya minimal satu penjaga di level database atau transaksi. Validasi aplikasi saja tidak dianggap cukup (Step 3 §mekanisme).
+Setiap invariant P0 punya minimal satu penjaga di level database atau transaksi. Validasi aplikasi saja tidak dianggap cukup (desain domain §mekanisme).
 
 ---
 
@@ -141,11 +141,11 @@ Setiap invariant P0 punya minimal satu penjaga di level database atau transaksi.
 | Deteksi defensif `row.tenant_id == ctx.Tenant` → 500 + metrik INVARIANT | C-46 |
 | Object key diawali `tenants/{tenant_id}/`; bucket private; presigned 5 menit | ADR-012, C-40 |
 | PII: enkripsi aplikasi + blind index + masking + audit full view + redaction log | ADR-P08, C-22, C-23 |
-| Undangan: hash SHA-256 secret 32 byte, single use, email cocok, secret di fragment URL | Step 6 T-PR |
+| Undangan: hash SHA-256 secret 32 byte, single use, email cocok, secret di fragment URL | Threat model T-PR |
 | Separation of duties: HR mengelola gaji, PAYROLL_ADMIN menjalankan payroll; gabungan role diizinkan tetapi diaudit | ADR-010 amandemen |
-| Backup memakai role `payrun_backup` (`BYPASSRLS`, SELECT saja), karena `FORCE RLS` juga berlaku untuk owner | Step 9 |
+| Backup memakai role `payrun_backup` (`BYPASSRLS`, SELECT saja), karena `FORCE RLS` juga berlaku untuk owner | Desain DevOps |
 
-Threat scenario "user Company A mengakses employee Company B" beserta lapisan yang menghentikannya ada di Step 3 `05-payrun-multi-tenancy.md`. Threat model lengkap (20 threat) ada di Step 6 `03`.
+Threat scenario "user Company A mengakses employee Company B" beserta lapisan yang menghentikannya ada di `06-multi-tenancy.md`. Threat model lengkap (20 threat) ada di `19-security-threat-model.md`.
 
 ---
 
@@ -165,7 +165,7 @@ Threat scenario "user Company A mengakses employee Company B" beserta lapisan ya
 | BPJS & PPh21 | **Simplified — not compliance-certified.** Ruleset ber-versi dan effective-dated (`ID-SIMPLIFIED-2026.1`). Tarif contoh adalah placeholder |
 | Net negatif | Item `ERROR NEGATIVE_NET`; carry-over tidak didukung di V1; submit diblok sampai diperbaiki atau di-exclude dengan alasan |
 | Reproducibility | Input snapshot + versi ruleset per item; `verify-run` (recompute) identik; fingerprint per item untuk audit |
-| Contoh acuan | Tono, Maret 2026 → net Rp6.888.609 (Step 3 `06` §15) |
+| Contoh acuan | Tono, Maret 2026 → net Rp6.888.609 (`07-payroll-engine.md` §15) |
 
 ---
 
@@ -173,9 +173,9 @@ Threat scenario "user Company A mengakses employee Company B" beserta lapisan ya
 
 | Kategori | Requirement |
 |---|---|
-| **Konsistensi** | Read Committed + lock eksplisit + guard status; urutan lock global (idempotency → `tenant_settings` → `payroll_periods` → `payroll_runs` → approval → saldo → subjek); approve/finalize mengunci periode `FOR UPDATE`, penulis input `FOR SHARE`; stale detection berbasis change log yang dibuktikan dengan argumen lock (Step 7 O3/O12/D1) |
+| **Konsistensi** | Read Committed + lock eksplisit + guard status; urutan lock global (idempotency → `tenant_settings` → `payroll_periods` → `payroll_runs` → approval → saldo → subjek); approve/finalize mengunci periode `FOR UPDATE`, penulis input `FOR SHARE`; stale detection berbasis change log yang dibuktikan dengan argumen lock (desain transaksi & concurrency O3/O12/D1) |
 | **Reliability** | Kalkulasi chunked, idempoten, resumable (fencing `CompleteInTx`, `calc_version` guard); 10 failure scenario PFS-01…10 (crash, eksekusi ganda, input berubah, DB failure, retry, concurrent run, konfigurasi invalid, rejection, akses lintas tenant, partial processing) wajib punya test |
-| **Security** | Kontrol MVP Step 6 (C-01…C-46 yang relevan): JWT pendek + refresh rotation, argon2id + semaphore, rate limit (tier `heavy` per tenant), header keamanan, CSV formula escape, validasi upload |
+| **Security** | Kontrol MVP threat model (C-01…C-46 yang relevan): JWT pendek + refresh rotation, argon2id + semaphore, rate limit (tier `heavy` per tenant), header keamanan, CSV formula escape, validasi upload |
 | **Performa (target desain, bukan klaim)** | Kalkulasi 1.000 karyawan < 60 dtk; p95 endpoint baca < 300 ms; ketersediaan 99,5%/30 hari di lingkungan demo. Diukur dengan skenario PR-1…PR-7 (termasuk tenant 10.000 karyawan, 100.000 karyawan total, 1.000 run). Hasil dilaporkan sebagai baseline VM 2 vCPU/4 GB |
 | **Observability** | Log JSON dengan `tenant_id`/`correlation_id`/`trace_id`; metrik payroll & tenancy; trace request → job chunk; alert run gagal dan pelanggaran isolasi (critical) |
 | **Operability** | Deploy via CI dengan health gate + auto rollback; migrasi expand/contract (tabel tenant baru wajib RLS di migrasi yang sama); kill switch `PR_PAYROLL_CALC_ENABLED`, `PR_PAYSLIP_RENDER_ENABLED`; backup harian terenkripsi + restore drill yang memverifikasi jumlah baris > 0; RPO 24 jam / RTO 2 jam (V1) |
@@ -203,9 +203,9 @@ Threat scenario "user Company A mengakses employee Company B" beserta lapisan ya
 |---|---|---|
 | **M5 — Tenant isolation proven** | Akhir Sprint 2 PayRun | Demo A (isolation suite + RLS bypass test) hijau di CI |
 | **M6 — Payroll correct & resumable** | Akhir Sprint 5 | Golden 30 kasus + recompute-from-snapshot + Demo B (via test subprocess); PFS-01/02/06 hijau |
-| **M7 — PayRun selesai** | Akhir Sprint 10 | Seluruh DoD project (Step 10 `04`), termasuk semua PFS, baseline load test, dan README |
+| **M7 — PayRun selesai** | Akhir Sprint 10 | Seluruh DoD project (`31-definition-of-done.md`), termasuk semua PFS, baseline load test, dan README |
 
-Roadmap per sprint ada di Step 10 `03-payrun-roadmap.md`, termasuk *cut list* (urutan pemotongan: PF-23 → PF-22 → PF-21 → Jaeger/Loki → PF-19 → tier lembur). RLS, isolation, engine, async, stale detection, dan finalize tidak boleh dipotong.
+Roadmap per sprint ada di `30-roadmap.md`, termasuk *cut list* (urutan pemotongan: PF-23 → PF-22 → PF-21 → Jaeger/Loki → PF-19 → tier lembur). RLS, isolation, engine, async, stale detection, dan finalize tidak boleh dipotong.
 
 ---
 
@@ -239,16 +239,16 @@ Roadmap per sprint ada di Step 10 `03-payrun-roadmap.md`, termasuk *cut list* (u
 
 | Topik | Dokumen |
 |---|---|
-| Vision, persona, workflow, BR | Step 1 `02-payrun.md` |
-| Feature matrix & spec | Step 2 `03-payrun-features.md` |
-| Arsitektur V1→V3 | Step 2 `04-payrun-architecture.md` |
-| ADR | Step 2 `adr/ADR-P01…P09` (+ shared ADR-001…013) |
-| Domain model, multi-tenancy, engine, invariant, failure | Step 3 `04`–`08` |
-| Skema, RLS, index | Step 4 `05`–`07` (+ `01` shared) |
-| API & authorization matrix | Step 5 `04`, `05`, `01` (error catalogue) |
-| Threat model | Step 6 `03` (+ `01`, `04`) |
-| Transaksi, concurrency, job | Step 7 `02`, `03` |
-| Observability, testing, performa | Step 8 `01`–`03` |
-| DevOps, biaya | Step 9 |
-| Repo, roadmap, DoD | Step 10 `01`, `03`, `04` |
-| Demo, interview, positioning | Step 11 `02`–`05` |
+| Vision, persona, workflow, BR | `02-product-strategy.md` |
+| Feature matrix & spec | `03-features.md` |
+| Arsitektur V1→V3 | `04-architecture.md` |
+| ADR | Desain fitur & arsitektur `adr/ADR-P01…P09` (+ shared ADR-001…013) |
+| Domain model, multi-tenancy, engine, invariant, failure | `05-domain-model.md`–`08` |
+| Skema, RLS, index | `11-db-erd.md`–`07` (+ `01` shared) |
+| API & authorization matrix | `16-api-endpoints.md`, `05`, `01` (error catalogue) |
+| Threat model | `19-security-threat-model.md` (+ `01`, `04`) |
+| Transaksi, concurrency, job | `22-tx-concurrency.md`, `03` |
+| Observability, testing, performa | `24-observability.md`–`03` |
+| DevOps, biaya | Desain DevOps |
+| Repo, roadmap, DoD | `32-repository-structure.md`, `03`, `04` |
+| Demo, interview, positioning | `33-demo-script.md`–`05` |

@@ -101,4 +101,4 @@ Key blind index **terpisah** dari key enkripsi. Normalisasi (hapus spasi/titik) 
 
 ## Related
 
-ADR-P01 (RLS), ADR-P02 (redaction di log), ADR-010 (RBAC), Step 6 (threat model, nanti).
+ADR-P01 (RLS), ADR-P02 (redaction di log), ADR-010 (RBAC), threat model (threat model, nanti).

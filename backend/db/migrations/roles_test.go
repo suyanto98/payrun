@@ -73,7 +73,7 @@ func TestRoles_BackupCannotWrite(t *testing.T) {
 	}
 }
 
-// Jebakan string kosong (Step 12 C3), dibuktikan di satu koneksi yang sama (MaxConns 1, seperti
+// Jebakan string kosong (final review C3), dibuktikan di satu koneksi yang sama (MaxConns 1, seperti
 // koneksi pool yang dipakai ulang request berikutnya):
 //  1. di dalam transaksi, set_config(..., true) terlihat oleh current_tenant();
 //  2. setelah COMMIT, nilainya hilang (transaction-local: tidak bocor ke request berikutnya), TETAPI

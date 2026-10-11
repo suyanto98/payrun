@@ -199,7 +199,7 @@ func TestRLS_PoolLeakageAfterCommit(t *testing.T) {
 	}
 }
 
-// Step 12 C2: policy self hanya aktif di mode platform. User multi-tenant di dalam tenant Alpha TIDAK
+// final review C2: policy self hanya aktif di mode platform. User multi-tenant di dalam tenant Alpha TIDAK
 // melihat membership-nya di Beta (kebocoran metadata), sedangkan di mode platform ia melihat keduanya.
 func TestRLS_SelfPoliciesInactiveInTenantMode(t *testing.T) {
 	dbtest.SkipIfShort(t)
@@ -265,7 +265,7 @@ func TestRLS_PlatformModeCannotWriteMemberships(t *testing.T) {
 	wantPgCode(t, err, "42501", "platform mode inserting a membership")
 }
 
-// Step 12 R2-7: password_hash tidak terbaca payrun_app di jalur mana pun; hanya lewat auth_lookup_user.
+// final review R2-7: password_hash tidak terbaca payrun_app di jalur mana pun; hanya lewat auth_lookup_user.
 func TestRLS_PasswordHashOnlyViaAuthLookup(t *testing.T) {
 	dbtest.SkipIfShort(t)
 	ctx := context.Background()
@@ -406,7 +406,7 @@ func TestMemberships_LastOwnerGuard(t *testing.T) {
 }
 
 // audit_log: baris platform (tenant_id NULL) hanya boleh ditulis tanpa tenant context, tidak terlihat
-// dari tenant mana pun, dan hanya dibaca payrun_readonly (Step 12 R2-3).
+// dari tenant mana pun, dan hanya dibaca payrun_readonly (final review R2-3).
 func TestAudit_PlatformRowsIsolation(t *testing.T) {
 	dbtest.SkipIfShort(t)
 	ctx := context.Background()

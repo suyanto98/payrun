@@ -99,7 +99,7 @@ Penanda chunk selesai dan update `chunks_done` berada di **transaksi yang sama**
 
 - Lebih banyak bagian bergerak dibanding satu job: plan, chunk, counter, versi.
 - Selama `CALCULATING`, total run belum tersedia (UI menampilkan progres `chunks_done/chunks_total`).
-- Ukuran chunk 50 adalah tebakan awal; diukur ulang saat load test (Step 8).
+- Ukuran chunk 50 adalah tebakan awal; diukur ulang saat load test (desain observability & testing).
 
 ## Future Migration
 

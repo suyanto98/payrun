@@ -1,7 +1,7 @@
 -- Sprint 6: input domain payroll — absensi (PF-08), cuti (PF-09), lembur (PF-10). Skema mengikuti
 -- docs/design/12-db-schema.md §6.1, §6.4–6.7 dengan keputusan S6 (docs/design/16-api-endpoints.md,
 -- catatan implementasi Sprint 6):
---   - attendance_records TANPA import_id: import CSV (PF-21) dipindah ke P2 (Step 12 S10).
+--   - attendance_records TANPA import_id: import CSV (PF-21) dipindah ke P2 (final review S10).
 --   - ck_leave_requests_range didefinisikan di sini (dokumen hanya menyebut namanya).
 --   - leave_balances dibuat lazy saat approve pertama (kuota tahunan penuh; akrual PF-26 = P2).
 -- PeriodGuard DB (PI-14) dipasang di ketiga tabel input; fungsi guard_period_* dari migrasi 00009.

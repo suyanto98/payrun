@@ -1,10 +1,9 @@
 # PayRun — Documentation
 
-Design documents were written before coding, step by step (product → architecture → domain → database → API → security → transactions → observability/testing → DevOps → roadmap → final review). This folder contains the subset relevant to PayRun, copied verbatim from the design archive (`my-project/step-*`) in Sprint 0.
+Design documents were written before coding, step by step (product → architecture → domain → database → API → security → transactions → observability/testing → DevOps → roadmap → final review). This folder contains the subset relevant to PayRun.
 
 > **Living docs.** If implementation proves a design wrong, the PR that changes behaviour also updates the doc or adds an ADR amendment (PR template checklist).
-> **Authority when two docs disagree:** [`design/34-final-review.md`](design/34-final-review.md) and the "Amandemen Step 12" banner in [`design/30-roadmap.md`](design/30-roadmap.md) → "Amandemen" / "Catatan implementasi" sections inside ADRs → later design docs over earlier ones.
-> Cross-links inside the documents still use the original archive naming (`Step N`, `step-0N-…/file.md`); use the mapping table below.
+> **Authority when two docs disagree:** [`design/34-final-review.md`](design/34-final-review.md) and the "Amandemen final review" banner in [`design/30-roadmap.md`](design/30-roadmap.md) → "Amandemen" / "Catatan implementasi" sections inside ADRs → later design docs over earlier ones.
 > Some documents cover both projects (shared tables, API conventions, error catalogue, shared threats, security controls, transaction rules, background jobs, observability, testing, DevOps). The LedgerPay sections there are context only.
 
 ## Operating docs (written from the implementation, Sprint 10)
@@ -16,7 +15,7 @@ Design documents were written before coding, step by step (product → architect
 
 ## Start here (design)
 1. [`design/00-prd.md`](design/00-prd.md): what we build and why
-2. [`design/30-roadmap.md`](design/30-roadmap.md): sprint plan (read the Step 12 amendment banner first)
+2. [`design/30-roadmap.md`](design/30-roadmap.md): sprint plan (read the final review amendment banner first)
 3. [`design/31-definition-of-done.md`](design/31-definition-of-done.md): what "done" means
 4. [`design/06-multi-tenancy.md`](design/06-multi-tenancy.md) and [`design/13-db-rls-consistency-indexing.md`](design/13-db-rls-consistency-indexing.md): tenant isolation, the core risk of PayRun
 
@@ -51,40 +50,40 @@ Shared ADRs (001–013) are the LedgerPay copies, including their implementation
 
 ## Design documents — [`design/`](design/)
 
-| File | Original (archive) | Content |
-|---|---|---|
-| `00-prd.md` | Step 12 `04` | Consolidated PRD |
-| `01-overview.md` | Step 1 `00` | Two-project overview |
-| `02-product-strategy.md` | Step 1 `02` | Vision, personas, workflows, scope |
-| `03-features.md` | Step 2 `03` | Feature matrix (PF-xx) + specs |
-| `04-architecture.md` | Step 2 `04` | Architecture V1 → V2 → V3 |
-| `05-domain-model.md` | Step 3 `04` | Aggregates, state machines |
-| `06-multi-tenancy.md` | Step 3 `05` | Tenancy model, tenant context, residual risks |
-| `07-payroll-engine.md` | Step 3 `06` | Engine design, rulesets, determinism |
-| `08-invariants.md` | Step 3 `07` | Payroll invariants PI-xx |
-| `09-failure-scenarios.md` | Step 3 `08` | Failure scenarios |
-| `10-db-shared-tables.md` | Step 4 `01` | users, refresh_tokens, idempotency_keys, jobs, audit_log |
-| `11-db-erd.md` | Step 4 `05` | ERD |
-| `12-db-schema.md` | Step 4 `06` | Table specs, constraints, triggers |
-| `13-db-rls-consistency-indexing.md` | Step 4 `07` | Roles, RLS policies, consistency, indexes |
-| `14-api-conventions.md` | Step 5 `00` | API conventions |
-| `15-api-error-catalogue.md` | Step 5 `01` | Error codes (authoritative) |
-| `16-api-endpoints.md` | Step 5 `04` | Endpoint contracts |
-| `17-api-authorization-matrix.md` | Step 5 `05` | Endpoint × role matrix (PF-04 test input) |
-| `18-security-shared-threats.md` | Step 6 `01` | Shared threats T-SH |
-| `19-security-threat-model.md` | Step 6 `03` | PayRun threats |
-| `20-security-controls.md` | Step 6 `04` | Controls C-xx, security tests |
-| `21-tx-global-rules.md` | Step 7 `00` | Isolation, global lock order, retry |
-| `22-tx-concurrency.md` | Step 7 `02` | Operation catalogue, race timelines |
-| `23-background-jobs.md` | Step 7 `03` | Job catalogue, worker model |
-| `24-observability.md` | Step 8 `01` | Logs, metrics catalogue, alerts |
-| `25-testing-strategy.md` | Step 8 `02` | Test pyramid, test catalogue, traceability |
-| `26-performance-plan.md` | Step 8 `03` | Load test scenarios, experiments |
-| `27-docker-compose.md` | Step 9 `01` | Docker, Compose, Caddy, env vars |
-| `28-cicd.md` | Step 9 `02` | CI/CD pipeline |
-| `29-deploy-migrations-backup.md` | Step 9 `03` | Environments, migrations, backup, deploy |
-| `30-roadmap.md` | Step 10 `03` | Sprint 0–10 |
-| `31-definition-of-done.md` | Step 10 `04` | Definition of Done |
-| `32-repository-structure.md` | Step 10 `01` | Repo layout, module boundaries |
-| `33-demo-script.md` | Step 11 `02` | Demo script |
-| `34-final-review.md` | Step 12 `01` | Final technical review (authoritative) |
+| File | Content |
+|---|---|
+| `00-prd.md` | Consolidated PRD |
+| `01-overview.md` | Two-project overview |
+| `02-product-strategy.md` | Vision, personas, workflows, scope |
+| `03-features.md` | Feature matrix (PF-xx) + specs |
+| `04-architecture.md` | Architecture V1 → V2 → V3 |
+| `05-domain-model.md` | Aggregates, state machines |
+| `06-multi-tenancy.md` | Tenancy model, tenant context, residual risks |
+| `07-payroll-engine.md` | Engine design, rulesets, determinism |
+| `08-invariants.md` | Payroll invariants PI-xx |
+| `09-failure-scenarios.md` | Failure scenarios |
+| `10-db-shared-tables.md` | users, refresh_tokens, idempotency_keys, jobs, audit_log |
+| `11-db-erd.md` | ERD |
+| `12-db-schema.md` | Table specs, constraints, triggers |
+| `13-db-rls-consistency-indexing.md` | Roles, RLS policies, consistency, indexes |
+| `14-api-conventions.md` | API conventions |
+| `15-api-error-catalogue.md` | Error codes (authoritative) |
+| `16-api-endpoints.md` | Endpoint contracts |
+| `17-api-authorization-matrix.md` | Endpoint × role matrix (PF-04 test input) |
+| `18-security-shared-threats.md` | Shared threats T-SH |
+| `19-security-threat-model.md` | PayRun threats |
+| `20-security-controls.md` | Controls C-xx, security tests |
+| `21-tx-global-rules.md` | Isolation, global lock order, retry |
+| `22-tx-concurrency.md` | Operation catalogue, race timelines |
+| `23-background-jobs.md` | Job catalogue, worker model |
+| `24-observability.md` | Logs, metrics catalogue, alerts |
+| `25-testing-strategy.md` | Test pyramid, test catalogue, traceability |
+| `26-performance-plan.md` | Load test scenarios, experiments |
+| `27-docker-compose.md` | Docker, Compose, Caddy, env vars |
+| `28-cicd.md` | CI/CD pipeline |
+| `29-deploy-migrations-backup.md` | Environments, migrations, backup, deploy |
+| `30-roadmap.md` | Sprint 0–10 |
+| `31-definition-of-done.md` | Definition of Done |
+| `32-repository-structure.md` | Repo layout, module boundaries |
+| `33-demo-script.md` | Demo script |
+| `34-final-review.md` | Final technical review (authoritative) |

@@ -1,7 +1,7 @@
-# Step 4.6 — PayRun: Spesifikasi Skema per Tabel
+# PayRun: Spesifikasi Skema per Tabel
 
-> Konvensi: [`00-index.md`](00-index.md). ERD dan daftar tabel: [`05-payrun-erd.md`](05-payrun-erd.md). RLS, grant, index tambahan, volume: [`07-payrun-rls-consistency-and-indexing.md`](07-payrun-rls-consistency-and-indexing.md).
-> Invariant (PI-xx): [Step 3 `07-payrun-invariants.md`](../step-03-domain-design/07-payrun-invariants.md). State machine: [Step 3 `00-index.md`](../step-03-domain-design/00-index.md).
+> Konvensi: `00-index.md`. ERD dan daftar tabel: [`11-db-erd.md`](11-db-erd.md). RLS, grant, index tambahan, volume: [`13-db-rls-consistency-indexing.md`](13-db-rls-consistency-indexing.md).
+> Invariant (PI-xx): [`08-invariants.md`](08-invariants.md). State machine: desain domain`.
 > Schema: `payrun`. Potongan SQL hanya untuk constraint, trigger, dan policy yang menjadi inti keputusan; DDL lengkap ditulis sebagai migrasi goose saat coding.
 
 ---
@@ -23,7 +23,7 @@ Supaya setiap tabel tidak mengulang kolom yang sama, dipakai blok berikut. Tabel
 
 **Aturan composite FK:** setiap FK ke tabel tenant-scoped ditulis `FOREIGN KEY (tenant_id, x_id) REFERENCES <parent>(tenant_id, id)`. Ini tidak diulang di setiap tabel. Daftar "FK" di bawah hanya menyebut kolom `x_id`-nya.
 
-**Fungsi trigger generik** `set_updated_at` dan `forbid_update_delete` didefinisikan sekali per schema di [`01-shared-tables.md`](01-shared-tables.md) §6. `forbid_update_delete` memakai `ERRCODE = insufficient_privilege` (`42501`).
+**Fungsi trigger generik** `set_updated_at` dan `forbid_update_delete` didefinisikan sekali per schema di [`10-db-shared-tables.md`](10-db-shared-tables.md) §6. `forbid_update_delete` memakai `ERRCODE = insufficient_privilege` (`42501`).
 
 Kode error kustom PayRun: `P0001` = run final immutable (PI-04), `P0002` = period locked (PI-14), `P0004` = owner terakhir (PI-16), `P0005` = siklus manager (PI-19), `P0006` = invariant total (PI-05). Pemetaan ke kode API ada di `07` §7.
 
@@ -52,7 +52,7 @@ Kode error kustom PayRun: `P0001` = run final immutable (PI-04), `P0002` = perio
 | `tenant_id` | `uuid` | NOT NULL | — | `PRIMARY KEY (tenant_id)`, FK `→ tenants(id)`. Relasi 1:1, jadi tidak butuh `id` sendiri |
 | `timezone` | `text` | NOT NULL | `'Asia/Jakarta'` | Nama IANA; divalidasi aplikasi (`time.LoadLocation`) |
 | `work_days` | `smallint[]` | NOT NULL | `'{1,2,3,4,5}'` | Hari kerja mingguan (ISO: 1 = Senin … 7 = Minggu) |
-| `proration_basis` | `text` | NOT NULL | `'WORKING_DAYS'` | `WORKING_DAYS`, `CALENDAR_DAYS` (Step 3 `06` §6) |
+| `proration_basis` | `text` | NOT NULL | `'WORKING_DAYS'` | `WORKING_DAYS`, `CALENDAR_DAYS` (`07-payroll-engine.md` §6) |
 | `cutoff_day_of_next_month` | `smallint` | NOT NULL | `2` | Cut-off = tanggal ini di bulan berikutnya |
 | `cutoff_time_local` | `time` | NOT NULL | `'23:59'` | Jam cut-off, waktu tenant |
 | `overtime_basis` | `text` | NOT NULL | `'BASE'` | `BASE`, `BASE_PLUS_FIXED` |
@@ -82,7 +82,7 @@ Kode error kustom PayRun: `P0001` = run final immutable (PI-04), `P0002` = perio
 ## 2. IAM
 
 ### 2.1 `users`, `refresh_tokens` *(shared)*
-Spesifikasi di [`01-shared-tables.md`](01-shared-tables.md). Dari sisi PayRun: global (tanpa `tenant_id`), dengan RLS khusus (`07` §2.3).
+Spesifikasi di [`10-db-shared-tables.md`](10-db-shared-tables.md). Dari sisi PayRun: global (tanpa `tenant_id`), dengan RLS khusus (`07` §2.3).
 
 ### 2.2 `memberships`
 
@@ -127,7 +127,7 @@ CREATE CONSTRAINT TRIGGER memberships_owner_guard
   WHEN (('OWNER' = ANY (OLD.roles)) AND OLD.status = 'ACTIVE')
   EXECUTE FUNCTION payrun.ensure_tenant_has_owner();
 ```
-  Karena deferred, transfer kepemilikan dalam satu transaksi (tambah owner baru, cabut owner lama) tetap lolos. Race antara dua pencabutan owner yang paralel diserialkan oleh aplikasi dengan `pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role owner (PI-16; Step 7). `tenants FOR UPDATE` tidak dipakai karena akan memblok cek FK `KEY SHARE` dari setiap INSERT di tenant tersebut.
+  Karena deferred, transfer kepemilikan dalam satu transaksi (tambah owner baru, cabut owner lama) tetap lolos. Race antara dua pencabutan owner yang paralel diserialkan oleh aplikasi dengan `pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role owner (PI-16; desain transaksi & concurrency). `tenants FOR UPDATE` tidak dipakai karena akan memblok cek FK `KEY SHARE` dari setiap INSERT di tenant tersebut.
 
 **Keputusan: `roles text[]`, bukan tabel `membership_roles`.**
 
@@ -214,7 +214,7 @@ BEGIN
   RETURN NEW;
 END $$;
 ```
-  Advisory lock per tenant menutup race "A set manager B" bersamaan dengan "B set manager A", yang masing-masing tidak melihat perubahan yang lain di bawah Read Committed. Keterbatasan lintas tanggal efektif (Step 3 PI-19) tetap berlaku dan ditangkap job validasi harian.
+  Advisory lock per tenant menutup race "A set manager B" bersamaan dengan "B set manager A", yang masing-masing tidak melihat perubahan yang lain di bawah Read Committed. Keterbatasan lintas tanggal efektif (desain domain PI-19) tetap berlaku dan ditangkap job validasi harian.
 
 ---
 
@@ -283,7 +283,7 @@ END $$;
 | `version` | `text` | NOT NULL | — | `2026.1` |
 | `valid_during` | `daterange` | NOT NULL | — | Rentang berlaku |
 | `label` | `text` | NOT NULL | — | Contoh: `"simplified — not compliance-certified"`. Wajib tampil di UI |
-| `payload` | `jsonb` | NOT NULL | — | Divisor lembur, tier, statutory (BPJS), tax brackets per kategori, rounding (struktur `Ruleset` di Step 3 `06` §14) |
+| `payload` | `jsonb` | NOT NULL | — | Divisor lembur, tier, statutory (BPJS), tax brackets per kategori, rounding (struktur `Ruleset` di `07-payroll-engine.md` §14) |
 | `payload_sha256` | `bytea` | NOT NULL | — | Hash kanonik payload; ikut masuk fingerprint |
 | [A] `created_at` | | | | |
 
@@ -333,7 +333,7 @@ END $$;
     ```
   - `ck_component_definitions_caps CHECK (cap_min IS NULL OR cap_max IS NULL OR cap_min <= cap_max)`.
   - `ck_component_definitions_rate CHECK (rate IS NULL OR (rate >= 0 AND rate <= 1))`.
-  - `ck_component_definitions_tenant_stage CHECK (is_system OR stage = 'EARNING')`. Komponen tenant hanya berada di stage `EARNING`, dengan kategori `EARNING` atau `DEDUCTION` biasa. Stage lain milik sistem (Step 3 `06` §2.2).
+  - `ck_component_definitions_tenant_stage CHECK (is_system OR stage = 'EARNING')`. Komponen tenant hanya berada di stage `EARNING`, dengan kategori `EARNING` atau `DEDUCTION` biasa. Stage lain milik sistem (`07-payroll-engine.md` §2.2).
 - **Catatan:** validasi graf referensi (`base_ref` ke komponen yang ada/aktif, tanpa siklus, tanpa referensi ke stage yang lebih akhir) dilakukan aplikasi saat simpan (`422 COMPONENT_CYCLE`, dll.). Graf tidak bisa dinyatakan sebagai constraint. Engine juga memvalidasi secara defensif saat kalkulasi.
 
 ### 5.3 `employee_components` (effective-dated)
@@ -410,7 +410,7 @@ END $$;
 
 - **Constraint:**
   - `uq_attendance_imports_file` unique index `(tenant_id, file_hash) WHERE status <> 'FAILED'`. Upload ulang file identik → `409 IMPORT_DUPLICATE` berisi ID import sebelumnya (ini bentuk "peringatan" di PF-21). Karena upsert idempoten, menjalankan ulang file yang sama tidak ada gunanya. File yang import-nya `FAILED` boleh diunggah ulang.
-  - `ck_attendance_imports_size CHECK (size_bytes BETWEEN 1 AND 5242880)` (5 MB, Step 6 menetapkan final); `ck_attendance_imports_counts CHECK (rows_ok + rows_failed <= rows_total)`; `ck_attendance_imports_object_key CHECK (object_key LIKE 'tenants/' || tenant_id::text || '/imports/%')`. Object key wajib ber-prefix tenant (ditegakkan DB).
+  - `ck_attendance_imports_size CHECK (size_bytes BETWEEN 1 AND 5242880)` (5 MB, threat model menetapkan final); `ck_attendance_imports_counts CHECK (rows_ok + rows_failed <= rows_total)`; `ck_attendance_imports_object_key CHECK (object_key LIKE 'tenants/' || tenant_id::text || '/imports/%')`. Object key wajib ber-prefix tenant (ditegakkan DB).
 - **Index:** `ix_attendance_imports_recent (tenant_id, created_at DESC)`.
 
 ### 6.3 `attendance_import_errors`
@@ -476,7 +476,7 @@ Constraint: `uq_leave_types_code UNIQUE (tenant_id, code)`; `ck_leave_types_quot
 | [M] [H] | | | | |
 
 - **Constraint:** `ex_leave_requests_no_overlap EXCLUDE USING gist (tenant_id WITH =, employee_id WITH =, dates WITH &&) WHERE (status IN ('PENDING','APPROVED') AND cancels_request_id IS NULL)`; `ck_leave_requests_range`; `ck_leave_requests_days CHECK (days > 0)`; `ck_leave_requests_approved CHECK ((status = 'APPROVED') = (approved_at IS NOT NULL))`; enum CHECK `status`.
-- **Index:** `ix_leave_requests_employee (tenant_id, employee_id, status)`; `ix_leave_requests_created (tenant_id, created_at DESC, id)` untuk list tenant-wide `GET /leave-requests` (Step 12: R3-3); input payroll memakai `(tenant_id, employee_id)` + filter `dates && period` + `status = 'APPROVED'`.
+- **Index:** `ix_leave_requests_employee (tenant_id, employee_id, status)`; `ix_leave_requests_created (tenant_id, created_at DESC, id)` untuk list tenant-wide `GET /leave-requests` (final review R3-3); input payroll memakai `(tenant_id, employee_id)` + filter `dates && period` + `status = 'APPROVED'`.
 - **Trigger:** `leave_requests_period_guard` (`guard_period_range` pada `dates`).
 
 **`overtime_requests`**
@@ -494,12 +494,12 @@ Constraint: `uq_leave_types_code UNIQUE (tenant_id, code)`; `ck_leave_types_quot
 | [M] [H] | | | | |
 
 - **Constraint:** `ck_overtime_requests_order CHECK (end_at > start_at)`; `ck_overtime_requests_hours CHECK (hours > 0 AND hours <= 24)`; `ex_overtime_requests_no_overlap EXCLUDE USING gist (tenant_id WITH =, employee_id WITH =, tstzrange(start_at, end_at) WITH &&) WHERE (status IN ('PENDING','APPROVED'))`; `ck_overtime_requests_approved` (sama dengan cuti).
-- **Index:** `ix_overtime_requests_employee_date (tenant_id, employee_id, work_date)`; `ix_overtime_requests_created (tenant_id, created_at DESC, id)` untuk list tenant-wide (Step 12: R3-3).
+- **Index:** `ix_overtime_requests_employee_date (tenant_id, employee_id, work_date)`; `ix_overtime_requests_created (tenant_id, created_at DESC, id)` untuk list tenant-wide (final review R3-3).
 - **Trigger:** `overtime_requests_period_guard` (`guard_period_date` pada `work_date`).
 
 ### 6.5 Fungsi PeriodGuard di DB (PI-14)
 
-`PeriodGuard.EnsureWritable` di aplikasi memberi error yang ramah (`409 PERIOD_LOCKED`). Trigger berikut adalah **jaring pengaman** untuk jalur yang lupa memanggil guard (Step 3 PI-14).
+`PeriodGuard.EnsureWritable` di aplikasi memberi error yang ramah (`409 PERIOD_LOCKED`). Trigger berikut adalah **jaring pengaman** untuk jalur yang lupa memanggil guard (desain domain PI-14).
 
 ```sql
 -- Tanggal tunggal (attendance, overtime, holidays)
@@ -581,7 +581,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 
 - **Constraint:**
   - `uq_approval_requests_pending` unique index `(tenant_id, subject_type, subject_id) WHERE status = 'PENDING'` (PI-11).
-  - `ck_approval_requests_not_self CHECK (approver_id <> requester_id OR (self_approved AND subject_type = 'PAYROLL_RUN' AND self_approval_reason IS NOT NULL))` (PI-11, versi terkoreksi Step 3).
+  - `ck_approval_requests_not_self CHECK (approver_id <> requester_id OR (self_approved AND subject_type = 'PAYROLL_RUN' AND self_approval_reason IS NOT NULL))` (PI-11, versi terkoreksi desain domain).
   - `ck_approval_requests_self_flag CHECK (NOT self_approved OR approver_id = requester_id)`.
   - `ck_approval_requests_decided CHECK ((status = 'PENDING') = (decided_at IS NULL))`.
   - `ck_approval_requests_reject_note CHECK (status <> 'REJECTED' OR decision_note IS NOT NULL)`.
@@ -629,7 +629,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | `total_gross` / `total_deductions` / `total_net` | `numeric(18,2)` | NULL | — | Σ item `OK` @ `calc_version` (PI-05) |
 | `item_ok_count` / `item_error_count` / `item_excluded_count` / `warning_count` | `int` | NULL | — | Ringkasan review |
 | `failure_reason` | `text` | NULL | — | Untuk `FAILED` |
-| `calc_started_at` / `calculated_at` | `timestamptz` | NULL | — | **(Step 7)** `calc_started_at` (sebelumnya `calculation_started_at`) = `clock_timestamp()` yang dicatat calculate **sambil memegang `payroll_periods FOR UPDATE`**; batas bawah kandidat stale O12. Juga dipakai untuk metrik durasi |
+| `calc_started_at` / `calculated_at` | `timestamptz` | NULL | — | **(desain transaksi & concurrency)** `calc_started_at` (sebelumnya `calculation_started_at`) = `clock_timestamp()` yang dicatat calculate **sambil memegang `payroll_periods FOR UPDATE`**; batas bawah kandidat stale O12. Juga dipakai untuk metrik durasi |
 | `submitted_by` / `submitted_at` | `uuid` / `timestamptz` | NULL | — | |
 | `approved_by` / `approved_at` | `uuid` / `timestamptz` | NULL | — | |
 | `finalized_by` / `finalized_at` | `uuid` / `timestamptz` | NULL | — | |
@@ -643,7 +643,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
   - `ck_payroll_runs_calculated_totals CHECK (status IN ('DRAFT','CALCULATING','FAILED','CANCELLED') OR (total_net IS NOT NULL AND input_fingerprint IS NOT NULL AND total_net = total_gross - total_deductions))`.
   - `ck_payroll_runs_finalized CHECK ((status = 'FINALIZED') = (finalized_at IS NOT NULL))`.
   - `ck_payroll_runs_fingerprint CHECK (input_fingerprint IS NULL OR octet_length(input_fingerprint) = 32)`.
-  - **(Step 7)** `ck_payroll_runs_calc_started CHECK (status IN ('DRAFT','CANCELLED') OR calc_started_at IS NOT NULL)`: setiap run yang pernah dikalkulasi punya batas bawah O12. `CANCELLED` dikecualikan karena run bisa dibatalkan dari `DRAFT`.
+  - **(desain transaksi & concurrency)** `ck_payroll_runs_calc_started CHECK (status IN ('DRAFT','CANCELLED') OR calc_started_at IS NOT NULL)`: setiap run yang pernah dikalkulasi punya batas bawah O12. `CANCELLED` dikecualikan karena run bisa dibatalkan dari `DRAFT`.
 - **Index:** `ix_payroll_runs_period (tenant_id, period_id, created_at DESC)` (riwayat run per periode, termasuk yang dibatalkan).
 - **Trigger:**
   - `payroll_runs_terminal_immutable` BEFORE UPDATE OR DELETE: `OLD.status IN ('FINALIZED','CANCELLED')` → `P0001` (PI-04).
@@ -671,11 +671,11 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | `calc_version` | `int` | NOT NULL | — | |
 | `status` | `text` | NOT NULL | — | `OK`, `ERROR`, `EXCLUDED` |
 | `gross` / `deductions` / `net` | `numeric(18,2)` | NULL | — | NULL untuk `ERROR` tanpa baris (contoh: `NO_SALARY`) |
-| `error_codes` | `text[]` | NOT NULL | `'{}'` | `NO_SALARY`, `NEGATIVE_NET`, … (Step 3 `06` §13) |
+| `error_codes` | `text[]` | NOT NULL | `'{}'` | `NO_SALARY`, `NEGATIVE_NET`, … (`07-payroll-engine.md` §13) |
 | `warning_codes` | `text[]` | NOT NULL | `'{}'` | `OVERTIME_OVER_LIMIT`, … |
 | `issues` | `jsonb` | NOT NULL | `'[]'` | Detail error/warning `{code, message, data}` untuk UI; tidak di-query |
 | `input_fingerprint` | `bytea` | NOT NULL | — | Fingerprint per karyawan |
-| `employee_no` / `employee_name` / `department_id` | `text` / `text` / `uuid` | NOT NULL / NOT NULL / NULL | — | **(Step 12: R3-4)** Denormalisasi saat kalkulasi (diambil dari snapshot input), sehingga list/filter item run historis memakai data *pada saat itu*, bukan data live. Bukan PII sensitif (nama tetap di bawah RLS) |
+| `employee_no` / `employee_name` / `department_id` | `text` / `text` / `uuid` | NOT NULL / NOT NULL / NULL | — | **(final review R3-4)** Denormalisasi saat kalkulasi (diambil dari snapshot input), sehingga list/filter item run historis memakai data *pada saat itu*, bukan data live. Bukan PII sensitif (nama tetap di bawah RLS) |
 | `excluded_reason` / `excluded_by` / `excluded_at` | `text` / `uuid` / `timestamptz` | NULL | — | Exclude eksplisit (ter-audit) |
 | `created_at` | `timestamptz` | NOT NULL | `now()` | |
 
@@ -686,7 +686,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
   - `ck_payroll_items_ok_no_errors CHECK (status <> 'OK' OR cardinality(error_codes) = 0)`.
   - `ck_payroll_items_error_has_code CHECK (status <> 'ERROR' OR cardinality(error_codes) > 0)`.
   - `ck_payroll_items_excluded CHECK ((status = 'EXCLUDED') = (excluded_reason IS NOT NULL AND excluded_by IS NOT NULL))`.
-- **Index:** unique di atas melayani "item per run per versi" (review, total, finalize) dan upsert. Tambahan: `ix_payroll_items_employee (tenant_id, employee_id, created_at DESC)` untuk riwayat gaji karyawan dan diff bulan lalu (PF-23). **(Step 12: R3-4)** `ix_payroll_items_review (tenant_id, run_id, calc_version, employee_no, id)` untuk cursor list item urut nomor karyawan; `ix_payroll_items_dept (tenant_id, run_id, department_id)` untuk filter departemen.
+- **Index:** unique di atas melayani "item per run per versi" (review, total, finalize) dan upsert. Tambahan: `ix_payroll_items_employee (tenant_id, employee_id, created_at DESC)` untuk riwayat gaji karyawan dan diff bulan lalu (PF-23). **(final review R3-4)** `ix_payroll_items_review (tenant_id, run_id, calc_version, employee_no, id)` untuk cursor list item urut nomor karyawan; `ix_payroll_items_dept (tenant_id, run_id, department_id)` untuk filter departemen.
 - **Trigger:**
   - `payroll_items_immutable` (PI-04), BEFORE INSERT OR UPDATE OR DELETE:
     ```sql
@@ -699,7 +699,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
       -- zombie bisa lolos saat finalize belum commit, lalu keduanya commit.
       IF EXISTS (SELECT 1 FROM payrun.payroll_runs pr
                  WHERE pr.tenant_id = t AND pr.id = r AND pr.status = 'FINALIZED'
-                   -- Step 12 (R3-2): cleanup batch boleh menghapus baris versi lama
+                   -- final review (R3-2): cleanup batch boleh menghapus baris versi lama
                    AND NOT (TG_OP = 'DELETE' AND OLD.calc_version < pr.calc_version)
                  FOR SHARE) THEN
         RAISE EXCEPTION 'payroll run % is finalized', r USING ERRCODE = 'P0001';
@@ -710,7 +710,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
     ```
     Mencakup INSERT, bukan hanya UPDATE/DELETE: chunk zombie atau bug yang menambah item ke run final juga ditolak. **Race yang ditutup:** lock `FOR SHARE` bertabrakan dengan `UPDATE payroll_runs SET status='FINALIZED'`. Kalau finalize commit lebih dulu, INSERT menunggu, lalu melihat `FINALIZED` dan ditolak. Kalau chunk commit lebih dulu, finalize menunggu, lalu guard fingerprint/`chunks_done` menolaknya. Lapis lain yang sudah ada: fencing `CompleteInTx` (ADR-006) dan guard `calc_version`.
   - `payroll_items_sum_check` (PI-05, item ↔ line), constraint trigger `AFTER INSERT OR UPDATE … DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.status = 'OK')`: memeriksa `gross = Σ line EARNING`, `deductions = Σ line DEDUCTION`. Deferred karena line di-INSERT setelah item dalam transaksi yang sama.
-- **Catatan versi lama (Step 12: R3-2):** item `calc_version` lama **tidak** dihapus di transaksi finalize/calculate. Job `payroll.cleanup_versions` menghapusnya secara batch (1.000 baris per tx) setelah run `CALCULATED`/`FINALIZED`, dengan cascade ke line dan snapshot (FK `ON DELETE CASCADE`). Semua query baca selalu memfilter `calc_version = run.calc_version`, jadi baris lama yang belum dibersihkan tidak pernah terlihat. Trigger PI-04 mengizinkan **hanya** DELETE baris versi lama (`OLD.calc_version < run.calc_version`) pada run final, karena baris itu bukan bagian dari hasil final; INSERT/UPDATE/DELETE versi terkini tetap ditolak.
+- **Catatan versi lama (final review R3-2):** item `calc_version` lama **tidak** dihapus di transaksi finalize/calculate. Job `payroll.cleanup_versions` menghapusnya secara batch (1.000 baris per tx) setelah run `CALCULATED`/`FINALIZED`, dengan cascade ke line dan snapshot (FK `ON DELETE CASCADE`). Semua query baca selalu memfilter `calc_version = run.calc_version`, jadi baris lama yang belum dibersihkan tidak pernah terlihat. Trigger PI-04 mengizinkan **hanya** DELETE baris versi lama (`OLD.calc_version < run.calc_version`) pada run final, karena baris itu bukan bagian dari hasil final; INSERT/UPDATE/DELETE versi terkini tetap ditolak.
 
 ### 7.4 `payroll_lines`
 
@@ -718,7 +718,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 |---|---|---|---|---|
 | [T] | | | | |
 | `run_id` | `uuid` | NOT NULL | — | Denormalisasi untuk trigger immutability dan kandidat kunci partisi |
-| `calc_version` | `int` | NOT NULL | — | **(Step 12)** Denormalisasi dari item, dipakai trigger PI-04 (izin DELETE versi lama) dan unique per versi |
+| `calc_version` | `int` | NOT NULL | — | **(final review)** Denormalisasi dari item, dipakai trigger PI-04 (izin DELETE versi lama) dan unique per versi |
 | `item_id` | `uuid` | NOT NULL | — | FK → `payroll_items` `ON DELETE CASCADE` |
 | `sort_order` | `smallint` | NOT NULL | — | Urutan tampil di slip (= urutan pipeline) |
 | `code` | `text` | NOT NULL | — | `BASE_SALARY`, `OVERTIME`, `BPJS_JHT_EE`, `ADJUSTMENT`, … |
@@ -733,7 +733,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | [A] `created_at` | | | | |
 
 - **Constraint:** `uq_payroll_lines_order UNIQUE (tenant_id, item_id, sort_order)`; `ck_payroll_lines_amount CHECK (amount >= 0)` (arah ditentukan `category`, bukan tanda, sehingga adjustment negatif menjadi line `DEDUCTION`); `ck_payroll_lines_adjustment CHECK ((code = 'ADJUSTMENT') = (adjustment_id IS NOT NULL))`; enum CHECK `category`, `rounding`.
-- **Index:** unique di atas melayani "line per item" (slip, review). `uq_payroll_lines_adjustment_per_run` unique index `(tenant_id, run_id, calc_version, adjustment_id) WHERE adjustment_id IS NOT NULL`: satu adjustment hanya muncul sekali per versi kalkulasi run (PI-15, lapis kedua). **(Step 12)** `calc_version` wajib ada di index ini, karena cleanup versi lama sekarang asinkron (R3-2): saat recalculation, line versi lama dan baru bisa hidup bersamaan.
+- **Index:** unique di atas melayani "line per item" (slip, review). `uq_payroll_lines_adjustment_per_run` unique index `(tenant_id, run_id, calc_version, adjustment_id) WHERE adjustment_id IS NOT NULL`: satu adjustment hanya muncul sekali per versi kalkulasi run (PI-15, lapis kedua). **(final review)** `calc_version` wajib ada di index ini, karena cleanup versi lama sekarang asinkron (R3-2): saat recalculation, line versi lama dan baru bisa hidup bersamaan.
 - **Trigger:** `payroll_lines_immutable` (`forbid_change_on_finalized_run`) + `payroll_lines_no_update` BEFORE UPDATE → `forbid_update_delete`. Line tidak pernah di-UPDATE. **DELETE tidak** diblokir trigger generik, karena line versi lama memang dihapus lewat cascade sebelum run final. Setelah final, DELETE diblokir oleh `forbid_change_on_finalized_run`.
 
 ### 7.5 `payroll_item_snapshots`
@@ -743,7 +743,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | `tenant_id` | `uuid` | NOT NULL | — | |
 | `item_id` | `uuid` | NOT NULL | — | `PRIMARY KEY (tenant_id, item_id)`, FK → `payroll_items` `ON DELETE CASCADE` (1:1) |
 | `run_id` | `uuid` | NOT NULL | — | Untuk trigger immutability |
-| `calc_version` | `int` | NOT NULL | — | **(Step 12)** Denormalisasi dari item (trigger PI-04) |
+| `calc_version` | `int` | NOT NULL | — | **(final review)** Denormalisasi dari item (trigger PI-04) |
 | `snapshot_version` | `smallint` | NOT NULL | — | Versi skema `EmployeePeriodInput` |
 | `input` | `jsonb` | NOT NULL | — | `EmployeePeriodInput` kanonik lengkap (kalender, cut-off, span, komponen, absensi, lembur, adjustment, policy) |
 | `ruleset_code` / `ruleset_version` | `text` | NOT NULL | — | |
@@ -762,7 +762,7 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | [T] | | | | |
 | `employee_id` | `uuid` | NOT NULL | — | FK → `employees` |
 | `origin_period_id` | `uuid` | NOT NULL | — | FK → `payroll_periods` (harus `FINALIZED`, dicek app) |
-| `target_year` / `target_month` | `smallint` / `smallint` | NOT NULL | — | **(Step 12: R1-4)** Periode target sebagai nilai, **bukan FK**: periode target biasanya belum ada saat adjustment dibuat. Diresolusi saat run periode itu dibuat/dikalkulasi (InputProvider mencari `PENDING_APPLY` dengan tahun-bulan yang sama) |
+| `target_year` / `target_month` | `smallint` / `smallint` | NOT NULL | — | **(final review R1-4)** Periode target sebagai nilai, **bukan FK**: periode target biasanya belum ada saat adjustment dibuat. Diresolusi saat run periode itu dibuat/dikalkulasi (InputProvider mencari `PENDING_APPLY` dengan tahun-bulan yang sama) |
 | `component_code` | `text` | NOT NULL | — | `OVERTIME_CORRECTION`, `DEDUCTION_CORRECTION`, `MANUAL` |
 | `amount` | `numeric(18,2)` | NOT NULL | — | Positif = tambahan, negatif = potongan |
 | `taxable` | `boolean` | NOT NULL | `true` | |
@@ -774,13 +774,13 @@ Index `ix_payroll_periods_finalized (tenant_id, period_range) USING gist WHERE s
 | [M] [H] | | | | |
 
 - **Constraint:** `ck_adjustments_amount CHECK (amount <> 0)`; `ck_adjustments_target_month CHECK (target_month BETWEEN 1 AND 12)`; kondisi "target harus setelah origin" dicek APP (origin adalah FK ke periode final); `ck_adjustments_applied CHECK ((status = 'APPLIED') = (applied_run_id IS NOT NULL AND applied_at IS NOT NULL))` (PI-15); `ck_adjustments_cancelled CHECK ((status = 'CANCELLED') = (cancelled_at IS NOT NULL))`; enum CHECK.
-- **Index:** `ix_adjustments_target (tenant_id, target_year, target_month, employee_id) WHERE status = 'PENDING_APPLY'` (InputProvider.Adjustments per chunk); `ix_adjustments_created (tenant_id, created_at DESC, id)` untuk `GET /adjustments` (Step 12: R3-3).
+- **Index:** `ix_adjustments_target (tenant_id, target_year, target_month, employee_id) WHERE status = 'PENDING_APPLY'` (InputProvider.Adjustments per chunk); `ix_adjustments_created (tenant_id, created_at DESC, id)` untuk `GET /adjustments` (final review R3-3).
 - **Trigger:** `adjustments_applied_immutable` BEFORE UPDATE OR DELETE `WHEN (OLD.status IN ('APPLIED','CANCELLED'))` → `P0001`.
 - **Catatan:** "diterapkan maksimal sekali" dijaga oleh tiga lapis: (1) target periode tunggal (tahun-bulan) + `uq_payroll_runs_active_per_period` → hanya satu run yang bisa memuatnya; (2) `uq_payroll_lines_adjustment_per_run`; (3) guard `WHERE status = 'PENDING_APPLY' AND applied_run_id IS NULL` di transaksi finalize.
 
-### 7.6b `payroll_input_changes` (ditambahkan di Step 7, O12)
+### 7.6b `payroll_input_changes` (ditambahkan di desain transaksi & concurrency, O12)
 
-Log perubahan input per (periode, karyawan). Dipakai approve/finalize sebagai **penyaring kandidat** stale, sehingga approve tidak perlu menghitung ulang fingerprint seluruh karyawan (Step 7 `00-index.md` O12, `02-payrun-transactions-concurrency.md` §3.3).
+Log perubahan input per (periode, karyawan). Dipakai approve/finalize sebagai **penyaring kandidat** stale, sehingga approve tidak perlu menghitung ulang fingerprint seluruh karyawan (`21-tx-global-rules.md` O12, `22-tx-concurrency.md` §3.3).
 
 | Kolom | Tipe | Null | Default | Kegunaan |
 |---|---|---|---|---|
@@ -814,14 +814,14 @@ Log perubahan input per (periode, karyawan). Dipakai approve/finalize sebagai **
 | [M] | | | | |
 
 - **Constraint:** `uq_payslips_run_employee UNIQUE (tenant_id, run_id, employee_id)`; `uq_payslips_object_key UNIQUE (object_key)`; `ck_payslips_object_key CHECK (object_key = 'tenants/' || tenant_id::text || '/payslips/' || run_id::text || '/' || employee_id::text || '.pdf')`. Key **ditegakkan** deterministik oleh DB, sehingga render ulang selalu menimpa objek yang sama (idempoten, PFS-10). Juga `ck_payslips_rendered CHECK ((status = 'RENDERED') = (rendered_at IS NOT NULL AND checksum_sha256 IS NOT NULL))`.
-- **Index:** `ix_payslips_employee (tenant_id, employee_id, created_at DESC)` (daftar slip saya); `ix_payslips_pending (tenant_id, run_id) WHERE status <> 'RENDERED'` (progres render); **`ix_payslips_item (tenant_id, item_id)`** (Step 12: C4). Tanpa index ini, setiap DELETE item `calc_version` lama memicu cek FK berupa seq scan atas seluruh `payslips` (±1 juta baris/tahun), sehingga cleanup/finalize melewati `statement_timeout`. Aturan umum dijaga query katalog (f) di `07` §2.5: **setiap FK wajib punya index yang diawali kolom FK-nya** (kedua project).
+- **Index:** `ix_payslips_employee (tenant_id, employee_id, created_at DESC)` (daftar slip saya); `ix_payslips_pending (tenant_id, run_id) WHERE status <> 'RENDERED'` (progres render); **`ix_payslips_item (tenant_id, item_id)`** (final review C4). Tanpa index ini, setiap DELETE item `calc_version` lama memicu cek FK berupa seq scan atas seluruh `payslips` (±1 juta baris/tahun), sehingga cleanup/finalize melewati `statement_timeout`. Aturan umum dijaga query katalog (f) di `07` §2.5: **setiap FK wajib punya index yang diawali kolom FK-nya** (kedua project).
 - **Catatan:** payslip **eventual**. Baris dibuat `PENDING` di transaksi finalize, sedangkan PDF dirender job. Slip web (PF-15) dirender dari `payroll_lines` dan tidak bergantung pada PDF.
 
 ---
 
 ## 8. Shared tables, sisi PayRun
 
-| Tabel | Hal khusus PayRun (spesifikasi kolom di `01-shared-tables.md`) |
+| Tabel | Hal khusus PayRun (spesifikasi kolom di `10-db-shared-tables.md`) |
 |---|---|
 | `idempotency_keys` | Tenant-scoped (`tenant_id NOT NULL`, PK `(tenant_id, id)`, RLS standar). Signup tenant memakai tabel terpisah `platform_idempotency_keys` (tanpa RLS, hanya modul `tenancy`) |
 | `jobs` | `tenant_id` wajib untuk job tenant (`payroll.plan`, `payroll.calc_chunk`, `payslip.render`, `attendance.import`); NULL untuk job platform (scheduler, cleanup). Kunci unik chunk: `dedupe_key = 'calc_chunk:' || run_id || ':' || calc_version || ':' || chunk_no` |
@@ -845,4 +845,4 @@ Log perubahan input per (periode, karyawan). Dipakai approve/finalize sebagai **
 | `payroll_items_sum_check` (deferred) | `payroll_items` | PI-05 | `P0006` |
 | `adjustments_applied_immutable` | `adjustments` | PI-15 | `P0001` |
 
-> **Biaya trigger:** semua trigger di jalur panas (`payroll_items`, `payroll_lines`) berupa satu lookup PK ke `payroll_runs`, yang hampir pasti ada di buffer cache. Sekitar 15 baris line per item × 50 item per chunk berarti ±800 lookup per transaksi chunk. Angka ini diukur di load test Step 8. Kalau terbukti mahal, opsi pertama adalah trigger `FOR EACH STATEMENT` dengan transition table (`REFERENCING NEW TABLE`), bukan menghapus trigger.
+> **Biaya trigger:** semua trigger di jalur panas (`payroll_items`, `payroll_lines`) berupa satu lookup PK ke `payroll_runs`, yang hampir pasti ada di buffer cache. Sekitar 15 baris line per item × 50 item per chunk berarti ±800 lookup per transaksi chunk. Angka ini diukur di load test desain observability & testing. Kalau terbukti mahal, opsi pertama adalah trigger `FOR EACH STATEMENT` dengan transition table (`REFERENCING NEW TABLE`), bukan menghapus trigger.

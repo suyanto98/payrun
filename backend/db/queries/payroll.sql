@@ -1,8 +1,8 @@
 -- Modul payroll (PF-13): periode, run, item, line, snapshot. Semua [tenant]. Urutan lock global
--- (Step 7 `22` §1): [1] idempotency → [1b] tenant_settings → [2] payroll_periods → [3] payroll_runs → [7] hasil/jobs.
+-- (`22-tx-concurrency.md` §1): [1] idempotency → [1b] tenant_settings → [2] payroll_periods → [3] payroll_runs → [7] hasil/jobs.
 --
 -- InputProvider (query Input*) membaca tabel modul lain (employee, compensation, tenancy) secara
--- read-only di txRead chunk: itulah perannya menurut desain (Step 3 `06` §1). Penulisan tetap milik
+-- read-only di txRead chunk: itulah perannya menurut desain (`07-payroll-engine.md` §1). Penulisan tetap milik
 -- modul pemilik tabel.
 
 -- ---------------------------------------------------------------- periode & run
@@ -55,7 +55,7 @@ ORDER BY r.created_at DESC, r.id DESC
 LIMIT @lim;
 
 -- name: StartCalculation :one
--- [3] guard status: hanya DRAFT/CALCULATED/FAILED → CALCULATING (CALCULATING ditolak, Step 3 `08`).
+-- [3] guard status: hanya DRAFT/CALCULATED/FAILED → CALCULATING (CALCULATING ditolak, `09-failure-scenarios.md`).
 -- calc_started_at = clock_timestamp() SAMBIL memegang periode FOR UPDATE (batas bawah stale O12).
 UPDATE payroll_runs
 SET status = 'CALCULATING', calc_version = calc_version + 1, chunks_total = 0, chunks_done = 0,
@@ -385,7 +385,7 @@ WHERE tenant_id = @tenant_id AND employee_id = ANY (@ids::uuid[]) AND status = '
 GROUP BY employee_id, work_date
 ORDER BY employee_id, work_date;
 
--- ---------------------------------------------------------------- finalize (S6, Y11, Step 7 `22` §3.4)
+-- ---------------------------------------------------------------- finalize (S6, Y11, `22-tx-concurrency.md` §3.4)
 
 -- name: FinalizeRun :execrows
 -- [3] Guard APPROVED; trigger payroll_runs_totals_check memverifikasi total (PI-05). Setelah ini terminal (PI-04).
@@ -398,7 +398,7 @@ UPDATE payroll_periods SET status = 'FINALIZED', finalized_run_id = @final_run, 
 WHERE id = @id AND status <> 'FINALIZED';
 
 -- name: DeleteOldVersionItems :execrows
--- Job payroll.cleanup_versions (Step 12 R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
+-- Job payroll.cleanup_versions (final review R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
 -- transaksi finalize yang memegang lock periode. Line + snapshot ikut (CASCADE); trigger PI-04 mengizinkan
 -- DELETE versi < calc_version run final.
 DELETE FROM payroll_items WHERE id IN (

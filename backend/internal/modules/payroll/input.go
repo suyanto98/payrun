@@ -17,7 +17,7 @@ import (
 	"payrun/internal/modules/payroll/store"
 )
 
-// InputProvider (Step 3 `06` §1): membangun engine.Input per employee dari data operasional, di dalam
+// InputProvider (`07-payroll-engine.md` §1): membangun engine.Input per employee dari data operasional, di dalam
 // txRead chunk (REPEATABLE READ READ ONLY → satu snapshot konsisten untuk seluruh chunk). Query per
 // jenis data, untuk seluruh employee chunk sekaligus (tanpa N+1).
 //

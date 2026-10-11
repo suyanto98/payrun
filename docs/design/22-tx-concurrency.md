@@ -1,7 +1,7 @@
-# Step 7.2 — PayRun: Transaction & Concurrency
+# PayRun: Transaction & Concurrency
 
-> Bagian dari [Step 7](00-index.md). Isolation default, urutan lock global, kebijakan retry, pola chunk (§5), O3, dan O12 di `00-index.md` **mengikat**.
-> Rujukan: ADR-011, ADR-006 (fencing `CompleteInTx`), ADR-P02 (`WithTenantTx`), ADR-P05, ADR-P07, ADR-P09 (+ amandemen); Step 3 `04` §7–8, `07`, `08`; Step 4 `06-payrun-schema.md`; Step 5 `04-payrun-api.md`.
+> Bagian dari desain transaksi & concurrency. Isolation default, urutan lock global, kebijakan retry, pola chunk (§5), O3, dan O12 di `00-index.md` **mengikat**.
+> Rujukan: ADR-011, ADR-006 (fencing `CompleteInTx`), ADR-P02 (`WithTenantTx`), ADR-P05, ADR-P07, ADR-P09 (+ amandemen); `05-domain-model.md` §7–8, `07`, `08`; `12-db-schema.md`; `16-api-endpoints.md`.
 
 ---
 
@@ -15,8 +15,8 @@
 | D4 | `payroll.calc_chunk` txWrite mengambil `payroll_runs … FOR UPDATE` **lebih dulu**, baru upsert item | Mengikuti urutan global (run sebelum item); menyerialkan chunk-chunk dari run yang sama hanya selama milidetik txWrite |
 | D5 | Submit menjalankan pengecekan stale **tanpa** lock periode (pre-check ramah). **Approve dan finalize** adalah pengecekan otoritatif (periode `FOR UPDATE`) | Submit tidak perlu memblok penulis; keputusan final terjadi saat approve/finalize |
 | D6 | Pengecekan stale juga mendeteksi **perubahan eligibility**: kandidat tanpa item tetapi sekarang eligible, atau item yang sekarang tidak eligible → `RUN_STALE` | Karyawan baru/resign di tengah periode adalah perubahan input juga (PI-07) |
-| D7 | Kolom `payroll_runs.calculation_started_at` (Step 4) diganti nama menjadi **`calc_started_at`** dan diberi semantik O12 | Satu kolom, bukan dua; nama mengikuti `00-index.md` |
-| D8 | Nama job: **`payroll.plan`** (ADR-P05, Step 4) = "orchestrate" di Step 2/brief | Nama kanonik yang sudah ada di skema `jobs.dedupe_key` |
+| D7 | Kolom `payroll_runs.calculation_started_at` (desain database) diganti nama menjadi **`calc_started_at`** dan diberi semantik O12 | Satu kolom, bukan dua; nama mengikuti `00-index.md` |
+| D8 | Nama job: **`payroll.plan`** (ADR-P05, desain database) = "orchestrate" di desain fitur & arsitektur/brief | Nama kanonik yang sudah ada di skema `jobs.dedupe_key` |
 
 ---
 
@@ -26,7 +26,7 @@ Notasi lock mengikuti urutan global: `[1]` idempotency_keys · `[1b]` tenant_set
 
 | Operasi | Transaction boundary | Isolation | Lock (urutan global) | Race yang dijaga | Retry | Idempotency | Rollback |
 |---|---|---|---|---|---|---|---|
-| Tenant signup | 1 tx, dua fase berurutan (Step 12: C2): **fase platform** (`app.user_id` saja) → user; lalu `set_config('app.tenant_id', new_id, true)` + `set_config('app.user_id', '', true)` → **fase tenant**: tenant + membership OWNER + `tenant_settings` + seed default | RC | `platform_idempotency_keys` INSERT; unique `uq_tenants_slug`, `uq_users_email` | Double submit; slug sama dari dua orang | 40P01/40001 ≤3× | `platform_idempotency_keys` (wajib) | Semua atau tidak sama sekali; tidak ada tenant setengah jadi |
+| Tenant signup | 1 tx, dua fase berurutan (final review C2): **fase platform** (`app.user_id` saja) → user; lalu `set_config('app.tenant_id', new_id, true)` + `set_config('app.user_id', '', true)` → **fase tenant**: tenant + membership OWNER + `tenant_settings` + seed default | RC | `platform_idempotency_keys` INSERT; unique `uq_tenants_slug`, `uq_users_email` | Double submit; slug sama dari dua orang | 40P01/40001 ≤3× | `platform_idempotency_keys` (wajib) | Semua atau tidak sama sekali; tidak ada tenant setengah jadi |
 | Invite | 1 tx: membership `INVITED` + invitation (token hash) + audit | RC | [6] INSERT; `uq_memberships_invited_email` | Undangan ganda ke email sama | ≤3× | Natural (unique email per tenant) | — |
 | Accept invitation | 1 tx: guard `invitations.accepted_at IS NULL` + membership `INVITED → ACTIVE` + audit | RC | [6] `UPDATE … WHERE status='INVITED'` | Token dipakai dua kali paralel | ≤3× | Guard single-use | 0 baris → `410 INVITATION_INVALID` |
 | Ubah role / revoke | 1 tx: update roles/status + audit; deferred trigger PI-16 menghitung OWNER aktif saat COMMIT | RC | [6] membership target `FOR UPDATE` | Dua OWNER saling mencabut bersamaan (lihat §4 catatan) | ≤3× | Natural (set roles absolut) | Trigger gagal → `409 LAST_OWNER` |
@@ -43,7 +43,7 @@ Notasi lock mengikuti urutan global: `[1]` idempotency_keys · `[1b]` tenant_set
 | Leave approve | 1 tx (detail §3.1) | RC | [1b] → [2] SHARE → [4] guard → [5] `FOR UPDATE` → [6] → [7] | Saldo habis oleh dua approve (§4.a); approve vs reject (§4.b) | ≤3× | Guard `WHERE status='PENDING'` | `INSUFFICIENT_LEAVE_BALANCE` → approval tetap `PENDING` |
 | Overtime approve | Sama dengan cuti, tanpa [5] | RC | [1b] → [2] SHARE (`work_date`) → [4] → [6] → [7] | Approve vs reject | ≤3× | Guard | — |
 | Reject / cancel approval | 1 tx: approval → `REJECTED`/`CANCELLED` + subjek + audit | RC | [4] guard → [6] | Approve vs reject vs cancel | ≤3× | Guard | 0 baris → `409 APPROVAL_ALREADY_DECIDED` |
-| Create run | 1 tx: `tenant_settings FOR UPDATE` → `INSERT payroll_periods … ON CONFLICT DO NOTHING` → `SELECT … FOR UPDATE` (Step 12: R1-8, tanpa TOCTOU/`23505`) (+ `cutoff_at` beku) + run `DRAFT` + period → `PROCESSING` | RC | [1] → [1b] **`FOR UPDATE`** (hanya jika periode baru, D1) → [2] INSERT/`FOR UPDATE` → [3] INSERT | Dua admin (§4.e); periode baru vs penulis input (§4.d2) | ≤3× | `Idempotency-Key` + `uq_payroll_runs_active_per_period` | `409 ACTIVE_RUN_EXISTS` (+ `existing_resource_id`) |
+| Create run | 1 tx: `tenant_settings FOR UPDATE` → `INSERT payroll_periods … ON CONFLICT DO NOTHING` → `SELECT … FOR UPDATE` (final review R1-8, tanpa TOCTOU/`23505`) (+ `cutoff_at` beku) + run `DRAFT` + period → `PROCESSING` | RC | [1] → [1b] **`FOR UPDATE`** (hanya jika periode baru, D1) → [2] INSERT/`FOR UPDATE` → [3] INSERT | Dua admin (§4.e); periode baru vs penulis input (§4.d2) | ≤3× | `Idempotency-Key` + `uq_payroll_runs_active_per_period` | `409 ACTIVE_RUN_EXISTS` (+ `existing_resource_id`) |
 | Calculate | 1 tx (detail §3.2) | RC | [2] `FOR UPDATE` → [3] guard → [7] job `payroll.plan` | Penulis in-flight (O12); calculate ganda | ≤3× | Guard status (`DRAFT/CALCULATED/FAILED → CALCULATING`) | `409 INVALID_STATE_TRANSITION` |
 | `payroll.plan` (job) | 1 tx: daftar eligible + `eligible_count` + `chunks_total` + INSERT K chunk job + `CompleteInTx` | RC | [3] `FOR UPDATE` (guard `calc_version`) → [7] jobs (dedupe per chunk) | Job terkirim dua kali; versi lama | Job retry | `dedupe_key calc_chunk:run:ver:n` + fencing | Versi tidak cocok → no-op + complete |
 | `payroll.calc_chunk` (job) | txRead (RR-RO) → compute → txWrite (RC) (§3.2) | RR-RO / RC | txWrite: [3] `FOR UPDATE` → [7] upsert item/line/snapshot | Chunk dobel; recalculate saat chunk lama jalan (§4.f); zombie vs finalize (§4.g) | Job retry; 40001 tidak mungkin (RO) | `uq_payroll_items_version` + fencing + guard versi | txWrite rollback → job diulang dari txRead |
@@ -53,13 +53,13 @@ Notasi lock mengikuti urutan global: `[1]` idempotency_keys · `[1b]` tenant_set
 | Reject `PAYROLL_RUN` | 1 tx: approval → `REJECTED` (note wajib) + run → `CALCULATED` | RC | [3] guard → [4] guard | Approve vs reject | ≤3× | Guard | `DECISION_NOTE_REQUIRED` / `APPROVAL_ALREADY_DECIDED` |
 | Finalize | 1 tx (detail §3.4) | RC | [2] `FOR UPDATE` → [3] guard → [6] adjustments `FOR UPDATE` → [7] payslips + jobs | Zombie chunk (§4.g); input berubah setelah approve | ≤3× | Guard status `APPROVED` | `RUN_STALE` / `409` |
 | Cancel run | 1 tx: run → `CANCELLED` + periode → `OPEN` jika tidak ada run aktif lain + audit | RC | [2] `FOR UPDATE` → [3] guard | Cancel vs calculate (`CALCULATING` ditolak) | ≤3× | Guard | `409 INVALID_STATE_TRANSITION` |
-| Adjustment create | 1 tx: INSERT `PENDING_APPLY` dengan `(target_year, target_month)` (Step 12: R1-4, bukan FK ke periode yang mungkin belum ada) + PeriodGuard target jika periodenya sudah ada + audit | RC | [1b] → [2] SHARE (target, jika ada) → [6] → [7] input_changes (jika periode target ada) | Adjustment masuk ke run yang sudah dikalkulasi → stale | ≤3× | `Idempotency-Key` | — |
+| Adjustment create | 1 tx: INSERT `PENDING_APPLY` dengan `(target_year, target_month)` (final review R1-4, bukan FK ke periode yang mungkin belum ada) + PeriodGuard target jika periodenya sudah ada + audit | RC | [1b] → [2] SHARE (target, jika ada) → [6] → [7] input_changes (jika periode target ada) | Adjustment masuk ke run yang sudah dikalkulasi → stale | ≤3× | `Idempotency-Key` | — |
 | Adjustment cancel | 1 tx: guard `PENDING_APPLY` + PeriodGuard target | RC | [1b] → [2] SHARE → [6] guard → [7] | Cancel vs finalize yang menerapkannya | ≤3× | Guard | `409` |
 | Adjustment apply | Di dalam tx finalize: `UPDATE … SET status='APPLIED' WHERE status='PENDING_APPLY' AND id = ANY($ids_in_lines)` | RC | (bagian finalize) | Diterapkan dua kali (PI-15) | — | Guard + `uq_payroll_lines_adjustment_per_run` | Ikut finalize |
 | `payslip.render` (job) | Render + upload **di luar** tx → 1 tx: payslip `RENDERED` + checksum + `CompleteInTx` | RC | [6] payslip `UPDATE … WHERE status <> 'RENDERED'` → [7] | Render ganda; crash setelah upload | Job retry | Object key deterministik (menimpa) + guard | Upload ulang menimpa objek yang sama |
 | Cleanup (job platform) | Batch kecil (≤1.000 baris) per tx: hapus job `succeeded` > 7 hari, idempotency kedaluwarsa, `payroll_input_changes` periode final > 90 hari | RC | Tanpa lock eksplisit; `DELETE … WHERE ctid IN (SELECT … LIMIT n)` | Bersaing dengan worker | Ulang di tick berikutnya | Natural | — |
 
-> **Catatan ubah role (PI-16):** dua OWNER yang saling mencabut di dua transaksi paralel masing-masing melihat "masih ada satu OWNER lain" di snapshot-nya. Deferred trigger saja tidak cukup di RC karena keduanya bisa commit. Penjaganya: kedua transaksi mengambil `pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role `OWNER`, sehingga trigger kedua melihat hasil commit yang pertama. (Pola sama dengan advisory lock siklus manager di Step 4.)
+> **Catatan ubah role (PI-16):** dua OWNER yang saling mencabut di dua transaksi paralel masing-masing melihat "masih ada satu OWNER lain" di snapshot-nya. Deferred trigger saja tidak cukup di RC karena keduanya bisa commit. Penjaganya: kedua transaksi mengambil `pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role `OWNER`, sehingga trigger kedua melihat hasil commit yang pertama. (Pola sama dengan advisory lock siklus manager di desain database.)
 
 ---
 
@@ -72,8 +72,8 @@ Notasi lock mengikuti urutan global: `[1]` idempotency_keys · `[1b]` tenant_set
 | Retry wrapper | `WithTenantTx` membuka transaksi baru di setiap percobaan, jadi `set_config` dijalankan ulang otomatis. Wrapper **tidak** boleh me-retry di dalam transaksi yang sama (setelah error, transaksi Postgres sudah *aborted*) |
 | Urutan di awal tx | `BEGIN [ISOLATION LEVEL …]` → `set_config('app.tenant_id')` → `SET LOCAL lock_timeout/statement_timeout` → query. Untuk RR, `set_config` adalah statement pertama, dan snapshot RR baru diambil pada query **data** pertama (set_config tidak membaca tabel), sehingga tidak ada masalah urutan |
 | `WithPlatformTx` | Signup, login lookup, daftar membership sendiri. Menyetel **hanya** `app.user_id`. Signup berpindah ke fase tenant di tx yang sama (set `app.tenant_id`, kosongkan `app.user_id`) |
-| **Mode eksklusif (Step 12: C2)** | Satu transaksi tidak pernah memiliki `app.tenant_id` dan `app.user_id` aktif bersamaan. `WithTenantTx` hanya menyetel `app.tenant_id`. Policy self mensyaratkan `current_tenant() IS NULL`, sehingga user multi-tenant tidak melihat barisnya di tenant lain. Test: `TestRLS_SelfPoliciesInactiveInTenantMode` |
-| Job worker | Claim job **di luar** konteks tenant (tabel `jobs` tanpa RLS, ADR-006 / Step 4 `01`). Handler membaca `jobs.tenant_id` (kolom, bukan payload) lalu membuka `WithTenantTx(job.tenant_id)` untuk semua kerja bisnis. `CompleteInTx` berjalan di dalam tx tenant yang sama |
+| **Mode eksklusif (final review C2)** | Satu transaksi tidak pernah memiliki `app.tenant_id` dan `app.user_id` aktif bersamaan. `WithTenantTx` hanya menyetel `app.tenant_id`. Policy self mensyaratkan `current_tenant() IS NULL`, sehingga user multi-tenant tidak melihat barisnya di tenant lain. Test: `TestRLS_SelfPoliciesInactiveInTenantMode` |
+| Job worker | Claim job **di luar** konteks tenant (tabel `jobs` tanpa RLS, ADR-006 / `10-db-shared-tables.md`). Handler membaca `jobs.tenant_id` (kolom, bukan payload) lalu membuka `WithTenantTx(job.tenant_id)` untuk semua kerja bisnis. `CompleteInTx` berjalan di dalam tx tenant yang sama |
 | Advisory lock | Kunci advisory selalu diawali tenant (`'owners:'||tenant_id`, `'org:'||tenant_id`, `'comp:'||tenant_id`) sehingga tenant tidak saling memblok |
 
 ---
@@ -127,7 +127,7 @@ COMMIT;                                                                -- lock p
 SELECT calc_version, status FROM payroll_runs WHERE id = $run FOR UPDATE;   -- versi ≠ job → CompleteInTx + selesai (no-op)
 -- daftar eligible (employment_spans && period), ORDER BY employee_id, pecah per chunk_size
 UPDATE payroll_runs SET eligible_count = $n, chunks_total = $k WHERE id = $run;
--- Step 12 (R1-3): k = 0 → di tx yang sama: total 0, fingerprint run kosong, status 'CALCULATED',
+-- final review (R1-3): k = 0 → di tx yang sama: total 0, fingerprint run kosong, status 'CALCULATED',
 --   warning NO_ELIGIBLE_EMPLOYEES, lalu CompleteInTx + COMMIT (tanpa chunk). Test: TestPayrollRun_ZeroEligibleCompletes
 INSERT INTO jobs (kind='payroll.calc_chunk', …, dedupe_key='calc_chunk:'||run||':'||ver||':'||i) … ON CONFLICT DO NOTHING;  -- K baris
 jobs.CompleteInTx(job);  COMMIT;
@@ -166,7 +166,7 @@ SELECT status, calc_version, calc_started_at FROM payroll_runs WHERE id = $run F
 -- kandidat O12
 SELECT employee_id FROM payroll_input_changes
  WHERE tenant_id = $t AND period_id = $period AND changed_at > $calc_started_at;
--- Step 12 (R1-7): jika kandidat > 200 → ROLLBACK → 409 RUN_STALE (recalculate lebih murah daripada
+-- final review (R1-7): jika kandidat > 200 → ROLLBACK → 409 RUN_STALE (recalculate lebih murah daripada
 --   memverifikasi ribuan fingerprint sambil memegang lock periode)
 -- untuk setiap kandidat (biasanya 0–puluhan):
 --   cur_fp  = Fingerprint(InputProvider(kandidat))      -- fungsi yang sama dengan kalkulasi
@@ -197,14 +197,14 @@ SELECT … FROM payroll_runs WHERE id = $run FOR UPDATE;                  -- [3]
 SELECT id FROM adjustments WHERE id = ANY($adj_ids_in_lines) AND status = 'PENDING_APPLY' FOR UPDATE;   -- [6]
 UPDATE adjustments SET status='APPLIED', applied_run_id=$run, applied_at=now()
  WHERE id = ANY($ids) AND status='PENDING_APPLY';                        -- count harus = len($ids), jika tidak → rollback (PI-15)
--- Step 12 (R3-2): TIDAK ada DELETE versi lama di sini (memegang lock periode). Versi lama dibersihkan
+-- final review (R3-2): TIDAK ada DELETE versi lama di sini (memegang lock periode). Versi lama dibersihkan
 --   job payroll.cleanup_versions (batch 1.000) setelah COMMIT; semua query membaca calc_version terkini.
 UPDATE payroll_runs SET status='FINALIZED', finalized_by=$actor, finalized_at=now()
  WHERE id=$run AND status='APPROVED';                                    -- trigger PI-05 memverifikasi total
 UPDATE payroll_periods SET status='FINALIZED', finalized_run_id=$run, finalized_at=now() WHERE id=$period;
 INSERT INTO payslips (… status='PENDING', object_key deterministik) SELECT … FROM payroll_items WHERE status='OK' …;   -- [7]
 INSERT INTO jobs (kind='payslip.render', …) …;                           -- per chunk payslip
-INSERT INTO jobs (kind='payroll.cleanup_versions', payload={run, keep_version=$v}) …;   -- Step 12 (R3-2)
+INSERT INTO jobs (kind='payroll.cleanup_versions', payload={run, keep_version=$v}) …;   -- final review (R3-2)
 INSERT audit_log …; COMMIT;
 ```
 Setelah COMMIT, trigger PI-04 (item/line/snapshot) dan PI-14 (`guard_period_*`) aktif untuk periode dan run ini. Adjustment yang dibatalkan bersamaan oleh HR: transaksi cancel menunggu lock `[2] FOR SHARE` (periode target dikunci `FOR UPDATE` oleh finalize). Setelah finalize commit, cancel melihat periode target sudah `FINALIZED` → `PERIOD_LOCKED`; atau melihat status `APPLIED` → `409`.
@@ -222,7 +222,7 @@ INSERT INTO salary_assignments (…, valid_during) VALUES (…, daterange($effec
 INSERT/UPSERT payroll_input_changes (periode non-final yang beririsan $changed);                    -- [7]
 INSERT audit_log …; COMMIT;
 ```
-Trigger `guard_period_range` (Step 4 §6.5) adalah jaring pengaman. `PeriodGuard` di aplikasi memberi `409 PERIOD_LOCKED` yang ramah.
+Trigger `guard_period_range` (desain database §6.5) adalah jaring pengaman. `PeriodGuard` di aplikasi memberi `409 PERIOD_LOCKED` yang ramah.
 
 ---
 
@@ -293,7 +293,7 @@ Alternatif yang dipertimbangkan: membuat baris periode 13 bulan ke depan saat si
 | 1 | INSERT run (periode Maret) | INSERT run (periode Maret) → menunggu unique index |
 | 2 | COMMIT → `201` | `23505 uq_payroll_runs_active_per_period` → `409 ACTIVE_RUN_EXISTS {existing_resource_id}` |
 
-**Hendra klik dua kali (key K1 sama):** request kedua menunggu di unique index `idempotency_keys`, lalu me-replay response pertama → `201` + `Idempotent-Replayed: true`. Tidak ada `409`, karena memang niat yang sama (Step 5).
+**Hendra klik dua kali (key K1 sama):** request kedua menunggu di unique index `idempotency_keys`, lalu me-replay response pertama → `201` + `Idempotent-Replayed: true`. Tidak ada `409`, karena memang niat yang sama (kontrak API).
 
 ### (f) Recalculate saat chunk versi lama masih berjalan
 | t | Chunk K3 (versi 1) | Admin |
@@ -304,7 +304,7 @@ Alternatif yang dipertimbangkan: membuat baris periode 13 bulan ke depan saat si
 Recalculate hanya diizinkan dari `CALCULATED`/`FAILED`, sehingga versi lama sudah selesai semua. Satu-satunya jalan chunk versi lama masih hidup adalah job zombie/duplikat (retry setelah `FAILED` → recalculate). Penjaganya: txWrite `SELECT … FOR UPDATE` melihat `calc_version = 2 ≠ 1` → no-op + `CompleteInTx`. Seandainya guard versi terlewat, upsert menulis ke `calc_version = 1` (unique key berbeda), yang dibuang saat finalize dan tidak dihitung dalam total versi 2.
 
 ### (g) Chunk zombie vs finalize (PI-04)
-Lihat Step 4 §7.3. Trigger `forbid_change_on_finalized_run` mengambil `payroll_runs … FOR SHARE`. Finalize memegang `FOR UPDATE` pada run, sehingga INSERT item zombie menunggu, lalu melihat `FINALIZED` → `P0001` → `409 RUN_FINALIZED` (di sisi job: rollback, dicatat, `CompleteInTx` gagal fencing). Dengan D4, txWrite chunk sudah mengambil `FOR UPDATE` pada run di awal, jadi chunk dan finalize terserialisasi bahkan sebelum trigger berjalan.
+Lihat desain database §7.3. Trigger `forbid_change_on_finalized_run` mengambil `payroll_runs … FOR SHARE`. Finalize memegang `FOR UPDATE` pada run, sehingga INSERT item zombie menunggu, lalu melihat `FINALIZED` → `P0001` → `409 RUN_FINALIZED` (di sisi job: rollback, dicatat, `CompleteInTx` gagal fencing). Dengan D4, txWrite chunk sudah mengambil `FOR UPDATE` pada run di awal, jadi chunk dan finalize terserialisasi bahkan sebelum trigger berjalan.
 
 ### (h) Dua perubahan gaji paralel untuk karyawan yang sama
 HR-1 menaikkan gaji mulai 1 April, HR-2 mulai 15 April.
@@ -347,9 +347,9 @@ T1: "Arif melapor ke Budi". T2: "Budi melapor ke Arif". Masing-masing aman jika 
 | Topik | Keputusan |
 |---|---|
 | Kenapa chunk | Satu transaksi untuk 10.000 karyawan berarti lock panjang, satu error membatalkan semua, tidak ada progres, retry mahal, dan memori besar. Chunk memberi progres, isolasi kegagalan, dan resume (ADR-P05) |
-| Ukuran chunk | Default **50** (`tenant_settings`/config). **Demo memakai 10** agar "crash di karyawan ke-37" jatuh di chunk 4 (O5). Tuning: target txWrite < 200 ms dan txRead < 500 ms; ukur di Step 9. Chunk terlalu kecil → overhead job dan kontensi baris run (`chunks_done`); terlalu besar → retry mahal |
+| Ukuran chunk | Default **50** (`tenant_settings`/config). **Demo memakai 10** agar "crash di karyawan ke-37" jatuh di chunk 4 (O5). Tuning: target txWrite < 200 ms dan txRead < 500 ms; ukur di desain DevOps. Chunk terlalu kecil → overhead job dan kontensi baris run (`chunks_done`); terlalu besar → retry mahal |
 | Kontensi `chunks_done` | Setiap txWrite meng-update baris run yang sama. Dengan 8 worker paralel dan txWrite ±50 ms, antrean di baris run kecil. Alternatif V2: tabel `payroll_run_chunks (run, ver, n, done_at)` dan run selesai saat `count = chunks_total` (tanpa baris panas) |
-| Batas konkurensi | V1: worker pool global (misalnya 8 goroutine `payroll.calc_chunk`). P2: maksimal N chunk berjalan per tenant (fairness, Step 7 `03`) |
+| Batas konkurensi | V1: worker pool global (misalnya 8 goroutine `payroll.calc_chunk`). P2: maksimal N chunk berjalan per tenant (fairness, `23-background-jobs.md`) |
 | Timeout worker | `statement_timeout`: txRead 30 dtk, txWrite 10 dtk, `payroll.plan` 30 dtk, `attendance.import` per batch 30 dtk, `payslip.render` tx metadata 5 dtk (render di luar tx, timeout render 60 dtk). `lock_timeout` worker 5 dtk. `idle_in_transaction_session_timeout` 30 dtk |
 | Lease | `locked_until = now() + 2 × perkiraan durasi` (calc_chunk 60 dtk) + heartbeat untuk job yang lebih panjang (ADR-006) |
 

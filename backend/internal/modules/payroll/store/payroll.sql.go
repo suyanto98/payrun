@@ -225,7 +225,7 @@ type DeleteOldVersionItemsParams struct {
 	KeepVersion int32
 }
 
-// Job payroll.cleanup_versions (Step 12 R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
+// Job payroll.cleanup_versions (final review R3-2): versi lama dihapus bertahap SETELAH finalize, tidak di
 // transaksi finalize yang memegang lock periode. Line + snapshot ikut (CASCADE); trigger PI-04 mengizinkan
 // DELETE versi < calc_version run final.
 func (q *Queries) DeleteOldVersionItems(ctx context.Context, arg DeleteOldVersionItemsParams) (int64, error) {
@@ -410,7 +410,7 @@ type FinalizeRunParams struct {
 	ID    uuid.UUID
 }
 
-// ---------------------------------------------------------------- finalize (S6, Y11, Step 7 `22` §3.4)
+// ---------------------------------------------------------------- finalize (S6, Y11, `22-tx-concurrency.md` §3.4)
 // [3] Guard APPROVED; trigger payroll_runs_totals_check memverifikasi total (PI-05). Setelah ini terminal (PI-04).
 func (q *Queries) FinalizeRun(ctx context.Context, arg FinalizeRunParams) (int64, error) {
 	result, err := q.db.Exec(ctx, finalizeRun, arg.Actor, arg.At, arg.ID)
@@ -2214,10 +2214,10 @@ type LockTenantSettingsRow struct {
 }
 
 // Modul payroll (PF-13): periode, run, item, line, snapshot. Semua [tenant]. Urutan lock global
-// (Step 7 `22` §1): [1] idempotency → [1b] tenant_settings → [2] payroll_periods → [3] payroll_runs → [7] hasil/jobs.
+// (`22-tx-concurrency.md` §1): [1] idempotency → [1b] tenant_settings → [2] payroll_periods → [3] payroll_runs → [7] hasil/jobs.
 //
 // InputProvider (query Input*) membaca tabel modul lain (employee, compensation, tenancy) secara
-// read-only di txRead chunk: itulah perannya menurut desain (Step 3 `06` §1). Penulisan tetap milik
+// read-only di txRead chunk: itulah perannya menurut desain (`07-payroll-engine.md` §1). Penulisan tetap milik
 // modul pemilik tabel.
 // ---------------------------------------------------------------- periode & run
 // [1b] FOR UPDATE: pembuatan periode baru menyerialkan diri terhadap penulis input (D1).
@@ -2720,7 +2720,7 @@ WHERE id = $1 AND status IN ('DRAFT', 'CALCULATED', 'FAILED')
 RETURNING calc_version
 `
 
-// [3] guard status: hanya DRAFT/CALCULATED/FAILED → CALCULATING (CALCULATING ditolak, Step 3 `08`).
+// [3] guard status: hanya DRAFT/CALCULATED/FAILED → CALCULATING (CALCULATING ditolak, `09-failure-scenarios.md`).
 // calc_started_at = clock_timestamp() SAMBIL memegang periode FOR UPDATE (batas bawah stale O12).
 func (q *Queries) StartCalculation(ctx context.Context, id uuid.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, startCalculation, id)

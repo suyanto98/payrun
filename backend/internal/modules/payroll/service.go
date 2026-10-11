@@ -45,7 +45,7 @@ func NewService(pool *pgxpool.Pool, c clock.Clock, ids idgen.Generator, members 
 	return &Service{pool: pool, clock: c, ids: ids, members: members}
 }
 
-// Memberships: role dibaca ulang dari DB untuk pembacaan hasil payroll (Y6/Y7, Step 12 R2-6: operasi
+// Memberships: role dibaca ulang dari DB untuk pembacaan hasil payroll (Y6/Y7, final review R2-6: operasi
 // sensitif, role di token bisa basi ≤ 15 menit). Diimplementasikan modul iam (ADR-001).
 type Memberships interface {
 	ActiveRolesTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) ([]string, error)
@@ -165,7 +165,7 @@ func parsePeriod(s string) (int, int, error) {
 }
 
 // cutoffAt: tanggal cutoff_day_of_next_month bulan berikutnya, jam cutoff_time_local, zona tenant →
-// UTC. Dibekukan di payroll_periods saat periode dibuat (determinisme, Step 3 `06` §4).
+// UTC. Dibekukan di payroll_periods saat periode dibuat (determinisme, `07-payroll-engine.md` §4).
 func cutoffAt(year, month int, tz string, day int16, hhmm string) (time.Time, error) {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
@@ -396,7 +396,7 @@ type ItemQuery struct {
 	Limit                        int32
 }
 
-// ListItems (Y6): item versi terkini. SETIAP request menulis audit payroll.bulk_read (Step 12 R2-6).
+// ListItems (Y6): item versi terkini. SETIAP request menulis audit payroll.bulk_read (final review R2-6).
 func (s *Service) ListItems(ctx context.Context, actor, runID uuid.UUID, iq ItemQuery, meta reqmeta.Meta) ([]Item, httpx.Page, error) {
 	page := httpx.Page{}
 	tid, _ := tenantctx.From(ctx)

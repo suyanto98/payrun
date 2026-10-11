@@ -12,7 +12,7 @@ import (
 )
 
 // constraintErrors memetakan nama constraint (atau unique index) → error domain.
-// Nama constraint eksplisit dan stabil adalah kontrak (konvensi Step 4; katalog error §4).
+// Nama constraint eksplisit dan stabil adalah kontrak (konvensi desain database; katalog error §4).
 // Constraint yang pelanggarannya berarti BUG (append-only, journal tidak seimbang) sengaja
 // TIDAK dipetakan: ia jatuh ke INTERNAL_ERROR dan harus berbunyi di log/alert.
 // Test TestDBErrorMapping_AllCatalogueConstraints memastikan setiap nama di sini benar-benar ada di DB.

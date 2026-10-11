@@ -57,7 +57,7 @@ WHERE employee_id = $1 AND valid_during && daterange($start, $end);
 
 **Perubahan** dilakukan dalam satu transaksi: tutup record lama (`valid_during = daterange(lower, $new_from)`) lalu INSERT record baru `[$new_from, NULL)`. Exclusion constraint memastikan tidak ada dua request paralel yang sama-sama berhasil membuat overlap.
 
-### Contoh prorata: kenaikan gaji 15 Maret (basis **hari kalender**; default engine = hari kerja, lihat Step 3 `06-payrun-payroll-engine.md` §6)
+### Contoh prorata: kenaikan gaji 15 Maret (basis **hari kalender**; default engine = hari kerja, lihat `07-payroll-engine.md` §6)
 
 ```text
 Record 1: Rp 6.000.000, [2026-01-01, 2026-03-15)

@@ -109,7 +109,7 @@ func TestRecompute_FromSnapshotMatchesStoredResults(t *testing.T) {
 // TestFinalizedRun_DirectUpdateRejected (PI-04): run FINALIZED dan semua isinya immutable — lewat API
 // (exclude, cancel, calculate, submit → 409) maupun SQL langsung sebagai payrun_app (trigger → P0001):
 // UPDATE run, UPDATE/DELETE/INSERT item, line, snapshot. Chunk zombie yang mencoba menulis item ke run
-// final juga ditolak trigger (Step 7 `22` §4.g).
+// final juga ditolak trigger (`22-tx-concurrency.md` §4.g).
 func TestFinalizedRun_DirectUpdateRejected(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())
 	f := e.newTenantFx(t, "alpha")

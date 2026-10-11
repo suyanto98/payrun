@@ -1,13 +1,13 @@
-# Step 10.3 — PayRun Roadmap (Sprint 0–10)
+# PayRun Roadmap (Sprint 0–10)
 
-> Kerangka mengikat: [`00-index.md`](00-index.md). Sprint 1 minggu, ± 14–16 jam. **PayRun dimulai setelah LedgerPay M4.**
+> Kerangka mengikat: `00-index.md`. Sprint 1 minggu, ± 14–16 jam. **PayRun dimulai setelah LedgerPay M4.**
 > Nama sprint mengikuti tema master prompt sebagai *fokus utama* (§2 index). Test, keamanan dasar, log, dan CI dikerjakan **sejak Sprint 1**, tidak ditunda ke sprint bertema.
 > Milestone: **M5** tenant isolation proven (akhir S2) · **M6** payroll correct & resumable (akhir S5) · **M7** PayRun selesai (akhir S10).
 
 
-## ⚠️ Amandemen Step 12 (otoritatif, menggantikan baris task yang bertentangan di bawah)
+## ⚠️ Amandemen final review (otoritatif, menggantikan baris task yang bertentangan di bawah)
 
-Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur ulang saat sprint planning.
+Sumber: `34-final-review.md` §3 dan §5. Jam per task diatur ulang saat sprint planning.
 
 | Sprint | Perubahan | Jam |
 |---|---|---:|
@@ -28,7 +28,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 ### 0.1 Dipakai ulang (menghemat ± 1,5 sprint)
 | Aset dari LedgerPay | Bentuk reuse | Penghematan |
 |---|---|---|
-| Platform skeleton (`config`, `db.WithTx`, `httpx`, `auth`, `observability`, `clock`, `idgen`) | Disalin lalu di-rename (Step 1 `03` §1.1) | Sprint 0 tidak perlu mendesain ulang fondasi |
+| Platform skeleton (`config`, `db.WithTx`, `httpx`, `auth`, `observability`, `clock`, `idgen`) | Disalin lalu di-rename (strategi produk §1.1) | Sprint 0 tidak perlu mendesain ulang fondasi |
 | Job runner (`jobs` table, claim `SKIP LOCKED`, lease/heartbeat, fencing `CompleteInTx`, `jobs.Permanent`, OnDead) | Disalin utuh + ditambah `tenant_id` dan trigger `jobs_enforce_tenant` (C-43) | Async payroll bisa masuk **S4**, sebelum sprint bertema "Background" |
 | Auth (argon2id + semaphore C-45, refresh rotation + reuse detection, CSRF header) | Disalin; ditambah `tid` claim, `X-Active-Tenant`, `auth_lookup_user` | ± 6 jam |
 | CI workflows, lint config, Redocly ruleset, trivy/gitleaks | Disalin; path dan nama image disesuaikan | ± 4 jam |
@@ -76,7 +76,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 ### Sprint 0 — Product + Architecture (port & persiapan)
 **Objective:** repo `payrun` berdiri di atas skeleton LedgerPay, dengan infra siap menampung database dan storage PayRun. Belum ada fitur domain.
 
-**Deliverables:** repo `payrun` (struktur `01-repository-structure.md`), skeleton ter-rename, CI hijau, `api/openapi.yaml` berisi skeleton endpoint P0 (tanpa body lengkap), migrasi role (`payrun_owner`, `payrun_app NOBYPASSRLS`, `payrun_readonly`, `payrun_backup BYPASSRLS SELECT-only`), MinIO di compose dev, `docs/` berisi dokumen Step 1–10 + ADR-P01…P09.
+**Deliverables:** repo `payrun` (struktur `32-repository-structure.md`), skeleton ter-rename, CI hijau, `api/openapi.yaml` berisi skeleton endpoint P0 (tanpa body lengkap), migrasi role (`payrun_owner`, `payrun_app NOBYPASSRLS`, `payrun_readonly`, `payrun_backup BYPASSRLS SELECT-only`), MinIO di compose dev, `docs/` berisi dokumen dokumen desain + ADR-P01…P09.
 
 | Task | Jam |
 |---|---|
@@ -113,7 +113,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 
 **Dependency:** S0.
 **DoD:** `rls_catalogue_test`, `rls_bypass_query_test`, `rls_no_context_returns_zero_rows`, `pool_leakage_after_commit`, `TestCatalogue_TenantFKsComposite` hijau; refresh reuse test (`refresh_reuse_revokes_family`) lolos di PayRun; login memakai semaphore C-45.
-**Risk:** RLS terlihat jalan padahal test berjalan sebagai superuser. *Mitigasi:* test terhubung sebagai `payrun_app` (Step 8 `02`); catalogue test memeriksa `relforcerowsecurity`.
+**Risk:** RLS terlihat jalan padahal test berjalan sebagai superuser. *Mitigasi:* test terhubung sebagai `payrun_app` (`25-testing-strategy.md`); catalogue test memeriksa `relforcerowsecurity`.
 **Demo-able:** signup dua tenant, login, switch tenant; query mentah tanpa filter hanya mengembalikan data tenant aktif.
 
 ---
@@ -135,7 +135,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 | **Total** | **16** |
 
 **Dependency:** S1.
-**DoD (M5):** Demo A Step 2 (`02-payrun.md` §8) jalan sebagai test otomatis: GET employee Beta dari Alpha → 404; manipulasi `tid` → 401; query tanpa filter → hanya Alpha; `authz_matrix` hijau; `cross_tenant_fk_rejected`; `TestEmployee_NikUniquePerTenant`.
+**DoD (M5):** Demo A desain fitur & arsitektur (`02-product-strategy.md` §8) jalan sebagai test otomatis: GET employee Beta dari Alpha → 404; manipulasi `tid` → 401; query tanpa filter → hanya Alpha; `authz_matrix` hijau; `cross_tenant_fk_rejected`; `TestEmployee_NikUniquePerTenant`.
 **Risk:** undangan memakan waktu lebih (UI accept + email-match). *Mitigasi:* di MVP link undangan ditampilkan di UI/log (PF-02), tanpa email.
 **Demo-able:** **Demo A** lengkap di depan layar (output test + response API).
 
@@ -156,8 +156,8 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 | **Total** | **16** |
 
 **Dependency:** S2 (employee). Engine sendiri tidak bergantung DB, jadi bisa dimulai di hari pertama sprint.
-**DoD:** golden ≥ 20 hijau; worked example Step 3 `06` §15 tepat; property test 10.000 iterasi; `TestEligibility_JoinerLeaverIncludedExactly`; engine tidak meng-import `platform/db` maupun `time.Now` (depguard).
-**Risk:** detail pajak/BPJS menyedot waktu (R4 Step 1). *Mitigasi:* ruleset contoh berlabel *simplified*; tidak ada riset regulasi di sprint ini.
+**DoD:** golden ≥ 20 hijau; worked example `07-payroll-engine.md` §15 tepat; property test 10.000 iterasi; `TestEligibility_JoinerLeaverIncludedExactly`; engine tidak meng-import `platform/db` maupun `time.Now` (depguard).
+**Risk:** detail pajak/BPJS menyedot waktu (R4 strategi produk). *Mitigasi:* ruleset contoh berlabel *simplified*; tidak ada riset regulasi di sprint ini.
 **Demo-able:** slip satu karyawan dari golden file, baris per baris dengan penjelasan.
 
 ---
@@ -180,7 +180,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 
 **Dependency:** S3 (engine, salary), job runner dari skeleton.
 **DoD:** `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`, `TestCalcChunk_LeaseStolen_FencedCommitRollsBack`, `TestCalcChunk_StaleCalcVersion_NoOp`, `TestCreateRun_ConcurrentSamePeriod_SingleRun`, `run_create_double_click_replays`, `TestRunTotals_EqualSumOfItems`, `owner_parallel_revoke_keeps_one`, `role_grant_rules_enforced`.
-**Risk:** split txRead/txWrite salah sehingga `40001` di chunk paralel. *Mitigasi:* ikuti Step 7 `00` §5 secara harfiah; test 4 worker paralel di CI.
+**Risk:** split txRead/txWrite salah sehingga `40001` di chunk paralel. *Mitigasi:* ikuti `21-tx-global-rules.md` §5 secara harfiah; test 4 worker paralel di CI.
 **Demo-able:** run 100 karyawan dengan progres chunk; kill worker (test subprocess) → resume tanpa duplikat.
 
 ---
@@ -202,7 +202,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 
 **Dependency:** S4.
 **DoD (M6):** golden 30 + recompute-from-snapshot hijau; Demo B (crash & resume + run ganda) lolos otomatis; `TestApproval_ApproveVsRejectRace_SingleDecision`, `TestSubmit_InputChangedAfterCalc_ReturnsRunStaleWithEmployees`, `TestApproval_SelfApprovalRejectedByDB`, `TestRunApprove_BySubmitter_Forbidden`, `TestSubmit_RunWithErrorItems_Rejected`, test D1 dan O3 hijau; matriks traceability PayRun untuk PI-03/04/05/06/11/12/13 terisi.
-**Risk:** argumen O12/D1 salah diimplementasikan (urutan lock). *Mitigasi:* test interleaving dengan hook `testhooks` (advisory lock) untuk setiap titik di Step 7 `02` race (c)(d).
+**Risk:** argumen O12/D1 salah diimplementasikan (urutan lock). *Mitigasi:* test interleaving dengan hook `testhooks` (advisory lock) untuk setiap titik di `22-tx-concurrency.md` race (c)(d).
 **Demo-able:** **Demo B** di UI; approve ditolak `RUN_STALE` setelah HR mengubah gaji.
 
 ---
@@ -239,7 +239,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 |---|---|
 | Adjustment: create/cancel, masuk run target sebagai line, `APPLIED` saat finalize (PI-15), membuat run target *stale* | 2,5 |
 | Payslip web (owner + admin ter-audit, PI-17) + job `payslip.render` batch 20, object key deterministik, MinIO presigned 5 menit (C-40) | 4,5 |
-| Metrik PayRun (katalog Step 8 `01` §3), tracing span chunk dengan link ke request calculate (`jobs.trace_parent`) | 2,5 |
+| Metrik PayRun (katalog `24-observability.md` §3), tracing span chunk dengan link ke request calculate (`jobs.trace_parent`) | 2,5 |
 | Dashboard "PayRun — Payroll Runs" dan "PayRun — Tenancy & Security" + alert (run failed, isolation violation, dead job) | 2,5 |
 | UI halaman slip gaji (self-service + admin) | 1,5 |
 | Demo C bagian 4–5 (adjustment April + recompute Maret identik) | 0,5 |
@@ -268,7 +268,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 
 **Dependency:** S7; repo `infra` dari LedgerPay.
 **DoD:** deploy dari `main` hijau dengan health gate; rollback ke SHA sebelumnya diuji; restore drill mingguan lulus (baris > 0); `TestBuild_DemoEndpointsAbsentWithoutDemoMode`; `csv_export_escapes_formula`; import 50.000 baris lolos di integration.
-**Risk:** memori VM 8 GB saat dua project + obs hidup. *Mitigasi:* anggaran memori Step 9 `01`; matikan Loki/Jaeger di luar demo.
+**Risk:** memori VM 8 GB saat dua project + obs hidup. *Mitigasi:* anggaran memori `27-docker-compose.md`; matikan Loki/Jaeger di luar demo.
 **Demo-able:** Demo B live di VM publik lewat demo toolbar (worker crash di karyawan ke-37, chunk 4).
 
 ---
@@ -276,7 +276,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 ### Sprint 9 — Performance
 **Objective:** baseline performa PayRun tercatat jujur, eksperimen O12 diputuskan, dan bottleneck yang terbukti diperbaiki.
 
-**Deliverables:** laporan load test (template Step 8 `03` §8), hasil E-2 + keputusan, PF-23.
+**Deliverables:** laporan load test (template `26-performance-plan.md` §8), hasil E-2 + keputusan, PF-23.
 
 | Task | Jam |
 |---|---|
@@ -298,7 +298,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 ### Sprint 10 — Documentation + Demo → **M7**
 **Objective:** PayRun siap dibedah interviewer: dokumentasi lengkap, demo terlatih, DoD terpenuhi.
 
-**Deliverables:** README (struktur Step 11), ADR final + amandemen, demo script PayRun A–C, video demo, UI polish, audit DoD, `make demo-verify` hijau nightly.
+**Deliverables:** README (struktur demo script), ADR final + amandemen, demo script PayRun A–C, video demo, UI polish, audit DoD, `make demo-verify` hijau nightly.
 
 | Task | Jam |
 |---|---|
@@ -306,8 +306,8 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 | Finalisasi ADR & dokumen `docs/` (sinkron dengan implementasi; tandai yang berubah) | 2 |
 | Demo script A–C + rehearsal ≥ 3× + rekam video | 3 |
 | UI polish (empty state, error dari `code` RFC 9457, responsif) | 3 |
-| Audit DoD project (`04-definition-of-done.md`) + `TestTraceability_DocsReferenceExistingTests` hijau | 2 |
-| Interview pass: jawab pertanyaan Step 11 dengan menunjuk kode/test | 1,5 |
+| Audit DoD project (`31-definition-of-done.md`) + `TestTraceability_DocsReferenceExistingTests` hijau | 2 |
+| Interview pass: jawab pertanyaan demo script dengan menunjuk kode/test | 1,5 |
 | **Total** | **15,5** |
 
 **Dependency:** S9.
@@ -344,7 +344,7 @@ Sumber: Step 12 `01-final-technical-review.md` §3 dan §5. Jam per task diatur 
 | PF-25 Export file transfer bank | P2 | Murah, tetapi tidak menambah sinyal baru (encoder CSV sudah dibuktikan di import) |
 | PF-26 Leave accrual terjadwal | P2 | Pola scheduler sudah dibuktikan di LedgerPay (recon) |
 | PF-27 Fairness per tenant | P2 | Dibahas lewat hasil PR-2; diimplementasikan hanya jika noisy neighbor terbukti |
-| PF-28 Break-glass support | P2 | Desain sudah ada (Step 6); implementasi butuh UI + approval tambahan |
+| PF-28 Break-glass support | P2 | Desain sudah ada (threat model); implementasi butuh UI + approval tambahan |
 | PF-29 Rate limiting PayRun | P2 | Middleware ikut skeleton jika LedgerPay sudah membangun LF-20; kalau belum, tetap P2 |
 | PF-30 Notifikasi email | P3 | Hanya consumer job tambahan |
 | PF-31 Laporan | P3 | Read model eventual; tidak memperdalam inti |
@@ -376,8 +376,8 @@ Sprint buffer cadangan (§1 index) dipakai **sebelum** memotong item 4 ke bawah.
 
 - [ ] Tulis invariant checker dan test concurrency **sebelum** handler HTTP, bukan sesudah.
 - [ ] Setiap migrasi tabel tenant baru memuat policy RLS + `FORCE` di file yang sama (catalogue test menolak jika tidak).
-- [ ] Hindari ORM-style helper yang menyembunyikan `FOR UPDATE`/`FOR SHARE`; urutan lock ditulis eksplisit dan sesuai Step 7 §2.
-- [ ] Error code baru masuk katalog Step 5 lebih dulu, lalu dipakai di handler (meta test `TestDBErrorMapping_AllCatalogueConstraints`).
+- [ ] Hindari ORM-style helper yang menyembunyikan `FOR UPDATE`/`FOR SHARE`; urutan lock ditulis eksplisit dan sesuai desain transaksi & concurrency §2.
+- [ ] Error code baru masuk katalog kontrak API lebih dulu, lalu dipakai di handler (meta test `TestDBErrorMapping_AllCatalogueConstraints`).
 - [ ] Demo dirancang sebagai test (`make demo-verify`) sejak sprint fitur itu dibuat, bukan di sprint dokumentasi.
 - [ ] ADR yang berubah saat coding langsung diberi amandemen di sprint yang sama.
 - [ ] Ukur dulu (pprof, `pg_stat_statements`), baru optimasi.

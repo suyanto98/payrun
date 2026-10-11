@@ -1,6 +1,6 @@
-# Step 10.4 — Definition of Done
+# Definition of Done
 
-> Bagian dari [Step 10](00-index.md). Milestone (M1–M7) mengikuti `00-index.md` §3.
+> Bagian dari roadmap. Milestone (M1–M7) mengikuti `00-index.md` §3.
 > Dasar dari master prompt Phase 16: project baru dianggap selesai jika **core feature works, validation works, authorization works, tests pass, database migration works, Docker works, CI passes, logging exists, health check exists, critical failure scenario tested, README complete, demo scenario works**. Dokumen ini menurunkan daftar itu menjadi item yang **bisa diverifikasi**, lalu menambahkan requirement lain yang relevan untuk sistem keuangan dan multi-tenant.
 
 **Prinsip:** setiap item DoD harus punya **bukti** yang bisa ditunjuk, berupa test hijau, output CI, URL, file, atau metrik. Item yang hanya bisa dijawab "sudah, percayalah" belum selesai.
@@ -17,7 +17,7 @@ Kolom **Milestone** menunjukkan kapan item itu wajib:
 ### 1.1 Product
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| P1 | Semua fitur **P0** di feature matrix (Step 2 `01`/`03`) berfungsi end-to-end | Checklist LF/PF di README + E2E hijau | M3 (LedgerPay P0) · M7 |
+| P1 | Semua fitur **P0** di feature matrix (desain fitur & arsitektur/`03`) berfungsi end-to-end | Checklist LF/PF di README + E2E hijau | M3 (LedgerPay P0) · M7 |
 | P2 | Semua fitur **P1** selesai | Checklist LF/PF | M4 · M7 |
 | P3 | Fitur **P2/P3** yang tidak dikerjakan **didaftar eksplisit** di README ("Sengaja belum dibangun") beserta alasannya | Bagian README | M4 · M7 |
 | P4 | Tidak ada fitur di luar matrix tanpa ADR/catatan scope | Review diff vs matrix | M4 · M7 |
@@ -25,33 +25,33 @@ Kolom **Milestone** menunjukkan kapan item itu wajib:
 ### 1.2 Correctness
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| C1 | Setiap invariant **LI-01…LI-15** / **PI-01…PI-19** punya minimal satu test yang lulus | Matriks traceability Step 8 `02` §5 | M3 (LI P0) · M4 · M7 |
+| C1 | Setiap invariant **LI-01…LI-15** / **PI-01…PI-19** punya minimal satu test yang lulus | Matriks traceability `25-testing-strategy.md` §5 | M3 (LI P0) · M4 · M7 |
 | C2 | Invariant checker berjalan di `t.Cleanup` setiap test integration/concurrency/chaos | Kode test helper | M3 · M7 |
 | C3 | Metrik INVARIANT (`ledgerpay_ledger_unbalanced_journals`, `ledgerpay_ledger_balance_drift_accounts`, `payrun_tenant_isolation_violations_total`, `payrun_payroll_total_mismatch_runs`, dll.) **= 0 selama 7 hari berturut-turut** di environment demo | Panel Grafana + screenshot | M4 · M7 |
-| C4 | Golden test payroll engine (≥ 30 kasus, Step 3 `06`) lulus | CI | M6 |
+| C4 | Golden test payroll engine (≥ 30 kasus, `07-payroll-engine.md`) lulus | CI | M6 |
 | C5 | Property test (journal seimbang, konservasi saldo, `net == Σ lines`, recompute-from-snapshot identik) lulus di nightly 1 juta iterasi | Log nightly | M4 · M7 |
 
 ### 1.3 Validation
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
 | V1 | Semua request divalidasi sesuai kontrak (decoder strict, `DisallowUnknownFields`, batas body) | Contract test + `mass_assignment_unknown_field_400` | M3 · M7 |
-| V2 | Semua error memakai code dari katalog (Step 5 `01`); tidak ada error tak terpetakan selain `500 INTERNAL_ERROR` | `TestDBErrorMapping_AllCatalogueConstraints` + contract test | M3 · M7 |
+| V2 | Semua error memakai code dari katalog (`15-api-error-catalogue.md`); tidak ada error tak terpetakan selain `500 INTERNAL_ERROR` | `TestDBErrorMapping_AllCatalogueConstraints` + contract test | M3 · M7 |
 | V3 | Uang selalu string di JSON | `TestContract_MoneyIsString` | M3 · M7 |
 
 ### 1.4 Authorization
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
 | A1 | LedgerPay: suite BOLA mencakup **setiap** resource (wallet, transfer, top-up, payout, payment intent, refund, ops) | `bola_*` hijau | M3 |
-| A2 | PayRun: **authz matrix** (Step 5 `05`) mencakup 100% endpoint; endpoint tanpa baris matriks membuat CI gagal | `authz_matrix` hijau | M5 · M7 |
+| A2 | PayRun: **authz matrix** (`17-api-authorization-matrix.md`) mencakup 100% endpoint; endpoint tanpa baris matriks membuat CI gagal | `authz_matrix` hijau | M5 · M7 |
 | A3 | PayRun: cross-tenant suite (Alpha ↔ Beta) untuk setiap endpoint tenant-scoped + RLS bypass test + pool leakage test | Suite isolasi | M5 |
 | A4 | Ops endpoint LedgerPay hanya untuk role `OPS`; setiap aksi ops ter-audit dengan alasan | `ops_*` hijau | M4 |
 
 ### 1.5 Security
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| S1 | Semua kontrol berstatus **MVP** di Step 6 (C-01…C-46) terimplementasi, dan test-nya (Step 6 `04` §4) hijau | Checklist kontrol → test | M3 (kontrol LedgerPay P0) · M4 · M7 |
+| S1 | Semua kontrol berstatus **MVP** di threat model (C-01…C-46) terimplementasi, dan test-nya (`20-security-controls.md` §4) hijau | Checklist kontrol → test | M3 (kontrol LedgerPay P0) · M4 · M7 |
 | S2 | CI scan bersih dari temuan **HIGH/CRITICAL yang bisa diperbaiki** (govulncheck, osv-scanner, trivy image) | Job CI | M3 · M7 |
-| S3 | `gitleaks` atas **seluruh history** git bersih; tidak ada secret di repo (secret V1 di GitHub environment secrets; Step 12: R4-7) | Output gitleaks `--log-opts=--all` | M3 · M7 |
+| S3 | `gitleaks` atas **seluruh history** git bersih; tidak ada secret di repo (secret V1 di GitHub environment secrets; final review R4-7) | Output gitleaks `--log-opts=--all` | M3 · M7 |
 | S4 | Security header (C-10) hadir di semua respons | `headers_*_present` + E2E | M3 · M7 |
 | S5 | Endpoint demo dan admin mock tidak ada di image release | `TestBuild_DemoEndpointsAbsentWithoutDemoMode` | M3 |
 | S6 | SSRF egress guard (C-44) aktif dan teruji | `webhook_egress_*` | M4 |
@@ -67,10 +67,10 @@ Kolom **Milestone** menunjukkan kapan item itu wajib:
 ### 1.7 Failure handling & concurrency
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| F1 | Test FS-01…FS-10 (LedgerPay) hijau | Matriks Step 8 `02` §5.3 | M3 (FS-01, 02, 04, 05, 08) · M4 (semua) |
+| F1 | Test FS-01…FS-10 (LedgerPay) hijau | Matriks `25-testing-strategy.md` §5.3 | M3 (FS-01, 02, 04, 05, 08) · M4 (semua) |
 | F2 | Test PFS-01…PFS-10 (PayRun) hijau | Idem | M6 (PFS-01, 02, 06) · M7 (semua) |
 | F3 | Chaos suite (kill worker, toxiproxy untuk FS-03/PFS-04) lulus di nightly | Log nightly | M4 · M7 |
-| F4 | Semua race test Step 7 (`01` §7, `02` §7) hijau dengan `-race` | CI | M3 (race LedgerPay inti) · M4 · M7 |
+| F4 | Semua race test desain transaksi & concurrency (`01` §7, `02` §7) hijau dengan `-race` | CI | M3 (race LedgerPay inti) · M4 · M7 |
 
 ### 1.8 Testing
 | # | Item | Bukti | Milestone |
@@ -84,45 +84,45 @@ Kolom **Milestone** menunjukkan kapan item itu wajib:
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
 | O1 | Log JSON terstruktur dengan `request_id`, `correlation_id`, `trace_id`; redaction teruji | `log_redaction_*` + contoh log di README | M1 · M7 |
-| O2 | Subset katalog metrik (Step 8 `01` §3) live: HTTP, DB pool, job, invariant, dan metrik bisnis inti | `/metrics` + Prometheus target UP | M3 (dasar) · M4 · M7 |
+| O2 | Subset katalog metrik (`24-observability.md` §3) live: HTTP, DB pool, job, invariant, dan metrik bisnis inti | `/metrics` + Prometheus target UP | M3 (dasar) · M4 · M7 |
 | O3 | Dashboard Grafana di-provision dari file di repo | Folder dashboards + screenshot | M4 · M7 |
-| O4 | Aturan alert terdefinisi dan dimuat di Prometheus (minimal yang ada di Step 8 `01` §7) | `rules/*.yml` + `promtool check rules` di CI | M4 · M7 |
+| O4 | Aturan alert terdefinisi dan dimuat di Prometheus (minimal yang ada di `24-observability.md` §7) | `rules/*.yml` + `promtool check rules` di CI | M4 · M7 |
 | O5 | Trace tersambung api → job → provider/merchant (span link via `jobs.trace_parent`) | Screenshot Jaeger Demo C / PFS-01 | M4 · M7 |
 
 ### 1.10 Operations
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| OP1 | `/healthz` dan `/readyz` sesuai Step 8 `01` §2 (readiness: versi DB ≥ versi minimum binary) | Test + curl | M1 |
+| OP1 | `/healthz` dan `/readyz` sesuai `24-observability.md` §2 (readiness: versi DB ≥ versi minimum binary) | Test + curl | M1 |
 | OP2 | Docker image release + Compose bisa menjalankan seluruh sistem dari clone bersih (`make up`) | Langkah README diuji di mesin bersih | M1 · M5 |
 | OP3 | M3: deploy ter-script yang bisa diulang ke VM publik. M4: deploy lewat CI dengan health gate + **rollback otomatis pernah diuji minimal sekali** (deploy SHA rusak secara sengaja) | Skrip deploy / log workflow | M3 (deploy ter-script) · M4 (CD + rollback teruji) |
-| OP4 | Runbook untuk alert teratas (Step 8 `01` §8) + operasional (Step 9 `03` §8) tersedia | `docs/runbooks/` | M4 · M7 |
+| OP4 | Runbook untuk alert teratas (`24-observability.md` §8) + operasional (`29-deploy-migrations-backup.md` §8) tersedia | `docs/runbooks/` | M4 · M7 |
 | OP5 | RPO/RTO V1 terdokumentasi secara jujur (24 jam / 2 jam) | README "Limitations" | M4 · M7 |
-| OP6 | Kill switch env (Step 9 `03`) berfungsi | Test manual tercatat | M4 · M7 |
+| OP6 | Kill switch env (`29-deploy-migrations-backup.md`) berfungsi | Test manual tercatat | M4 · M7 |
 
 ### 1.11 Performance
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| PF1 | Laporan baseline load test dipublikasikan dengan **spesifikasi environment** (VM, versi, git SHA) dan wording jujur (Step 8 `03` §8) | `docs/performance.md` | M4 · M7 |
+| PF1 | Laporan baseline load test dipublikasikan dengan **spesifikasi environment** (VM, versi, git SHA) dan wording jujur (`26-performance-plan.md` §8) | `docs/performance.md` | M4 · M7 |
 | PF2 | Keputusan eksperimen E-1 (hot merchant) / E-2 (approve stale) **dicatat** beserta datanya | ADR baru / catatan di laporan | M4 (E-1) · M7 (E-2) |
 | PF3 | CI perf smoke nightly berjalan | Log nightly | M4 · M7 |
 
 ### 1.12 Documentation
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| DC1 | README lengkap sesuai struktur Step 11 (problem, arsitektur, demo, keputusan, cara menjalankan, limitations) | README | M3 (versi ringkas) · M4 · M7 |
+| DC1 | README lengkap sesuai struktur demo script (problem, arsitektur, demo, keputusan, cara menjalankan, limitations) | README | M3 (versi ringkas) · M4 · M7 |
 | DC2 | ADR mutakhir: setiap perubahan perilaku dari desain punya ADR baru/amandemen | `docs/adr/` | M4 · M7 |
 | DC3 | Diagram arsitektur (context + container) mutakhir | `docs/architecture.md` | M3 · M7 |
 | DC4 | API docs dari `api/openapi.yaml` (Redocly/Swagger UI, statis) | URL / file | M4 · M7 |
-| DC5 | Demo script (Step 11) | `docs/demo-script.md` | M3 · M7 |
+| DC5 | Demo script (demo script) | `docs/demo-script.md` | M3 · M7 |
 | DC6 | Bagian **"Limitations & what I'd do next"** yang jujur (single VM, simplified tax, tanpa MFA, dll.) | README | M3 · M7 |
 
 ### 1.13 Demo
 | # | Item | Bukti | Milestone |
 |---|---|---|---|
-| DM1 | `make demo-verify` hijau di nightly: **3 malam berturut-turut untuk M3**, **7 malam untuk M4/M7** (Step 12: R4-3) | Riwayat nightly | M3 (Demo A–C) · M4 (A–D) · M7 (A–C PayRun) |
+| DM1 | `make demo-verify` hijau di nightly: **3 malam berturut-turut untuk M3**, **7 malam untuk M4/M7** (final review R4-3) | Riwayat nightly | M3 (Demo A–C) · M4 (A–D) · M7 (A–C PayRun) |
 | DM2 | Video demo (5–10 menit, idealnya ≤ 8) direkam dan ditautkan di README | URL video | M3 · M7 |
 | DM3 | URL publik bisa diakses; data demo ter-reset ke kondisi awal | Cek manual | M3 · M7 |
-| DM4 | Token demo (`DEMO_TOKEN`) dan admin mock aman (tidak di README, dirotasi setelah dibagikan) | GitHub environment secret + catatan rotasi (Step 12: R4-7) | M3 · M7 |
+| DM4 | Token demo (`DEMO_TOKEN`) dan admin mock aman (tidak di README, dirotasi setelah dibagikan) | GitHub environment secret + catatan rotasi (final review R4-7) | M3 · M7 |
 
 ### 1.14 Hygiene
 | # | Item | Bukti | Milestone |
@@ -130,7 +130,7 @@ Kolom **Milestone** menunjukkan kapan item itu wajib:
 | H1 | Lisensi (contoh: MIT) | `LICENSE` | M3 · M7 |
 | H2 | Tidak ada `TODO`/`FIXME` di jalur kritis (ledger, idempotency, payout, tenancy, payroll run) tanpa nomor issue | `grep` di CI | M4 · M7 |
 | H3 | Dependency dan base image di-pin; Dependabot aktif | `go.sum`, digest, config | M3 · M7 |
-| H4 | Tidak ada kode, skema, atau penamaan dari pekerjaan kantor | Review diri + Step 1 `03` §4 | M3 · M7 |
+| H4 | Tidak ada kode, skema, atau penamaan dari pekerjaan kantor | Review diri + strategi produk §4 | M3 · M7 |
 | H5 | Conventional commits; riwayat git bisa dibaca (bukan "fix", "wip" beruntun di `main`) | Riwayat git | M3 · M7 |
 
 ---
@@ -151,7 +151,7 @@ Cukup untuk mulai melamar. Semua item harus ✅:
 - [ ] Video demo 5–10 menit
 - [ ] `make demo-verify` hijau 7 malam berturut-turut
 
-**Boleh belum ada di M3:** Demo D (recon), refund, webhook keluar, ops console lengkap, load test, tracing, backup + restore drill (D3/C-21 → M4; Step 12: R4-4), sops (ditunda), alert lengkap. Semuanya masuk sisa Sprint 8–10.
+**Boleh belum ada di M3:** Demo D (recon), refund, webhook keluar, ops console lengkap, load test, tracing, backup + restore drill (D3/C-21 → M4; final review R4-4), sops (ditunda), alert lengkap. Semuanya masuk sisa Sprint 8–10.
 
 ---
 
@@ -159,12 +159,12 @@ Cukup untuk mulai melamar. Semua item harus ✅:
 
 Sebuah fitur selesai jika:
 
-1. **Spec**: bagian feature spec (Step 2) dan dokumen terkait diperbarui kalau perilakunya berbeda dari desain.
+1. **Spec**: bagian feature spec (desain fitur & arsitektur) dan dokumen terkait diperbarui kalau perilakunya berbeda dari desain.
 2. **Kontrak**: `api/openapi.yaml` diperbarui; generated code mutakhir; contract test hijau.
 3. **Validasi & error**: validasi input lengkap; semua error memakai code dari katalog; constraint baru dipetakan di `platform/db`.
 4. **Authorization**: policy di service layer, query di-scope ke principal/tenant; test BOLA/authz matrix/cross-tenant ditambahkan.
 5. **Idempotency**: endpoint yang mengubah uang/state penting mewajibkan `Idempotency-Key`; test replay + payload berbeda.
-6. **Transaksi**: boundary, lock order, dan isolation sesuai Step 7; tanpa panggilan jaringan di dalam transaksi.
+6. **Transaksi**: boundary, lock order, dan isolation sesuai desain transaksi & concurrency; tanpa panggilan jaringan di dalam transaksi.
 7. **Migrasi**: expand-only (contract di deploy terpisah); PayRun: tabel baru langsung RLS + FORCE + policy.
 8. **Test**: unit (domain) + integration (Postgres sungguhan, role app) + race test jika ada konkurensi; invariant checker lulus.
 9. **Observability**: log event dengan nama stabil; metrik ditambahkan ke katalog jika relevan; tidak ada PII di log.
@@ -207,7 +207,7 @@ Sebuah fitur selesai jika:
 - [ ] Error memakai code katalog; constraint baru dipetakan
 - [ ] Authorization: policy + test (BOLA / authz matrix / cross-tenant)
 - [ ] Idempotency (jika mengubah uang/state penting)
-- [ ] Transaksi sesuai Step 7 (lock order, tanpa network di dalam tx)
+- [ ] Transaksi sesuai desain transaksi & concurrency (lock order, tanpa network di dalam tx)
 - [ ] Migrasi expand-only; PayRun: RLS + FORCE + policy untuk tabel baru
 - [ ] Unit + integration test; race test jika konkuren; invariant checker lulus
 - [ ] Log/metrik ditambahkan; tidak ada PII/secret di log
@@ -215,7 +215,7 @@ Sebuah fitur selesai jika:
 - [ ] Screenshot/log bukti (untuk perubahan UI atau perilaku demo)
 ```
 
-> Karena proyek solo, branch protection memakai "conversation resolution" dan checklist ini (Step 9 `02`). Checklist berfungsi sebagai review diri yang eksplisit.
+> Karena proyek solo, branch protection memakai "conversation resolution" dan checklist ini (`28-cicd.md`). Checklist berfungsi sebagai review diri yang eksplisit.
 
 ---
 
@@ -232,8 +232,8 @@ Sebuah fitur selesai jika:
 | R7 | Terminal siap dengan script curl/k6 per demo; font besar | Latihan |
 | R8 | **Video cadangan** siap diputar offline | File lokal |
 | R9 | **Fallback jika VM mati:** `make up demo` lokal sudah di-pull dan teruji di laptop | Uji H-1 |
-| R10 | Penjelasan "limitations" siap diucapkan (single VM, simplified tax, tanpa MFA) | Demo script Step 11 |
-| R11 | **Freeze policy (Step 12: R4-12):** tidak ada deploy atau migrasi dalam 24 jam sebelum interview; data demo di-reset H-1 dan diverifikasi | Riwayat deploy + checklist H-1 |
+| R10 | Penjelasan "limitations" siap diucapkan (single VM, simplified tax, tanpa MFA) | Demo script demo script |
+| R11 | **Freeze policy (final review R4-12):** tidak ada deploy atau migrasi dalam 24 jam sebelum interview; data demo di-reset H-1 dan diverifikasi | Riwayat deploy + checklist H-1 |
 | R12 | Jaeger/Loki (`obs-full`) dinyalakan **hanya** jika demo memerlukan trace/log terpusat; cek memori VM setelahnya | `docker stats` |
 
 ---
@@ -245,11 +245,11 @@ Sebuah fitur selesai jika:
 | Test ada, tetapi di-`Skip` atau hanya jalan di laptop | Test yang tidak berjalan di CI tidak membuktikan apa-apa |
 | Demo jalan di lokal, tetapi URL publik error atau datanya kotor | Interviewer melihat URL publik, bukan laptop Anda |
 | Metrik ada, tetapi tidak ada alert dan dashboard | Tidak ada yang tahu ketika sistem rusak |
-| README menyebut "handles 1,000 RPS" tanpa spesifikasi environment | Klaim tanpa konteks = merah di mata interviewer senior (Step 8 `03` §8) |
+| README menyebut "handles 1,000 RPS" tanpa spesifikasi environment | Klaim tanpa konteks = merah di mata interviewer senior (`26-performance-plan.md` §8) |
 | Fitur berfungsi, tetapi tanpa authz test | BOLA adalah bug yang paling sering ditanyakan, dan paling mudah ditemukan |
 | Idempotency "sudah ada", tetapi key disimpan di luar transaksi efek | Melanggar ADR-L02; replay bisa menghasilkan efek ganda |
 | Migrasi jalan dari nol, tetapi belum pernah diuji sebagai upgrade | Deploy kedua yang akan gagal |
 | Backup berjalan, tetapi restore belum pernah dicoba | Backup yang belum pernah di-restore belum terbukti bisa dipakai |
 | Payroll menghasilkan angka, tetapi tanpa golden test | Tidak ada yang tahu apakah angkanya benar |
-| CI hijau karena test flaky di-retry sampai lulus | Melanggar kebijakan flaky (Step 8 `02` §7) |
+| CI hijau karena test flaky di-retry sampai lulus | Melanggar kebijakan flaky (`25-testing-strategy.md` §7) |
 | Dokumen desain tidak lagi cocok dengan kode | Interviewer membaca keduanya; inkonsistensi menurunkan kepercayaan |

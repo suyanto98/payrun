@@ -1,6 +1,6 @@
-# Step 9.1 — Docker & Docker Compose
+# Docker & Docker Compose
 
-> Bagian dari [Step 9](00-index.md). Topologi, keputusan satu VM / satu Postgres / tiga database, dan guard demo (O15) mengikuti `00-index.md`.
+> Bagian dari desain DevOps. Topologi, keputusan satu VM / satu Postgres / tiga database, dan guard demo (O15) mengikuti `00-index.md`.
 > Kontrol yang diwujudkan di sini: C-10 (security headers), C-20 (TLS, jaringan internal, DB tidak dipublish), C-28 (hardening container), C-45 (memori login → batas memori service), dan O21 (port internal, profile `obs`, `stop_grace_period`, role seed perf).
 > Potongan Dockerfile, Compose, dan Caddyfile di bawah adalah **kerangka desain** yang representatif, bukan file final. File final ditulis saat coding dengan dokumen ini sebagai acuan.
 
@@ -17,7 +17,7 @@
 | `ghcr.io/<owner>/mock-provider` | Binary Go mock PG + bank (+ halaman checkout server-rendered) | `mock-provider`, `mock-migrate` | — (selalu "demo" secara sifat; tidak pernah dipakai di production nyata) |
 | `ghcr.io/<owner>/edge` | **Caddy + aset SPA kedua project** (hasil `vite build`) | `caddy` | — |
 
-Tag: `<git-sha>` (immutable, dipakai deploy) + `main` (bergerak, untuk kenyamanan lokal). Image `demo` diberi suffix tag `-demo` (`<sha>-demo`). Lihat §9 dan Step 9 `02`.
+Tag: `<git-sha>` (immutable, dipakai deploy) + `main` (bergerak, untuk kenyamanan lokal). Image `demo` diberi suffix tag `-demo` (`<sha>-demo`). Lihat §9 dan `28-cicd.md`.
 
 ### 1.2 Keputusan: SPA disajikan langsung oleh Caddy
 
@@ -27,7 +27,7 @@ Tag: `<git-sha>` (immutable, dipakai deploy) + `main` (bergerak, untuk kenyamana
 | Volume statis bersama, diisi saat deploy | Tanpa container tambahan | Langkah deploy tambahan (copy ke volume); versi aset dan versi image terpisah, rawan tidak sinkron |
 | **Image `edge` = Caddy + aset SPA dibangun di image yang sama** | Satu sumber untuk TLS, header (C-10), routing, dan aset statis; aset dan konfigurasi selalu satu versi (satu tag SHA); tanpa container tambahan | Mengubah SPA berarti me-rebuild image `edge` (murah; build multi-stage ber-cache) |
 
-**Dipilih:** image `edge`. Security header SPA hanya didefinisikan di satu tempat. Rollback SPA sama dengan rollback image `edge` ke SHA sebelumnya. Karena image `edge` memuat aset dari dua repo, image ini dibangun di repo `infra` (Step 9 `02`), yang mengambil artefak `web-dist` dari CI masing-masing repo project.
+**Dipilih:** image `edge`. Security header SPA hanya didefinisikan di satu tempat. Rollback SPA sama dengan rollback image `edge` ke SHA sebelumnya. Karena image `edge` memuat aset dari dua repo, image ini dibangun di repo `infra` (`28-cicd.md`), yang mengambil artefak `web-dist` dari CI masing-masing repo project.
 
 ### 1.3 Dockerfile service Go (kerangka)
 
@@ -101,7 +101,7 @@ Caddy berjalan sebagai user non-root dengan capability `NET_BIND_SERVICE` saja (
 |---|---|---|
 | `compose.yml` | Base: `caddy`, `postgres`, `minio` (+ `minio-init`), `ledgerpay-{migrate,api,worker}`, `payrun-{migrate,api,worker}`, `mock-provider` (+ `mock-migrate`), network, volume, hardening, logging | Semua environment |
 | `compose.dev.yml` | Build dari source + hot reload (`air`), port dipublish **hanya ke `127.0.0.1`** (api 8081/8082, Postgres 5432, MinIO console), Caddy dengan TLS internal (`tls internal`) untuk `*.localhost` | Laptop |
-| `compose.obs.yml` | Profile `obs` (**V1**): `prometheus`, `grafana`, `node_exporter`. Profile opsional **`obs-full`**: + `loki`, `promtail`, `jaeger`, `alertmanager` (dinyalakan saat demo tracing/log saja). Rule alert tetap dievaluasi Prometheus dan dicek `promtool` di CI (Step 12: R4-6) | Laptop (opsional), VM demo, VM perf |
+| `compose.obs.yml` | Profile `obs` (**V1**): `prometheus`, `grafana`, `node_exporter`. Profile opsional **`obs-full`**: + `loki`, `promtail`, `jaeger`, `alertmanager` (dinyalakan saat demo tracing/log saja). Rule alert tetap dievaluasi Prometheus dan dicek `promtool` di CI (final review R4-6) | Laptop (opsional), VM demo, VM perf |
 | `compose.demo.yml` | Image tag `<sha>-demo`, `DEMO_MODE=true`, `DEMO_TOKEN`, `JOB_LEASE_TTL=10s`, `MOCK_ADMIN_ENABLED=true` (admin mock tetap hanya di jaringan `internal`) | VM demo publik, CI E2E, `make demo` |
 | `compose.perf.yml` | Profile `perf`: service `seed` (role `payrun_seed` / superuser seed LedgerPay), `k6` runner, `pg_stat_statements` + `auto_explain` aktif, tanpa `DEMO_MODE` | VM perf efemeral |
 
@@ -115,7 +115,7 @@ Caddy berjalan sebagai user non-root dengan capability `NET_BIND_SERVICE` saja (
 | VM demo publik | `-f compose.yml -f compose.demo.yml -f compose.obs.yml --profile obs up -d` (tambah `--profile obs-full` hanya saat demo tracing/log) |
 | VM perf | `-f compose.yml -f compose.obs.yml -f compose.perf.yml --profile obs --profile perf up -d` |
 
-`--wait` (Compose v2) menunggu semua healthcheck hijau. Dipakai CI dan deploy sebagai bagian dari health gate (Step 9 `02`).
+`--wait` (Compose v2) menunggu semua healthcheck hijau. Dipakai CI dan deploy sebagai bagian dari health gate (`28-cicd.md`).
 
 ---
 
@@ -146,10 +146,10 @@ Caddy berjalan sebagai user non-root dengan capability `NET_BIND_SERVICE` saja (
 
 Catatan:
 - **Hanya `caddy` yang mempublish port ke host.** Postgres, MinIO, port internal `9090`, Grafana, dan Jaeger tidak dipublish (C-20, C-30). Akses ke Grafana/Jaeger di VM: SSH tunnel (default) atau `grafana.<domain>` dengan login + basic auth Caddy (opsional).
-- **Port 8080** = port publik aplikasi (hanya `/api/v1/...`). **Port 9090** = port internal (`/healthz`, `/readyz`, `/metrics`, `/debug/pprof`), hanya di jaringan `internal`/`obs` (Step 8 `01` §2). Port 9090 milik container aplikasi tidak bentrok dengan Prometheus karena berbeda container.
-- `ledgerpay-api` **tidak** `depends_on` `mock-provider`. API tetap melayani transfer walaupun provider mati. Degradasi ditangani state machine (Step 8 `01` §2).
-- `depends_on: service_healthy` hanya dipakai untuk `postgres`/`minio`. Ketergantungan aplikasi ke migrasi memakai `service_completed_successfully`, jadi app tidak pernah start dengan skema lama (Step 8 `01` §2).
-- `restart: unless-stopped` juga menjadi mekanisme pemulihan setelah fault demo `os.Exit(137)` (Step 7 `03`).
+- **Port 8080** = port publik aplikasi (hanya `/api/v1/...`). **Port 9090** = port internal (`/healthz`, `/readyz`, `/metrics`, `/debug/pprof`), hanya di jaringan `internal`/`obs` (`24-observability.md` §2). Port 9090 milik container aplikasi tidak bentrok dengan Prometheus karena berbeda container.
+- `ledgerpay-api` **tidak** `depends_on` `mock-provider`. API tetap melayani transfer walaupun provider mati. Degradasi ditangani state machine (`24-observability.md` §2).
+- `depends_on: service_healthy` hanya dipakai untuk `postgres`/`minio`. Ketergantungan aplikasi ke migrasi memakai `service_completed_successfully`, jadi app tidak pernah start dengan skema lama (`24-observability.md` §2).
+- `restart: unless-stopped` juga menjadi mekanisme pemulihan setelah fault demo `os.Exit(137)` (`23-background-jobs.md`).
 
 ### 3.2 Anggaran memori
 
@@ -165,7 +165,7 @@ Catatan:
 | Loki + Promtail (profile `obs-full`, opsional) | 640 MB | — (log via `docker logs`) |
 | Jaeger + Alertmanager (profile `obs-full`, opsional) | 512 MB | — (dinyalakan saat demo saja) |
 | One-shot (migrate, init) | — (sementara) | — |
-| **Total limit** | **±6,3 GB** dengan `obs-full`; ±5,2 GB tanpa (Step 12: V1 default tanpa `obs-full`) | **±3,3 GB** |
+| **Total limit** | **±6,3 GB** dengan `obs-full`; ±5,2 GB tanpa (final review V1 default tanpa `obs-full`) | **±3,3 GB** |
 | Sisa untuk OS + page cache | ±1,7 GB | ±0,7 GB |
 
 Kenapa limit api 384–512 MB cukup: semaphore argon2 (C-45) membatasi hashing ke ±4 × 64 MiB = 256 MiB. Tanpa semaphore, limit ini akan terlampaui oleh ±8 login paralel dan container di-OOM-kill. Limit memori dan C-45 saling melengkapi. Limit memaksa Go runtime menghormati batas (`GOMEMLIMIT` diset ±90% dari limit container).
@@ -198,7 +198,7 @@ services:
     image: ghcr.io/<owner>/ledgerpay:${LEDGERPAY_TAG}
     command: ["worker"]
     env_file: [./env/ledgerpay.env]
-    stop_grace_period: 30s            # graceful shutdown 25 dtk + margin (Step 7 `03`)
+    stop_grace_period: 30s            # graceful shutdown 25 dtk + margin (`23-background-jobs.md`)
     depends_on:
       ledgerpay-migrate: { condition: service_completed_successfully }
     deploy:
@@ -248,10 +248,10 @@ CREATE ROLE backup LOGIN PASSWORD :'backup_pw';           -- pg_dump; read-only 
 REVOKE CONNECT ON DATABASE ledgerpay, payrun, mockprovider FROM PUBLIC;
 GRANT CONNECT ON DATABASE ledgerpay TO ledgerpay_app, ledgerpay_readonly, backup;
 GRANT CONNECT ON DATABASE payrun    TO payrun_app, payrun_readonly, backup;
--- Grant schema/tabel dilakukan oleh migrasi masing-masing project (Step 4 §6), bukan di sini.
+-- Grant schema/tabel dilakukan oleh migrasi masing-masing project (desain database §6), bukan di sini.
 ```
 
-- **`payrun_seed` (BYPASSRLS) tidak ada di init ini.** Role itu hanya dibuat oleh `perf/01-seed-role.sql`, yang di-mount khusus oleh `compose.perf.yml` (Step 8 `03`). Test katalog C-36 di VM demo memastikan tidak ada role `BYPASSRLS` selain superuser `postgres`.
+- **`payrun_seed` (BYPASSRLS) tidak ada di init ini.** Role itu hanya dibuat oleh `perf/01-seed-role.sql`, yang di-mount khusus oleh `compose.perf.yml` (`26-performance-plan.md`). Test katalog C-36 di VM demo memastikan tidak ada role `BYPASSRLS` selain superuser `postgres`.
 - **Role backup dan RLS (dikoreksi saat review):** `FORCE ROW LEVEL SECURITY` berlaku juga untuk **owner** tabel, sehingga `payrun_owner` tetap terkena RLS. pg_dump menyetel `row_security = off`, jadi dump dengan role yang terkena RLS akan **gagal dengan error**. (Kalau dipaksa `--enable-row-security`, hasilnya dump yang terlihat sukses padahal kosong, karena tidak ada `app.tenant_id`.) Karena itu dibuat role khusus **`payrun_backup`**: `LOGIN`, **`BYPASSRLS`**, hanya `SELECT` pada semua tabel + `USAGE` schema, password hanya ada di env container backup. LedgerPay dan mock memakai role `backup` biasa (tanpa RLS). Test: restore drill memverifikasi jumlah baris tabel tenant > 0.
 - **Superuser `postgres`** hanya dipakai oleh init dan operasi darurat. Password-nya ada di sops, tidak di env aplikasi.
 
@@ -259,17 +259,17 @@ GRANT CONNECT ON DATABASE payrun    TO payrun_app, payrun_readonly, backup;
 
 | Parameter | Nilai | Alasan |
 |---|---|---|
-| `max_connections` | 100 | Σ pool: ledgerpay api 20 + worker 10, payrun api 20 + worker 10, mock 5 = 65; + migrate, backup, readonly, psql darurat = ±75; margin 25 (Step 7 `01` §6) |
+| `max_connections` | 100 | Σ pool: ledgerpay api 20 + worker 10, payrun api 20 + worker 10, mock 5 = 65; + migrate, backup, readonly, psql darurat = ±75; margin 25 (desain transaksi & concurrency §6) |
 | `shared_buffers` | 512 MB | ±25% dari limit container |
 | `effective_cache_size` | 1,5 GB | Petunjuk planner (page cache container + host) |
 | `work_mem` | 8 MB | 100 koneksi × beberapa node sort; aman terhadap OOM |
 | `maintenance_work_mem` | 128 MB | Index build saat migrasi |
-| `shared_preload_libraries` | `pg_stat_statements` (+ `auto_explain` hanya di perf) | Profil query (Step 8 `03`) |
+| `shared_preload_libraries` | `pg_stat_statements` (+ `auto_explain` hanya di perf) | Profil query (`26-performance-plan.md`) |
 | `log_min_duration_statement` | 250 ms | Query lambat masuk log → Loki |
-| `log_lock_waits` | on (`deadlock_timeout` 1 s) | Investigasi contention (Step 7) |
+| `log_lock_waits` | on (`deadlock_timeout` 1 s) | Investigasi contention (desain transaksi & concurrency) |
 | `idle_in_transaction_session_timeout` | 10 s | ADR-011 (diset juga per role) |
 | `wal_level` | replica | Siap untuk PITR/replica di V2 |
-| Autovacuum `jobs`, `webhook_inbox` | `autovacuum_vacuum_scale_factor = 0.02` per tabel (diset migrasi) | Tabel churn tinggi (Step 4 `04`) |
+| Autovacuum `jobs`, `webhook_inbox` | `autovacuum_vacuum_scale_factor = 0.02` per tabel (diset migrasi) | Tabel churn tinggi (desain database) |
 
 Untuk VM 4 GB: `shared_buffers` 256 MB, `effective_cache_size` 768 MB, `work_mem` 4 MB, limit container 1 GB.
 
@@ -322,7 +322,7 @@ Untuk VM 4 GB: `shared_buffers` 256 MB, `effective_cache_size` 768 MB, `work_mem
         health_port     9090
         health_interval 5s
         health_timeout  2s
-        lb_try_duration 10s   # tahan request selama api di-recreate → latensi, bukan 502 (Step 9 03)
+        lb_try_duration 10s   # tahan request selama api di-recreate → latensi, bukan 502 (`29-deploy-migrations-backup.md`)
         lb_try_interval 250ms
     }
 }
@@ -386,8 +386,8 @@ files.<domain> {                             # presigned URL payslip (PayRun)
 | `trusted_proxies` ketat | Rate limit per IP di aplikasi bergantung pada IP klien yang benar. Header `X-Forwarded-For` dari internet tidak boleh dipercaya (T-SH rate-limit bypass) |
 | Batas body per rute | 64 KB default (C-14); 5 MB hanya untuk import CSV |
 | `health_uri /readyz` + `health_port 9090` | Upstream yang belum ready (misalnya migrasi belum selesai) tidak menerima trafik. Di V1 single instance: 503 jujur, bukan request yang menggantung |
-| Log tanpa query string | Query bisa berisi cursor atau filter. Secret undangan ada di fragment `#…` sehingga tidak pernah sampai ke server (Step 6 T-PR) |
-| `pay.<domain>` hanya `/checkout/*` | `/v1/*` (API mock) dan `/admin/*` hanya dapat diakses dari jaringan `internal` (Step 6 T-LP) |
+| Log tanpa query string | Query bisa berisi cursor atau filter. Secret undangan ada di fragment `#…` sehingga tidak pernah sampai ke server (threat model T-PR) |
+| `pay.<domain>` hanya `/checkout/*` | `/v1/*` (API mock) dan `/admin/*` hanya dapat diakses dari jaringan `internal` (threat model T-LP) |
 | Rate limiting | Di aplikasi (ADR-007, token bucket per tier). Caddy tidak melakukan rate limit di V1 (modul tambahan = image custom) |
 
 ---
@@ -406,7 +406,7 @@ files.<domain> {                             # presigned URL payslip (PayRun)
 **Siapa bisa menjangkau siapa:**
 - Internet → hanya `caddy:443` (dan 80 untuk redirect/ACME).
 - `postgres` hanya di `internal`: tidak terjangkau dari `edge`, sehingga kompromi Caddy tidak langsung memberi akses DB.
-- `mock-provider` `/admin/*`: hanya `internal` (dipanggil oleh endpoint demo api, Step 7 `03`).
+- `mock-provider` `/admin/*`: hanya `internal` (dipanggil oleh endpoint demo api, `23-background-jobs.md`).
 - Prometheus menjangkau port 9090 aplikasi lewat `obs`. Port 9090 tidak ada di `edge`.
 - `internal: true` membuat worker/api tidak bisa membuka koneksi keluar sembarangan. `ledgerpay-worker` mendapat network `egress` tambahan untuk webhook keluar. Caddy butuh internet untuk ACME (ada di `edge`, yang bukan `internal: true`).
 
@@ -414,7 +414,7 @@ files.<domain> {                             # presigned URL payslip (PayRun)
 
 ## 8. Katalog environment variable
 
-Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di VM, Step 9 `03`); **C** = konfigurasi non-rahasia di `compose.*.yml`; **D** = default di kode (opsional).
+Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di VM, `29-deploy-migrations-backup.md`); **C** = konfigurasi non-rahasia di `compose.*.yml`; **D** = default di kode (opsional).
 
 ### 8.1 Umum (api & worker kedua project)
 
@@ -425,17 +425,17 @@ Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di 
 | `HTTP_ADDR` / `OPS_ADDR` | tidak | `:8080` / `:9090` | D | Port publik / internal |
 | `DATABASE_URL` | ya | `postgres://ledgerpay_app:…@postgres:5432/ledgerpay?sslmode=disable` | **S** | Role `_app`. `sslmode=disable` hanya karena jaringan internal Docker (V2: managed DB → `verify-full`) |
 | `MIGRATE_DATABASE_URL` | ya (migrate) | role `_owner` | **S** | Hanya service `*-migrate` |
-| `DB_POOL_MAX` / `DB_POOL_ACQUIRE_TIMEOUT` | tidak | `20` / `2s` | C | api 20, worker 10 (Step 7) |
+| `DB_POOL_MAX` / `DB_POOL_ACQUIRE_TIMEOUT` | tidak | `20` / `2s` | C | api 20, worker 10 (desain transaksi & concurrency) |
 | `DB_LOCK_TIMEOUT` / `DB_STATEMENT_TIMEOUT` | tidak | `2s` / `5s` (api); `5s` / per kind (worker) | D | ADR-011 |
 | `JWT_SIGNING_KEYS` | ya | `{"k2026a":"base64…","k2025b":"base64…"}` | **S** | Map `kid → secret`; semua dipakai untuk verifikasi |
-| `JWT_ACTIVE_KID` | ya | `k2026a` | C | Kid untuk menandatangani (rotasi Step 6 `04` §6.1) |
+| `JWT_ACTIVE_KID` | ya | `k2026a` | C | Kid untuk menandatangani (rotasi `20-security-controls.md` §6.1) |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | ya | `ledgerpay` / `ledgerpay-web` | C | |
 | `PASSWORD_HASH_MAX_CONCURRENCY` | tidak | `4` | D | C-45 |
 | `RATE_LIMIT_OVERRIDES` | tidak | `money-write=60/m` | C | Hanya untuk perf/demo |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | tidak | `http://jaeger:4317` | C | Kosong = tracing nonaktif |
-| `OTEL_TRACES_SAMPLER_ARG` | tidak | `1.0` | C | 100% di demo (Step 8) |
+| `OTEL_TRACES_SAMPLER_ARG` | tidak | `1.0` | C | 100% di demo (desain observability & testing) |
 | `GOMEMLIMIT` | ya | `460MiB` | C | ±90% limit container |
-| `JOB_LEASE_TTL` | tidak | `30s` (demo: `10s`) | C | Step 7 `03` |
+| `JOB_LEASE_TTL` | tidak | `30s` (demo: `10s`) | C | `23-background-jobs.md` |
 | `JOB_LANES` | tidak | `payout=4,webhook=4,default=2` | C/D | Konkurensi per lane (worker) |
 | `DEMO_MODE` / `DEMO_TOKEN` | tidak | `true` / `…` | C / **S** | Hanya berpengaruh di image build tag `demo` (§9). Token dikirim di header `X-Demo-Token` |
 | `PROVIDER_HTTP_TIMEOUT` | tidak | `10s` (demo: `3s`) | C | Timeout panggilan ke provider; demo dipercepat agar Demo C tidak menunggu lama |
@@ -453,7 +453,7 @@ Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di 
 | `MERCHANT_WEBHOOK_SECRET_KEY` | ya | **S** | Kunci AES untuk mengenkripsi `merchants.webhook_secret` di DB |
 | `EGRESS_ALLOW_HTTP` | tidak | C | `false` di `live`; `true` di dev agar bisa ke endpoint lokal (C-44) |
 | `EGRESS_DENY_CIDRS_EXTRA` | tidak | C | Tambahan daftar blokir |
-| `WEBHOOK_DELIVERY_TIMEOUT` | tidak | D | `5s` (Step 5 `03`) |
+| `WEBHOOK_DELIVERY_TIMEOUT` | tidak | D | `5s` (kontrak API) |
 | `MOCK_ADMIN_URL` / `MOCK_ADMIN_TOKEN` | demo saja | C / **S** | Dipakai endpoint demo (proxy skenario) |
 
 ### 8.3 Khusus PayRun
@@ -478,7 +478,7 @@ Sumber: **S** = rahasia dari file sops-terdekripsi `env/<service>.env` (0600 di 
 | `WEBHOOK_TARGET_URL` | C | `http://ledgerpay-api:8080/api/v1/webhooks/provider` (jaringan internal) |
 | `WEBHOOK_SECRET` | **S** | Pasangan `PROVIDER_WEBHOOK_SECRETS` |
 | `API_KEYS` | **S** | Kunci yang diterima dari LedgerPay |
-| `MOCK_ADMIN_ENABLED` / `MOCK_ADMIN_TOKEN` | C / **S** | `/admin/*` hanya aktif jika keduanya ada (Step 6 T-LP) |
+| `MOCK_ADMIN_ENABLED` / `MOCK_ADMIN_TOKEN` | C / **S** | `/admin/*` hanya aktif jika keduanya ada (threat model T-LP) |
 | `PUBLIC_BASE_URL` | C | `https://pay.<domain>` |
 
 Aplikasi memvalidasi semua variabel wajib saat start (fail fast, `caarlos0/env`). Nilai rahasia **tidak pernah** dicetak. `config dump` hanya menampilkan nama + status "set" (C-18).
@@ -495,13 +495,13 @@ Aplikasi memvalidasi semua variabel wajib saat start (fail fast, `caarlos0/env`)
 | **Runtime** | Rute demo hanya didaftarkan jika `DEMO_MODE=true` **dan** `DEMO_TOKEN` tidak kosong (start gagal jika `DEMO_MODE=true` tanpa token) | Image demo yang dijalankan tanpa flag = tanpa endpoint demo |
 | **Request** | Header `X-Demo-Token` wajib (constant-time compare) + rate limit **`heavy`** | Endpoint demo tidak bisa dipanggil pengunjung demo publik |
 
-**Penyimpanan token (Step 12: R2-4):** `DEMO_TOKEN` **tidak pernah** dimasukkan ke bundle SPA atau env build frontend. Toolbar demo meminta presenter menempelkan token saat demo; token disimpan hanya di memori tab (variabel JS), tidak di `localStorage`/`sessionStorage`/cookie, dan hilang saat tab ditutup.
+**Penyimpanan token (final review R2-4):** `DEMO_TOKEN` **tidak pernah** dimasukkan ke bundle SPA atau env build frontend. Toolbar demo meminta presenter menempelkan token saat demo; token disimpan hanya di memori tab (variabel JS), tidak di `localStorage`/`sessionStorage`/cookie, dan hilang saat tab ditutup.
 
-**Permukaan endpoint demo (Step 12: S6/R4-17):** hanya `POST/DELETE /api/v1/demo/faults`, `POST /api/v1/demo/reset`, dan `POST /api/v1/demo/payroll-runs/{id}/fast-track` (PayRun). Bukti Demo C diambil dari endpoint ops dan log/metrik, bukan `/demo/evidence`. Skenario mock diatur lewat admin mock melalui SSH tunnel, bukan proxy `/demo/scenarios`.
+**Permukaan endpoint demo (final review S6/R4-17):** hanya `POST/DELETE /api/v1/demo/faults`, `POST /api/v1/demo/reset`, dan `POST /api/v1/demo/payroll-runs/{id}/fast-track` (PayRun). Bukti Demo C diambil dari endpoint ops dan log/metrik, bukan `/demo/evidence`. Skenario mock diatur lewat admin mock melalui SSH tunnel, bukan proxy `/demo/scenarios`.
 
 Test:
 - `TestBuild_DemoEndpointsAbsentWithoutDemoMode`: binary release + `DEMO_MODE=true` → `/api/v1/demo/*` 404, dan simbol paket `demo` tidak ada di binary (`go tool nm`).
-- `TestBuild_NoTesthooksInRelease`: sama untuk build tag `testhooks` (Step 7).
+- `TestBuild_NoTesthooksInRelease`: sama untuk build tag `testhooks` (desain transaksi & concurrency).
 
 ### 9.2 Migrasi demo dan tabel `demo_faults`
 
@@ -511,7 +511,7 @@ Test:
 | Kolom | Tipe | Null | Default | Keterangan |
 |---|---|---|---|---|
 | `id` | `uuid` | N | — | PK (UUIDv7) |
-| `point` | `text` | N | — | Titik injeksi, contoh `payout.after_bank_call`, `payroll.calc_chunk.before_commit` (Step 7 `03`) |
+| `point` | `text` | N | — | Titik injeksi, contoh `payout.after_bank_call`, `payroll.calc_chunk.before_commit` (`23-background-jobs.md`) |
 | `target_kind` | `text` | Y | — | Batasi ke job kind tertentu (opsional) |
 | `tenant_id` | `uuid` | Y | — | PayRun: hanya untuk tenant demo tertentu (opsional) |
 | `after_n` | `int` | N | `0` | Lewati N pemanggilan pertama (PayRun: mati di chunk ke-`after_n+1`) |
@@ -538,12 +538,12 @@ Constraint: `ck_demo_faults_action CHECK (action IN ('exit','panic','delay'))`, 
 | `make test` | Unit test (`go test -race ./...` tanpa tag integration) | < 30 dtk |
 | `make test-integration` | testcontainers (tidak butuh compose berjalan) | < 5 menit |
 | `make e2e` | `compose.demo.yml up --wait` + Playwright | ±5 menit |
-| `make demo-verify` | Script Demo A–D / A–C headless (Step 8 `02`) | ±3 menit |
+| `make demo-verify` | Script Demo A–D / A–C headless (`25-testing-strategy.md`) | ±3 menit |
 | `make reset` | `docker compose down -v` (hapus volume `pgdata`, `minio`) + `make up` + `make seed` | ±1 menit |
 | `make logs s=ledgerpay-worker` | `docker compose logs -f` dengan filter `jq` untuk JSON | — |
 
 Prasyarat laptop: Docker Engine/Desktop dengan Compose v2, Go 1.25, Node 22 + yarn, `make`, `sops` + `age` (hanya untuk `make up` dengan secret demo; dev memakai `env/*.dev.env` berisi nilai dummy yang boleh di-commit).
 
 Catatan:
-- File `env/*.dev.env` berisi **nilai dummy** khusus dev (kunci acak yang hanya berlaku di laptop). Commit nilai dummy diizinkan dan gitleaks dikonfigurasi dengan allowlist untuk path itu. Nilai demo/production selalu dari sops (Step 9 `03`).
+- File `env/*.dev.env` berisi **nilai dummy** khusus dev (kunci acak yang hanya berlaku di laptop). Commit nilai dummy diizinkan dan gitleaks dikonfigurasi dengan allowlist untuk path itu. Nilai demo/production selalu dari sops (`29-deploy-migrations-backup.md`).
 - Port yang dipublish di dev hanya bind ke `127.0.0.1`, tidak ke `0.0.0.0`, agar DB dev tidak terbuka di jaringan kafe/kantor.

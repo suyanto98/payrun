@@ -76,11 +76,11 @@ Tarif pajak, persentase dan cap BPJS, serta multiplier lembur default disimpan s
 
 ### Testing
 
-Golden-file tests: `testdata/cases/*.json` (input + ruleset) → `*.golden.json` (hasil), mencakup prorata joiner/leaver, kenaikan gaji tengah periode, lembur bertingkat, cuti tidak dibayar, cap BPJS, adjustment negatif, dan pembulatan. Property test: `Net == Σ earnings − Σ deductions` untuk input acak. Detail di Step 8.
+Golden-file tests: `testdata/cases/*.json` (input + ruleset) → `*.golden.json` (hasil), mencakup prorata joiner/leaver, kenaikan gaji tengah periode, lembur bertingkat, cuti tidak dibayar, cap BPJS, adjustment negatif, dan pembulatan. Property test: `Net == Σ earnings − Σ deductions` untuk input acak. Detail di desain observability & testing.
 
 ## Reason
 
-- Pure function berarti bagian paling berisiko dari sisi correctness bisa diselesaikan dan diuji **sebelum** ada DB atau UI (urutan slice di Step 1 §5.2).
+- Pure function berarti bagian paling berisiko dari sisi correctness bisa diselesaikan dan diuji **sebelum** ada DB atau UI (urutan slice di strategi produk §5.2).
 - Determinisme adalah syarat reproducibility dan snapshot (ADR-P07).
 - Komponen sebagai data memberi fleksibilitas per tenant tanpa membuka permukaan serangan berupa evaluasi kode buatan user.
 
@@ -105,4 +105,4 @@ Golden-file tests: `testdata/cases/*.json` (input + ruleset) → `*.golden.json`
 
 ## Related
 
-ADR-P04 (effective dating), ADR-P05 (eksekusi run), ADR-P06 (pembulatan), ADR-P07 (snapshot), Step 1 `02-payrun.md` §4.
+ADR-P04 (effective dating), ADR-P05 (eksekusi run), ADR-P06 (pembulatan), ADR-P07 (snapshot), `02-product-strategy.md` §4.

@@ -1,7 +1,7 @@
 -- Sprint 3: kompensasi (rulesets, component_definitions, salary_assignments, employee_components),
 -- org assignment, atasan, dan libur tenant. Desain: docs/design/12-db-schema.md §1.3, §3.3, §5.
 --
--- Amandemen Step 12 S14: atasan TIDAK effective-dated. Kolom employees.manager_employee_id menyimpan
+-- Amandemen final review S14: atasan TIDAK effective-dated. Kolom employees.manager_employee_id menyimpan
 -- atasan saat ini (perubahan ter-audit; approver tetap di-snapshot saat submit, ADR-P09). Penempatan
 -- departemen/posisi tetap effective-dated di org_assignments (effective dating juga didemokan lewat gaji).
 -- Ditunda: trigger PeriodGuard (S4–S6, bersama payroll_periods).

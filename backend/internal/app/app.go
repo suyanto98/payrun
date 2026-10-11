@@ -213,7 +213,7 @@ type demoWiring struct {
 	tiers                  ratelimit.Tiers
 }
 
-// OpsRouter: /healthz, /readyz, dan /metrics di port internal (tidak diekspos Caddy; Step 8 `01` §2).
+// OpsRouter: /healthz, /readyz, dan /metrics di port internal (tidak diekspos Caddy; `24-observability.md` §2).
 func OpsRouter(pool *pgxpool.Pool) http.Handler {
 	r := chi.NewRouter()
 	// Liveness: proses hidup. Sengaja TIDAK memeriksa DB: kalau DB mati, me-restart API tidak menolong.

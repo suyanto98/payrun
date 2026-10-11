@@ -1,5 +1,5 @@
 # Compose untuk development lokal (Sprint 0; worker sejak Sprint 4). Compose demo/obs/perf menyusul (docs/design/27-docker-compose.md).
-# Kredensial di file ini HANYA untuk dev lokal; environment lain memakai secret (Step 9).
+# Kredensial di file ini HANYA untuk dev lokal; environment lain memakai secret (desain DevOps).
 # Port default dipilih supaya bisa berjalan BERSAMAAN dengan stack LedgerPay (55432, 8080/9090).
 name: payrun
 
@@ -42,7 +42,7 @@ services:
       LOG_LEVEL: info
       # payrun_app: NOBYPASSRLS dan bukan owner. Api menolak start kalau DSN ini diganti owner (CheckAppRole).
       DATABASE_URL: postgres://payrun_app:app-dev@postgres:5432/payrun?sslmode=disable
-      # Kunci dev saja (32 byte, base64). Production: secret environment (Step 12 R4-7).
+      # Kunci dev saja (32 byte, base64). Production: secret environment (final review R4-7).
       JWT_SIGNING_KEYS: '{"dev1":"cGF5cnVuLWRldi1vbmx5LWp3dC1zaWduaW5nLWtleSE="}'
       JWT_ACTIVE_KID: dev1
       COOKIE_SECURE: "false"       # dev lokal lewat http://localhost
@@ -102,7 +102,7 @@ services:
     cap_drop: [ALL]
 
   # ---------------------------------------------------------------- email (dev): Mailpit
-  # Menangkap semua email (verifikasi, undangan); tidak ada yang keluar ke internet (Step 12 R2-8).
+  # Menangkap semua email (verifikasi, undangan); tidak ada yang keluar ke internet (final review R2-8).
   mailpit:
     image: axllent/mailpit:v1.27
     ports:
@@ -137,7 +137,7 @@ services:
       timeout: 3s
       retries: 30
 
-  # One-shot: buat bucket payrun-private (idempoten). Pengganti `minio-init` di Step 9 `01`.
+  # One-shot: buat bucket payrun-private (idempoten). Pengganti `minio-init` di `27-docker-compose.md`.
   storage-init:
     image: chrislusf/seaweedfs:3.97
     profiles: [storage]
@@ -156,7 +156,7 @@ services:
     restart: "no"
 
   # ---------------------------------------------------------------- observability (profile obs / obs-full)
-  # Step 12 R4-6: V1 `obs` = Prometheus + Grafana (ringan untuk VM kecil). Jaeger di `obs-full` (R4-16).
+  # final review R4-6: V1 `obs` = Prometheus + Grafana (ringan untuk VM kecil). Jaeger di `obs-full` (R4-16).
   # `make up-obs`. Port berbeda dari LedgerPay supaya kedua stack bisa jalan bersamaan.
   prometheus:
     image: prom/prometheus:v3.5.0

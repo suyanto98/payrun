@@ -99,7 +99,7 @@ diulang. Durasi = waktu respons HTTP `curl` (termasuk HTTP + auth), bukan span d
 | 0 perubahan | 1 | 11,3 ms | — | — | 200 APPROVED (state berubah → sekali saja) |
 | 10 perubahan (change log) | 20 | 25,0 ms | 30,7 ms | 58,5 ms | 20× 409 RUN_STALE |
 | 200 perubahan (batas verifikasi) | 20 | 44,3 ms | 54,7 ms | 60,9 ms | 20× 409 RUN_STALE |
-| 1.000 perubahan (> 200 → stale tanpa verifikasi, Step 12 R1-7) | 20 | 6,4 ms | 10,5 ms | 22,2 ms | 20× 409 RUN_STALE |
+| 1.000 perubahan (> 200 → stale tanpa verifikasi, final review R1-7) | 20 | 6,4 ms | 10,5 ms | 22,2 ms | 20× 409 RUN_STALE |
 | Recompute penuh 10.000 karyawan (`payrun perf-recheck`) | 3 | 1,18 dtk | — | 1,20 dtk | 1.000 berubah terdeteksi |
 
 **Keputusan (aturan §6 E-2: pindah ke job async bila 1.000 perubahan > 2 dtk):** change log **dipertahankan sinkron**,
@@ -110,7 +110,7 @@ produksi; alat ukur `perf-recheck` sendiri tanpa lock), sehingga semua penulis i
 tertahan ±1,2 dtk. Hipotesis "1.000 perubahan ≈ ratusan ms" tidak berlaku karena batas 200 sudah memotongnya.
 PR-5 (dampak lock ke penulis) tidak dijalankan (opsional V1).
 
-## Tidak dijalankan (opsional V1, amandemen Step 12 S7/R4-13)
+## Tidak dijalankan (opsional V1, amandemen final review S7/R4-13)
 PR-2 (1.000 run lintas tenant), PR-5, PR-6 (10.000 PDF), PR-7 (import 50.000 baris). PF-23 (diff vs bulan lalu) → P2.
 
 ## Cara mengulang

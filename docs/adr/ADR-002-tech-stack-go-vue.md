@@ -22,14 +22,14 @@ Bahasa backend menentukan dua hal: seberapa cepat project selesai, dan seberapa 
 | Frontend | **Vue 3 + TypeScript + Vite**, Pinia, `@tanstack/vue-query`, satu component library (PrimeVue atau setara), validasi form dengan zod |
 | Testing | `testing` + testify, testcontainers-go, `pgregory.net/rapid` (property test), Playwright (E2E), k6 (load) |
 
-Detail library final dikunci di Step 10 (project structure). ADR ini hanya mengunci bahasa dan framework.
+Detail library final dikunci di roadmap (project structure). ADR ini hanya mengunci bahasa dan framework.
 
 ## Reason
 
-- **Gerbang veto** (Step 1 `00-overview.md` §4): semua kode harus bisa dipertahankan sendiri di interview. Bahasa yang sudah dikuasai memaksimalkan waktu untuk *masalah engineering*, bukan untuk sintaks.
+- **Gerbang veto** (`01-overview.md` §4): semua kode harus bisa dipertahankan sendiri di interview. Bahasa yang sudah dikuasai memaksimalkan waktu untuk *masalah engineering*, bukan untuk sintaks.
 - Goroutine + `sync.WaitGroup` membuat concurrency test (Demo B LedgerPay) singkat dan mudah dibaca.
 - Go membuat boundary transaksi eksplisit (tidak ada `@Transactional`), dan itu yang ingin ditunjukkan.
-- Vue: UI hanya alat demo. Framework yang sudah dikuasai menekan waktu UI (Step 1 PayRun R7).
+- Vue: UI hanya alat demo. Framework yang sudah dikuasai menekan waktu UI (strategi produk PayRun R7).
 
 ## Trade-offs
 

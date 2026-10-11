@@ -1,8 +1,8 @@
-# Step 4.1 — Shared Tables
+# Shared Tables
 
-> Bagian dari [Step 4](00-index.md). Konvensi (penamaan, UUIDv7, tipe, audit field, role) mengikuti `00-index.md`.
+> Bagian dari desain database. Konvensi (penamaan, UUIDv7, tipe, audit field, role) mengikuti `00-index.md`.
 > Tabel di sini punya **bentuk yang sama** di LedgerPay (schema `ledgerpay`) dan PayRun (schema `payrun`). Perbedaannya ditulis eksplisit di setiap tabel sebagai **Varian PayRun**.
-> Tabel identitas khusus LedgerPay (`merchants`, `merchant_api_keys`, `merchant_webhook_secrets`) ada di `03-ledgerpay-schema.md`. Tabel khusus PayRun (`tenants`, `memberships`, dll.) ada di `06-payrun-schema.md`.
+> Tabel identitas khusus LedgerPay (`merchants`, `merchant_api_keys`, `merchant_webhook_secrets`) ada di `03-ledgerpay-schema.md`. Tabel khusus PayRun (`tenants`, `memberships`, dll.) ada di `12-db-schema.md`.
 
 ---
 
@@ -53,15 +53,15 @@ CREATE UNIQUE INDEX uq_users_email_lower ON users (lower(email));
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users FORCE  ROW LEVEL SECURITY;
 
--- Helper payrun.current_tenant() / payrun.current_user_id(): lihat 07 §2.1 (nullif '' → NULL; Step 12: C3)
+-- Helper payrun.current_tenant() / payrun.current_user_id(): lihat 07 §2.1 (nullif '' → NULL; final review C3)
 
 -- 1) Diri sendiri: jalur WithPlatformTx (login lanjutan, profil, switch tenant, signup fase platform).
---    Hanya aktif di mode platform (tanpa tenant context) — Step 12: C2.
+--    Hanya aktif di mode platform (tanpa tenant context) — final review C2.
 CREATE POLICY users_self ON users
   USING      ((SELECT payrun.current_tenant()) IS NULL AND id = (SELECT payrun.current_user_id()))
   WITH CHECK ((SELECT payrun.current_tenant()) IS NULL AND id = (SELECT payrun.current_user_id()));
 
--- 2) Anggota tenant AKTIF boleh dibaca (READ ONLY) dari dalam WithTenantTx (Step 12: R2-7 → status ACTIVE)
+-- 2) Anggota tenant AKTIF boleh dibaca (READ ONLY) dari dalam WithTenantTx (final review R2-7 → status ACTIVE)
 CREATE POLICY users_tenant_member_read ON users FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM memberships m
@@ -69,7 +69,7 @@ CREATE POLICY users_tenant_member_read ON users FOR SELECT
       AND m.status = 'ACTIVE'
       AND m.tenant_id = (SELECT payrun.current_tenant())));
 
--- 3) Kolom sensitif tidak pernah terbaca oleh role aplikasi (Step 12: R2-7).
+-- 3) Kolom sensitif tidak pernah terbaca oleh role aplikasi (final review R2-7).
 --    password_hash hanya keluar lewat auth_lookup_user (SECURITY DEFINER, milik owner).
 REVOKE SELECT ON users FROM payrun_app;
 GRANT  SELECT (id, email, display_name, status, failed_login_count, locked_until,
@@ -77,7 +77,7 @@ GRANT  SELECT (id, email, display_name, status, failed_login_count, locked_until
 GRANT  INSERT, UPDATE ON users TO payrun_app;   -- update password lewat kolom, tanpa bisa membacanya
 ```
 
-**Mode eksklusif (Step 12: C2):** `WithTenantTx` hanya menyetel `app.tenant_id`, `WithPlatformTx` hanya `app.user_id`. Policy self mensyaratkan `current_tenant() IS NULL`, sehingga di dalam transaksi tenant user tidak "melihat dirinya" di tenant lain lewat jalur self.
+**Mode eksklusif (final review C2):** `WithTenantTx` hanya menyetel `app.tenant_id`, `WithPlatformTx` hanya `app.user_id`. Policy self mensyaratkan `current_tenant() IS NULL`, sehingga di dalam transaksi tenant user tidak "melihat dirinya" di tenant lain lewat jalur self.
 
 Subquery ke `memberships` dievaluasi dengan RLS milik `memberships` juga. Hasilnya, hanya membership tenant aktif yang terlihat, sehingga yang terbaca hanya user yang benar-benar anggota tenant tersebut.
 
@@ -97,9 +97,9 @@ GRANT EXECUTE ON FUNCTION payrun.auth_lookup_user(text) TO payrun_app;
 - Fungsi dimiliki `payrun_owner` dan hanya mengembalikan **satu baris berdasarkan email persis**, sehingga tidak bisa dipakai untuk enumerasi massal.
 - `search_path` dikunci untuk mencegah serangan *search_path hijacking* pada fungsi `SECURITY DEFINER`.
 - Setelah password terverifikasi, semua akses berikutnya memakai `WithPlatformTx(user_id)` di bawah policy biasa.
-- Ini satu-satunya fungsi `SECURITY DEFINER` untuk identitas, dan sudah tercatat sebagai residual risk di Step 3 `05-payrun-multi-tenancy.md`. Code review wajib untuk setiap fungsi `SECURITY DEFINER` baru (aturan CI: grep di migrasi → wajib label review).
+- Ini satu-satunya fungsi `SECURITY DEFINER` untuk identitas, dan sudah tercatat sebagai residual risk di `06-multi-tenancy.md`. Code review wajib untuk setiap fungsi `SECURITY DEFINER` baru (aturan CI: grep di migrasi → wajib label review).
 
-**Signup** membuat user baru di fase platform transaksi signup (`app.user_id` = id baru yang dibuat aplikasi, `app.tenant_id` kosong), sehingga `WITH CHECK` terpenuhi; baru setelah itu transaksi yang sama berpindah ke fase tenant (Step 4 `07` §2.3). Kalau email sudah terdaftar, `uq_users_email_lower` tetap terpicu (constraint tidak difilter RLS), dan alurnya meminta user login dulu lalu membuat tenant dari akun yang sudah ada.
+**Signup** membuat user baru di fase platform transaksi signup (`app.user_id` = id baru yang dibuat aplikasi, `app.tenant_id` kosong), sehingga `WITH CHECK` terpenuhi; baru setelah itu transaksi yang sama berpindah ke fase tenant (`13-db-rls-consistency-indexing.md` §2.3). Kalau email sudah terdaftar, `uq_users_email_lower` tetap terpicu (constraint tidak difilter RLS), dan alurnya meminta user login dulu lalu membuat tenant dari akun yang sudah ada.
 
 **LedgerPay:** tanpa RLS (bukan multi-tenant). Akses dibatasi oleh scoping query di modul `identity` (LI-15).
 
@@ -210,7 +210,7 @@ Dipakai untuk endpoint state penting di dalam tenant: buat run, calculate, final
 - Tambah `tenant_id uuid NOT NULL`; **PK `(tenant_id, id)`**; `client_type` selalu `USER`.
 - Unique: `uq_idempotency_keys_scope UNIQUE (tenant_id, client_id, endpoint, key)`. Key yang sama di tenant berbeda tidak bentrok.
 - `response_status` selalu terisi saat commit (PayRun tidak memanggil pihak luar secara sinkron, jadi tidak ada pola b).
-- RLS standar: `tenant_isolation USING / WITH CHECK (tenant_id = (SELECT payrun.current_tenant()))` (Step 12: C3).
+- RLS standar: `tenant_isolation USING / WITH CHECK (tenant_id = (SELECT payrun.current_tenant()))` (final review C3).
 
 ### 3.3 `platform_idempotency_keys` (PayRun, khusus signup)
 
@@ -238,14 +238,14 @@ Keamanan: `request_hash` mencakup email, jadi key yang dipakai ulang dengan emai
 | `tenant_id` | `uuid` | Y | — | LedgerPay: selalu NULL. PayRun: wajib untuk job tenant, NULL hanya untuk job platform |
 | `status` | `text` | N | `'queued'` | `queued`, `running`, `succeeded`, `dead` |
 | `attempts` | `int` | N | `0` | Naik saat klaim |
-| `max_attempts` | `int` | N | `10` | Per kind (contoh: webhook keluar 7 = 1 percobaan + 6 retry sesuai kontrak Step 5, payroll chunk 5; katalog di Step 7 `03`) |
+| `max_attempts` | `int` | N | `10` | Per kind (contoh: webhook keluar 7 = 1 percobaan + 6 retry sesuai kontrak kontrak API, payroll chunk 5; katalog di `23-background-jobs.md`) |
 | `run_at` | `timestamptz` | N | `now()` | Jadwal / backoff |
 | `locked_by` | `text` | Y | — | ID worker (`hostname:pid:uuid`) |
 | `locked_until` | `timestamptz` | Y | — | Lease |
 | `last_error` | `text` | Y | — | Dipotong 2 KB, tanpa PII |
 | `dedupe_key` | `text` | Y | — | Mencegah job ganda (contoh `payroll.calc_chunk:{run}:{ver}:{chunk}`) |
 | `correlation_id` | `text` | Y | — | Diteruskan ke log handler |
-| `trace_parent` | `text` | Y | — | W3C `traceparent` milik request producer (Step 8). Span job dibuat sebagai root baru dengan *link* ke span ini |
+| `trace_parent` | `text` | Y | — | W3C `traceparent` milik request producer (desain observability & testing). Span job dibuat sebagai root baru dengan *link* ke span ini |
 | `created_at` / `updated_at` | `timestamptz` | N | `now()` | |
 | `completed_at` | `timestamptz` | Y | — | Saat `succeeded`/`dead` |
 
@@ -322,7 +322,7 @@ CREATE TRIGGER trg_jobs_enforce_tenant BEFORE INSERT ON jobs
 Aturan turunan:
 1. Scheduler platform (contoh: accrual cuti harian) berjalan tanpa tenant, mengiterasi daftar tenant, lalu meng-enqueue job per tenant **di dalam `WithTenantTxFor(tenant)`**.
 2. Handler **hanya** memakai kolom `jobs.tenant_id` untuk membuka `WithTenantTxFor`. `tenant_id` di dalam `payload` (kalau ada) diabaikan. Satu sumber kebenaran, dijaga trigger.
-3. Setelah tenant transaction dibuka, semua data dibaca di bawah RLS. Job yang mereferensikan ID milik tenant lain hanya akan menemukan 0 baris (Step 3 PFS-09).
+3. Setelah tenant transaction dibuka, semua data dibaca di bawah RLS. Job yang mereferensikan ID milik tenant lain hanya akan menemukan 0 baris (desain domain PFS-09).
 4. Payload tidak boleh berisi PII. Kalau seseorang bisa membaca `jobs`, yang terlihat hanya ID.
 
 **Residual risk:** bug di kode worker yang membuka transaksi dengan tenant yang salah. Mitigasinya: helper `jobs.RunTenantJob(job, fn)` adalah satu-satunya cara handler tenant dijalankan, dan diuji di isolation suite (PF-04).
@@ -352,14 +352,14 @@ CONSTRAINT ck_audit_log_action_format CHECK (action ~ '^[a-z_]+\.[a-z_]+$'),
 CONSTRAINT ck_audit_log_actor CHECK (actor_type = 'SYSTEM' OR actor_id IS NOT NULL)
 CREATE INDEX ix_audit_log_target ON audit_log (target_type, target_id, created_at DESC);
 CREATE INDEX ix_audit_log_actor  ON audit_log (actor_id, created_at DESC);
-CREATE INDEX ix_audit_log_created ON audit_log (created_at DESC, id);   -- list kronologis (Step 12: R3-3)
+CREATE INDEX ix_audit_log_created ON audit_log (created_at DESC, id);   -- list kronologis (final review R3-3)
 CREATE TRIGGER trg_audit_log_append_only BEFORE UPDATE OR DELETE ON audit_log
   FOR EACH ROW EXECUTE FUNCTION forbid_update_delete();
 GRANT SELECT, INSERT ON audit_log TO <proj>_app;   -- tanpa UPDATE/DELETE
 ```
 
 **Varian PayRun:**
-- Index diawali tenant: `ix_audit_log_tenant_target (tenant_id, target_type, target_id, created_at DESC)`, `ix_audit_log_tenant_actor (tenant_id, actor_id, created_at DESC)`, `ix_audit_log_tenant_action (tenant_id, action, created_at DESC)` (contoh: semua `payslip.viewed`), `ix_audit_log_tenant_created (tenant_id, created_at DESC, id)` untuk `GET /audit-log` tanpa filter (Step 12: R3-3).
+- Index diawali tenant: `ix_audit_log_tenant_target (tenant_id, target_type, target_id, created_at DESC)`, `ix_audit_log_tenant_actor (tenant_id, actor_id, created_at DESC)`, `ix_audit_log_tenant_action (tenant_id, action, created_at DESC)` (contoh: semua `payslip.viewed`), `ix_audit_log_tenant_created (tenant_id, created_at DESC, id)` untuk `GET /audit-log` tanpa filter (final review R3-3).
 - PK tetap `(id)`, karena `tenant_id` nullable. Ini pengecualian terhadap konvensi PK `(tenant_id, id)`.
 - RLS:
 ```sql
@@ -367,11 +367,11 @@ CREATE POLICY audit_tenant ON audit_log
   USING      (tenant_id = (SELECT payrun.current_tenant()))
   WITH CHECK (tenant_id = (SELECT payrun.current_tenant())
               OR (tenant_id IS NULL AND (SELECT payrun.current_tenant()) IS NULL));
--- Step 12 (R2-3): baris platform dibaca role investigasi saja
+-- final review (R2-3): baris platform dibaca role investigasi saja
 CREATE POLICY audit_platform_read ON audit_log FOR SELECT TO payrun_readonly
   USING (tenant_id IS NULL);
 ```
-  Baris platform (`tenant_id IS NULL`) tidak pernah terlihat oleh user tenant. Baris ini hanya dibaca oleh `payrun_readonly` lewat policy `audit_platform_read`. (Step 12: C3 — versi lama memakai cast mentah; `current_setting(…) IS NULL` juga keliru karena setelah GUC pernah disetel nilainya `''`, bukan NULL, sehingga baris platform seperti login gagal tertolak.)
+  Baris platform (`tenant_id IS NULL`) tidak pernah terlihat oleh user tenant. Baris ini hanya dibaca oleh `payrun_readonly` lewat policy `audit_platform_read`. (final review C3 — versi lama memakai cast mentah; `current_setting(…) IS NULL` juga keliru karena setelah GUC pernah disetel nilainya `''`, bukan NULL, sehingga baris platform seperti login gagal tertolak.)
 - Tidak ada FK dari `audit_log` ke tabel lain, karena log tetap harus bisa ditulis walaupun target sedang dideaktivasi, dan tidak boleh menghalangi apa pun.
 
 **V2:** partisi bulanan (`PARTITION BY RANGE (created_at)`) + arsip partisi lama ke object storage, ketika tabel melewati puluhan juta baris.
@@ -397,7 +397,7 @@ BEGIN
 END $$;
 ```
 
-Kedua fungsi dibuat sekali per schema oleh migrasi awal (`<proj>_owner`). `forbid_update_delete` juga dipasang di `journals`, `journal_entries` (LedgerPay). Di PayRun, `payroll_lines` / `payroll_item_snapshots` memakai trigger khusus: UPDATE selalu ditolak, DELETE hanya ditolak setelah run `FINALIZED`, karena line `calc_version` lama dihapus saat recalculation (ADR-P05; lihat `06-payrun-schema.md`). Detailnya ada di file schema masing-masing.
+Kedua fungsi dibuat sekali per schema oleh migrasi awal (`<proj>_owner`). `forbid_update_delete` juga dipasang di `journals`, `journal_entries` (LedgerPay). Di PayRun, `payroll_lines` / `payroll_item_snapshots` memakai trigger khusus: UPDATE selalu ditolak, DELETE hanya ditolak setelah run `FINALIZED`, karena line `calc_version` lama dihapus saat recalculation (ADR-P05; lihat `12-db-schema.md`). Detailnya ada di file schema masing-masing.
 
 ---
 

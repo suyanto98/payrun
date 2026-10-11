@@ -1,6 +1,6 @@
-# Step 7.3 — Background Processing
+# Background Processing
 
-> Bagian dari [Step 7](00-index.md) (Phase 8 master prompt). Mekanisme dasar job runner ada di ADR-006 dan Step 4 `01-shared-tables.md` §4 (klaim, lease, heartbeat, `CompleteInTx` dengan fencing, `dead`). Dokumen ini menetapkan **apa** yang dikerjakan secara asinkron, **kenapa**, dan **bagaimana setiap jenis job berperilaku** saat gagal.
+> Bagian dari desain transaksi & concurrency (Phase 8 master prompt). Mekanisme dasar job runner ada di ADR-006 dan `10-db-shared-tables.md` §4 (klaim, lease, heartbeat, `CompleteInTx` dengan fencing, `dead`). Dokumen ini menetapkan **apa** yang dikerjakan secara asinkron, **kenapa**, dan **bagaimana setiap jenis job berperilaku** saat gagal.
 > Aturan dasar dari `00-index.md` §4 tetap berlaku: side effect asinkron selalu di-enqueue lewat INSERT `jobs` di transaksi bisnis yang sama, tidak ada panggilan jaringan di dalam transaksi DB, dan setiap konsumer harus idempoten.
 
 ---
@@ -18,7 +18,7 @@ Prinsip keputusan:
 | P2P transfer | **Sync** | Satu tx, dua row lock (< 50 ms), tanpa pihak luar. User butuh kepastian saat itu juga | `201 COMPLETED` atau `422` langsung |
 | Konfirmasi payment intent | **Sync** | Sama dengan transfer. Merchant butuh status final untuk melepas barang | Checkout langsung sukses/gagal |
 | Refund | **Sync** (efek ledger) + **async** (webhook ke merchant) | Efek uangnya cukup satu tx; notifikasinya ke pihak luar | `201`; merchant menerima `payment.refunded` belakangan |
-| Buat top-up (sesi charge) | **Sync best-effort** + fallback **async** | Tx1 commit dulu, lalu API memanggil provider sekali (di luar tx). Kalau gagal/timeout, `topup.recover` melanjutkan tanpa menunggu client (Step 5 `POST /topups`) | `201` dengan `checkout_url`, atau `checkout_url: null` + polling |
+| Buat top-up (sesi charge) | **Sync best-effort** + fallback **async** | Tx1 commit dulu, lalu API memanggil provider sekali (di luar tx). Kalau gagal/timeout, `topup.recover` melanjutkan tanpa menunggu client (kontrak API `POST /topups`) | `201` dengan `checkout_url`, atau `checkout_url: null` + polling |
 | Penerapan webhook provider (top-up) | **Async** (inbox) | Provider butuh `200` cepat; verifikasi-by-fetch memanggil provider; retry tidak boleh bergantung pada provider | Saldo bertambah beberapa detik setelah bayar |
 | Payout submit ke bank | **Async** | Pihak luar dengan *unknown outcome*; tidak boleh menahan request HTTP | `202 PENDING`, lalu `display_status` berubah |
 | Status check payout | **Async** (terjadwal per payout) | Menunggu jawaban bank, dengan backoff berjam-jam | Status `PROCESSING` sampai pasti |
@@ -95,7 +95,7 @@ Loop di dalam proses `worker`, tanpa cron service terpisah (§8).
 |---|---|---|---|---|---|---|---|---|---|---|
 | `payout.submit` | Tx `POST /payouts` | `payout_id` | `payout.submit:{id}` | `PENDING` → tx: `SUBMITTED` (commit) → POST bank → tx: `SUCCEEDED`+settle / `FAILED`+reversal / `UNKNOWN` + enqueue `payout.status_check` | Guard status. Kalau diklaim ulang dan payout sudah `SUBMITTED` → **tidak submit ulang**: jadi `UNKNOWN` + enqueue status check (ADR-L06). Idempotency key ke bank = `payout_id` | Ya | 15 dtk (HTTP 10 dtk) | 5 · 5s, 30s, 2m, 10m | Payout tetap `PENDING`/`SUBMITTED` → alert `job_dead_total{kind="payout.submit"}`; ops: `POST /ops/jobs/{id}/retry` atau resolve | money (4) |
 | `payout.status_check` | `payout.submit` (UNKNOWN) atau check sebelumnya | `payout_id`, `check_no` | `payout.status_check:{id}:{n}` | GET status bank → `SUCCEEDED`/`FAILED` (tx + journal), `NOT_FOUND` + lewat safe window → resubmit dengan key yang sama, belum pasti → enqueue check `n+1` di tx yang sama | Guard `WHERE status = 'UNKNOWN'`; journal unik per `(source, purpose)` | Ya | 15 dtk | **Jadwal tetap** antar check: 30s, 2m, 10m, 1h, 6h. Error infra di satu check: 3 · default | Check ke-5 tak pasti → `needs_reconciliation = true` (bukan dead). Dead infra → alert, ops resolve | money |
-| `webhook.deliver` | Tx bisnis yang membuat `webhook_deliveries` (confirm, refund, expire) | `delivery_id` | `webhook.deliver:{delivery_id}` | POST ke `webhook_url` lewat egress guard (C-44), tanda tangan HMAC, catat `webhook_delivery_attempts` | `event_id` stabil (merchant dedupe); guard `status = 'PENDING'` | Ya | 8 dtk (HTTP 5 dtk) | **7** · 1m, 5m, 30m, 2h, 6h, 24h ± 10% (Step 5 `03` §3) | OnDead: `webhook_deliveries → DEAD`; ops replay (`/ops/webhook-deliveries/{id}/replay`) | webhook-out (8) |
+| `webhook.deliver` | Tx bisnis yang membuat `webhook_deliveries` (confirm, refund, expire) | `delivery_id` | `webhook.deliver:{delivery_id}` | POST ke `webhook_url` lewat egress guard (C-44), tanda tangan HMAC, catat `webhook_delivery_attempts` | `event_id` stabil (merchant dedupe); guard `status = 'PENDING'` | Ya | 8 dtk (HTTP 5 dtk) | **7** · 1m, 5m, 30m, 2h, 6h, 24h ± 10% (kontrak API §3) | OnDead: `webhook_deliveries → DEAD`; ops replay (`/ops/webhook-deliveries/{id}/replay`) | webhook-out (8) |
 | `topup.recover` | Scheduler, setiap 1 menit | — (sweep) | `topup.recover:{menit}` | Ambil top-up `recovery_point = 'CREATED'` berumur > 30 dtk (batch 100) → POST charge (key = `topup_id`) → tx2 `PROVIDER_CREATED` + simpan response idempotency | Provider idempoten per `topup_id`; guard `recovery_point = 'CREATED'` | Ya | 60 dtk | 3 · default | Alert; sweep berikutnya mencoba lagi | maintenance (2) |
 | `topup.expire_sweep` | Scheduler, setiap 5 menit | — | `topup.expire_sweep:{slot}` | `PENDING` lewat `expires_at` (batch 50) → **cek status charge ke provider dulu** → sukses: terapkan kredit (jalur yang sama dengan inbox); selain itu `EXPIRED` | Guard status; journal unik `(topup, TOPUP_CREDIT)` | Ya | 120 dtk | 3 · default | Alert; sweep berikutnya | maintenance |
 | `intent.expire_sweep` | Scheduler, setiap 1 menit | — | `intent.expire_sweep:{menit}` | `UPDATE … SET EXPIRED WHERE status = 'REQUIRES_CONFIRMATION' AND expires_at < now()` (batch) + `webhook_deliveries` + `webhook.deliver` di tx yang sama | Guard status | Tidak | 30 dtk | 3 · default | Alert | maintenance |
@@ -125,7 +125,7 @@ Semua job tenant di-enqueue di dalam `WithTenantTx` (trigger `jobs_enforce_tenan
 |---|---|---|---|---|---|---|---|---|---|---|
 | `payroll.plan` | Tx `POST /payroll-runs/{id}/calculate` | `run_id`, `calc_version` | `payroll.plan:{run}:{v}` | Guard `CALCULATING` + versi → tentukan employee eligible (urut `employee_id`) → `chunks_total` → INSERT chunk job, **semua + `CompleteInTx` dalam satu tx** | Guard versi; dedupe chunk; satu tx | Tidak | 60 dtk | 5 · default | OnDead: run → `FAILED` (`failure_reason = plan`); alert | payroll (4) |
 | `payroll.calc_chunk` | `payroll.plan` | `run_id`, `calc_version`, `chunk_no`, `employee_ids[]` (≤ 50; ditetapkan saat plan agar deterministik) | `payroll.calc_chunk:{run}:{v}:{n}` | Pola txRead (RR, read-only) → compute → txWrite (RC) dari `00-index.md` §5; chunk terakhir menutup run | Versi tidak cocok → no-op + complete; UPSERT `(run, employee, calc_version)`; `chunks_done` + `CompleteInTx` di tx yang sama; trigger PI-04 `FOR SHARE` | Tidak | 120 dtk + heartbeat | 5 · 2s, 4s, 8s, 16s (cap 1m) | OnDead: run `CALCULATING → FAILED` + nomor chunk (PFS-05); alert. HR memperbaiki data → recalculate | payroll |
-| `payroll.cleanup_versions` (Step 12: R3-2) | Tx finalize / run menjadi `CALCULATED` | `run_id`, `keep_version` | `payroll.cleanup_versions:{run}:{v}` | Hapus item `calc_version < keep_version` per batch 1.000 (cascade line/snapshot), di luar lock periode | DELETE yang sudah kosong = no-op | Tidak | 60 dtk | 5 · default | Alert; data lama hanya memakan ruang | `payroll` |
+| `payroll.cleanup_versions` (final review R3-2) | Tx finalize / run menjadi `CALCULATED` | `run_id`, `keep_version` | `payroll.cleanup_versions:{run}:{v}` | Hapus item `calc_version < keep_version` per batch 1.000 (cascade line/snapshot), di luar lock periode | DELETE yang sudah kosong = no-op | Tidak | 60 dtk | 5 · default | Alert; data lama hanya memakan ruang | `payroll` |
 | `payslip.render` | Tx finalize (satu job per **batch 20 payslip**) | `run_id`, `payslip_ids[]` | `payslip.render:{run}:{batch}` | Per payslip: render PDF di memori → PUT object (key deterministik) → tx: `RENDERED` + checksum. Gagal satu payslip → payslip itu `FAILED`, batch lanjut | Object key deterministik (overwrite = aman); guard `status IN ('PENDING','FAILED')` | Ya (object storage) | 5 menit + heartbeat | 5 · default | Payslip tetap `PENDING`/`FAILED` → `PAYSLIP_NOT_READY`; alert; re-enqueue lewat CLI operator `worker jobs retry` | documents (2) |
 | `attendance.import` | Tx `POST /attendance-imports` | `import_id` | `attendance.import:{id}` | `UPLOADED → PROCESSING` → stream CSV dari storage → batch 500 baris per tx (UPSERT `(tenant, employee, work_date)`, error `ON CONFLICT DO NOTHING`) → `COMPLETED` + counts | UPSERT natural key; error unik per baris; mengulang dari awal aman | Ya (storage) | 10 menit + heartbeat | 3 · default | OnDead: import `FAILED` (file boleh diunggah ulang, karena `uq_attendance_imports_file` mengecualikan `FAILED`) | documents |
 | `leave.accrual_fanout` (P2) | Scheduler 00:30 | `date` | `leave.accrual_fanout:{date}` | Iterasi tenant aktif → enqueue `leave.accrual` per tenant **di dalam `WithTenantTxFor(tenant)`** | Dedupe per tenant + tanggal | Tidak | 5 menit | 3 · default | Alert | maintenance (1) |
@@ -134,7 +134,7 @@ Semua job tenant di-enqueue di dalam `WithTenantTx` (trigger `jobs_enforce_tenan
 | `maintenance.audit_partitions` (V2) | Scheduler bulanan | `month` | `…:{month}` | Buat partisi bulan depan `audit_log` / `attendance_records` | `CREATE … IF NOT EXISTS` | Tidak | 5 menit | 3 | Alert (insert gagal kalau partisi tidak ada) | maintenance |
 | `report.generate` (P3) | Tx request laporan | `report_id` | `report.generate:{id}` | Query replica → CSV (encoder pusat, C-39) → storage | Key deterministik | Ya (storage) | 10 menit | 3 | Laporan `FAILED` | documents |
 
-> Step 12 (R1-3): `payroll.plan` dengan 0 karyawan eligible langsung menyelesaikan run (`CALCULATED`, total 0, warning `NO_ELIGIBLE_EMPLOYEES`) di tx yang sama.
+> Final review (R1-3): `payroll.plan` dengan 0 karyawan eligible langsung menyelesaikan run (`CALCULATED`, total 0, warning `NO_ELIGIBLE_EMPLOYEES`) di tx yang sama.
 
 **Bukan job:**
 - **Adjustment** diterapkan di dalam tx kalkulasi/finalize (status `PENDING_APPLY → APPLIED` saat run target final).
@@ -267,16 +267,16 @@ Batas ini **lunak**: dua worker yang mengklaim bersamaan bisa sama-sama melihat 
 ```text
 X-Request-ID (HTTP) → ctx → jobs.correlation_id (saat enqueue) → logger handler
    → header pada panggilan keluar (provider, merchant webhook): X-Request-ID baru per panggilan
-     + X-Correlation-ID milik alur (Step 8 `01-observability.md` §1)
+     + X-Correlation-ID milik alur (`24-observability.md` §1)
    → job turunan (status_check, chunk, payslip.render) mewarisi correlation_id induknya
 ```
-Dengan begitu satu ID bisa melacak `POST /payouts` → `payout.submit` → panggilan bank → 5 `payout.status_check` → journal settle (dipakai di demo observability, Step 11).
+Dengan begitu satu ID bisa melacak `POST /payouts` → `payout.submit` → panggilan bank → 5 `payout.status_check` → journal settle (dipakai di demo observability, demo script).
 
 ---
 
 ## 11. Endpoint demo (O15)
 
-**Guard (berlapis, Step 6 T-LP-21):** rute hanya dikompilasi dengan build tag `demo` **dan** didaftarkan jika `DEMO_MODE=true`; wajib header `X-Demo-Token`; rate limit `write`. Build produksi tidak berisi kode ini sama sekali (titik injeksi fault di build non-demo adalah fungsi no-op). Pola yang sama berlaku di PayRun.
+**Guard (berlapis, threat model T-LP-21):** rute hanya dikompilasi dengan build tag `demo` **dan** didaftarkan jika `DEMO_MODE=true`; wajib header `X-Demo-Token`; rate limit `write`. Build produksi tidak berisi kode ini sama sekali (titik injeksi fault di build non-demo adalah fungsi no-op). Pola yang sama berlaku di PayRun.
 
 | Endpoint | Fungsi |
 |---|---|
@@ -314,12 +314,12 @@ Setelah exit, compose (`restart: unless-stopped`) menyalakan worker lagi. Mode d
 
 ## Catatan untuk diselaraskan
 
-1. **Nama kind:** Step 4 `03-ledgerpay-schema.md` menyebut `retention.cleanup` dan `notify.*`; Step 4 `01-shared-tables.md` §8 menyebut `maintenance.*`. Dokumen ini menetapkan **`maintenance.*`** dan **`notify.send`** sebagai kanonik.
-2. **Kind payroll:** dokumen ini memakai `payroll.plan` (ADR-P05, Step 4) sebagai nama kanonik, bukan `payroll.orchestrate`.
-3. **Format `dedupe_key` chunk:** Step 4 `06-payrun-schema.md` menulis `calc_chunk:{run}:{v}:{n}`. Dokumen ini menetapkan prefix kind lengkap: `payroll.calc_chunk:{run}:{v}:{n}`.
-4. **`max_attempts` webhook keluar:** Step 4 menyebut 8 sebagai contoh; kontrak Step 5 (1 + 6 retry) berarti **7**.
+1. **Nama kind:** desain database menyebut `retention.cleanup` dan `notify.*`; `10-db-shared-tables.md` §8 menyebut `maintenance.*`. Dokumen ini menetapkan **`maintenance.*`** dan **`notify.send`** sebagai kanonik.
+2. **Kind payroll:** dokumen ini memakai `payroll.plan` (ADR-P05, desain database) sebagai nama kanonik, bukan `payroll.orchestrate`.
+3. **Format `dedupe_key` chunk:** `12-db-schema.md` menulis `calc_chunk:{run}:{v}:{n}`. Dokumen ini menetapkan prefix kind lengkap: `payroll.calc_chunk:{run}:{v}:{n}`.
+4. **`max_attempts` webhook keluar:** desain database menyebut 8 sebagai contoh; kontrak kontrak API (1 + 6 retry) berarti **7**.
 5. **Skema yang perlu ditambah:**
    - `leave_accruals (tenant_id, employee_id, leave_type_id, accrual_date, amount)` dengan unique key, untuk idempotensi `leave.accrual` (P2).
    - Tabel demo `demo_faults` (hanya di migrasi demo).
    - Kolom opsional `jobs.priority` (P2).
-6. **Compose:** worker butuh `stop_grace_period: 30s`. Dicatat untuk Step 9.
+6. **Compose:** worker butuh `stop_grace_period: 30s`. Dicatat untuk desain DevOps.

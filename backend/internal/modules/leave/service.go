@@ -491,7 +491,7 @@ func contains(ids []uuid.UUID, id uuid.UUID) bool {
 // ---------------------------------------------------------------- subjek approval LEAVE_REQUEST
 
 // ApproveSubjectTx: [1b][2] PeriodGuard (FOR SHARE) → approver aktif (DB) → decide [4] → saldo FOR UPDATE
-// [5] → request APPROVED [6] → change log + audit [7] (Step 7 `22` §3.1).
+// [5] → request APPROVED [6] → change log + audit [7] (`22-tx-concurrency.md` §3.1).
 func (s *Service) ApproveSubjectTx(ctx context.Context, tx pgx.Tx, id, approvalID, actor uuid.UUID, decide func(context.Context) error, meta reqmeta.Meta) (any, error) {
 	tid, _ := tenantctx.From(ctx)
 	now := s.clock.Now()

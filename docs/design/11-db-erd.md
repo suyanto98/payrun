@@ -1,8 +1,8 @@
-# Step 4.5 — PayRun: ERD & Daftar Tabel
+# PayRun: ERD & Daftar Tabel
 
-> Konvensi (PK `(tenant_id, id)`, composite FK, enum `text + CHECK`, tanpa `deleted_at`, tipe numeric): [`00-index.md`](00-index.md).
-> Spesifikasi kolom: [`06-payrun-schema.md`](06-payrun-schema.md). RLS, index, volume: [`07-payrun-rls-consistency-and-indexing.md`](07-payrun-rls-consistency-and-indexing.md).
-> Tabel shared (`users`, `refresh_tokens`, `idempotency_keys`, `jobs`, `audit_log`) dispesifikasikan di [`01-shared-tables.md`](01-shared-tables.md). Di sini tabel-tabel itu hanya muncul sebagai node relasi.
+> Konvensi (PK `(tenant_id, id)`, composite FK, enum `text + CHECK`, tanpa `deleted_at`, tipe numeric): `00-index.md`.
+> Spesifikasi kolom: [`12-db-schema.md`](12-db-schema.md). RLS, index, volume: [`13-db-rls-consistency-indexing.md`](13-db-rls-consistency-indexing.md).
+> Tabel shared (`users`, `refresh_tokens`, `idempotency_keys`, `jobs`, `audit_log`) dispesifikasikan di [`10-db-shared-tables.md`](10-db-shared-tables.md). Di sini tabel-tabel itu hanya muncul sebagai node relasi.
 
 Schema: `payrun`. Semua tabel bisnis tenant-scoped, kecuali `tenants`, `users`, dan `rulesets` (global).
 

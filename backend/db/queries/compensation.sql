@@ -96,7 +96,7 @@ FROM component_definitions ORDER BY code;
 
 -- name: LockComponentGraph :exec
 -- Perubahan dependensi diserialkan per tenant: dua PATCH paralel (A→B dan B→A) tidak bisa sama-sama
--- lolos validasi siklus di Read Committed (Step 7 `22` §1, review S3).
+-- lolos validasi siklus di Read Committed (`22-tx-concurrency.md` §1, review S3).
 SELECT pg_advisory_xact_lock(hashtextextended('comp:' || @tenant_id::text, 0));
 
 -- name: GetEmployeeComponentAt :one

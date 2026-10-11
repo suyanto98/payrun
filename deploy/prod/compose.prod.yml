@@ -112,7 +112,7 @@ services:
     restart: "no"
     profiles: [migrate]
 
-  # Demo publik (Step 12 R2-8): email verifikasi/undangan ditangkap, tidak pernah keluar ke internet.
+  # Demo publik (final review R2-8): email verifikasi/undangan ditangkap, tidak pernah keluar ke internet.
   mailpit:
     image: axllent/mailpit:v1.27
     ports: ["127.0.0.1:${PR_MAILPIT_UI_PORT:-8026}:8025"]   # SSH tunnel

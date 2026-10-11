@@ -82,7 +82,7 @@ type Config struct {
 	// Kunci blind index HMAC (base64 32 byte), TERPISAH dari keyring (ADR-P08). Rotasi = rebuild index.
 	PIIBlindIndexKey string `env:"PII_BLIND_INDEX_KEY"`
 
-	// SMTP untuk email transaksional (verifikasi email, undangan). Dev/demo: Mailpit (Step 12 R2-8).
+	// SMTP untuk email transaksional (verifikasi email, undangan). Dev/demo: Mailpit (final review R2-8).
 	SMTPAddr     string        `env:"SMTP_ADDR"`
 	SMTPUsername string        `env:"SMTP_USERNAME"`
 	SMTPPassword string        `env:"SMTP_PASSWORD"`

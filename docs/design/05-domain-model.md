@@ -1,7 +1,7 @@
-# Step 3.4 — PayRun: Domain Model
+# PayRun: Domain Model
 
-> Glosarium kanonik (nama aggregate, state, ID invariant): [`00-index.md`](00-index.md). File ini **mengelaborasi**, tidak mengubah.
-> Referensi: [feature spec](../step-02-features-and-architecture/03-payrun-features.md), [arsitektur](../step-02-features-and-architecture/04-payrun-architecture.md), ADR-P01…P09.
+> Glosarium kanonik (nama aggregate, state, ID invariant): `00-index.md`. File ini **mengelaborasi**, tidak mengubah.
+> Referensi: [feature spec](03-features.md), [arsitektur](04-architecture.md), ADR-P01…P09.
 
 ---
 
@@ -24,7 +24,7 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-| Subdomain | Jenis | Kenapa jenis ini | Modul (Step 2 §2.3) |
+| Subdomain | Jenis | Kenapa jenis ini | Modul (desain fitur & arsitektur §2.3) |
 |---|---|---|---|
 | **Payroll** | Core | Pembeda produk: perhitungan yang benar, reproducible, immutable. Di sinilah energi engineering terbesar | `payroll` (`payroll/engine`, `payroll/run`) |
 | **Compensation** | Supporting | Data yang dikonsumsi engine; rumit karena effective-dated, tetapi bukan pembeda | `compensation` |

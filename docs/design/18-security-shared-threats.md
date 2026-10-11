@@ -1,7 +1,7 @@
-# Step 6.1 — Shared Threats (LedgerPay & PayRun)
+# Shared Threats (LedgerPay & PayRun)
 
-> Bagian dari [Step 6](00-index.md). Format, skala risiko, dan skema ID mengikuti `00-index.md`.
-> Threat di sini berlaku untuk **kedua** project karena keduanya memakai skeleton yang sama (ADR-001, ADR-009, ADR-013). Threat yang spesifik domain ada di `02-ledgerpay-threat-model.md` (T-LP) dan `03-payrun-threat-model.md` (T-PR). Kontrol `C-xx` didefinisikan di `04-security-controls-and-testing.md`.
+> Bagian dari threat model. Format, skala risiko, dan skema ID mengikuti `00-index.md`.
+> Threat di sini berlaku untuk **kedua** project karena keduanya memakai skeleton yang sama (ADR-001, ADR-009, ADR-013). Threat yang spesifik domain ada di `02-ledgerpay-threat-model.md` (T-LP) dan `19-security-threat-model.md` (T-PR). Kontrol `C-xx` didefinisikan di `20-security-controls.md`.
 
 ---
 
@@ -59,7 +59,7 @@ Threat        : Penyerang menebak password atau mencoba daftar email:password bo
 Attack scenario: Botnet mengirim ribuan POST /auth/login per menit dengan kombinasi dari dump bocor,
                  tersebar di banyak IP; atau satu IP menebak password satu akun target.
 Mitigation    : (1) Rate limit tier auth-strict: 5/menit dan 20/jam per (IP + email), tier auth-ip 30/menit per IP (C-07).
-                (Step 12 R2-5) Akun terkunci dijawab persis seperti kredensial salah (`401 INVALID_CREDENTIALS` + `Retry-After`), tidak pernah `ACCOUNT_LOCKED`, agar status lock tidak membocorkan email yang terdaftar.
+                (final review R2-5) Akun terkunci dijawab persis seperti kredensial salah (`401 INVALID_CREDENTIALS` + `Retry-After`), tidak pernah `ACCOUNT_LOCKED`, agar status lock tidak membocorkan email yang terdaftar.
                 (2) Lockout bertahap per akun: setelah 5 gagal → users.locked_until = now()+1 menit, berlipat
                     sampai maksimal 15 menit; reset saat login sukses (C-03).
                 (3) Pesan generik 401 INVALID_CREDENTIALS untuk email tidak ada maupun password salah.
@@ -231,7 +231,7 @@ Attack scenario: Parameter filter ?status=PENDING' OR '1'='1 dirangkai ke string
 Mitigation    : Semua query lewat sqlc (parameterized; ADR-005). Tidak ada fmt.Sprintf/konkatenasi untuk SQL;
                 filter dinamis diimplementasikan sebagai varian query tetap atau parameter nullable
                 (WHERE ($1::text IS NULL OR status = $1)), bukan string building. Kolom sort tidak bisa dipilih
-                bebas (Step 5 §6). gosec G201/G202 di CI. Role DB aplikasi bukan owner, sehingga injection pun tidak
+                bebas (kontrak API §6). gosec G201/G202 di CI. Role DB aplikasi bukan owner, sehingga injection pun tidak
                 bisa DROP/ALTER, dan di PayRun tetap di bawah RLS.
 Detection     : Error SQL syntax tak terduga (42601) → metrik db_unexpected_error_total + alert.
 Test          : gosec di CI (fail), sqli_filter_payloads_rejected (payload umum di setiap filter → 400 atau hasil
@@ -248,7 +248,7 @@ Attack scenario: PATCH /employees/{id} dengan {"status":"ACTIVE","tenant_id":"<l
                  {"role":"OPS"}; POST /transfers dengan {"from_account_id":"<akun korban>"}.
 Mitigation    : DTO request eksplisit per endpoint (oapi-codegen dari OpenAPI), bukan bind langsung ke model DB.
                 Decoder JSON strict (DisallowUnknownFields) → 400 VALIDATION_ERROR untuk field tidak dikenal
-                (Step 5: body berisi tenant_id ditolak). Field turunan server (role, tenant_id, owner, status) tidak
+                (kontrak API: body berisi tenant_id ditolak). Field turunan server (role, tenant_id, owner, status) tidak
                 pernah ada di DTO request.
 Detection     : validation_error_total{code=UNKNOWN_FIELD}.
 Test          : mass_assignment_unknown_field_rejected (untuk setiap endpoint tulis, tambah field "role"/"tenant_id" → 400).
@@ -300,7 +300,7 @@ Mitigation    : Role selalu berasal dari state server (users.role / memberships.
                 (contoh: hanya OWNER yang bisa memberi role OWNER) dan selalu diaudit. Role OPS di LedgerPay hanya
                 dibuat lewat seed/CLI, tidak ada endpoint untuk membuatnya.
 Detection     : Audit membership.roles_changed / user.role_changed; alert untuk setiap pemberian role OPS/OWNER.
-Test          : authz_matrix (Step 5 file 05), ops_route_rejects_user_role, cannot_self_promote_owner.
+Test          : authz_matrix (kontrak API file 05), ops_route_rejects_user_role, cannot_self_promote_owner.
 Status        : MVP.
 ```
 
@@ -312,7 +312,7 @@ Threat        : Penyerang melewati limiter dengan memalsukan IP atau memanfaatka
 Attack scenario: Mengirim X-Forwarded-For acak agar setiap request tampak dari IP berbeda.
 Mitigation    : api hanya memercayai X-Forwarded-For dari Caddy (trusted proxy = alamat network compose);
                 IP klien diambil dari hop yang ditambahkan Caddy, bukan dari nilai yang dikirim klien.
-                Kunci limiter gabungan per user/API key + per IP (Step 5 §7).
+                Kunci limiter gabungan per user/API key + per IP (kontrak API §7).
                 Keterbatasan V1: limiter in-memory per instance (ADR-007). Dengan satu instance hal ini akurat;
                 restart mereset counter.
 Detection     : rate_limited_total{tier}.
@@ -394,7 +394,7 @@ Threat        : Pelaku menyangkal aksinya, atau menghapus/mengubah jejaknya.
 Attack scenario: Ops yang curang meresolusi payout sebagai SUCCEEDED lalu menghapus baris audit; developer dengan
                  akses DB meng-UPDATE audit_log.
 Mitigation    : audit_log append-only: trigger forbid_update_delete + grant role app hanya SELECT, INSERT
-                (Step 4 §6). Entri berisi actor_type, actor_id, request_id, correlation_id, IP, reason. Audit
+                (desain database §6). Entri berisi actor_type, actor_id, request_id, correlation_id, IP, reason. Audit
                 ditulis di transaksi yang sama dengan perubahan bisnis, sehingga tidak ada perubahan tanpa jejak.
                 Role owner (yang bisa men-DROP trigger) hanya dipakai migrasi.
 Detection     : Migrasi yang menyentuh trigger audit ditinjau di PR (CODEOWNERS); job verifikasi jumlah audit vs aksi.
@@ -409,7 +409,7 @@ STRIDE        : I
 Aset          : Detail internal (skema, versi, query)
 Threat        : Error message membocorkan struktur internal atau keberadaan data.
 Attack scenario: Mengirim input rusak dan membaca pesan Postgres mentah berisi nama tabel/constraint.
-Mitigation    : Semua error dipetakan ke katalog RFC 9457 (Step 5 file 01). Error tak terpetakan → 500 INTERNAL_ERROR
+Mitigation    : Semua error dipetakan ke katalog RFC 9457 (kontrak API file 01). Error tak terpetakan → 500 INTERNAL_ERROR
                 generik; detail hanya di log yang ditautkan request_id. Tidak ada stack trace di respons.
                 Header Server/X-Powered-By dihapus. Pesan untuk NIK_TAKEN, INVALID_RECIPIENT, dan sejenisnya
                 sengaja tidak menyebut pemilik data.
@@ -457,9 +457,9 @@ Attack scenario: Slowloris (header dikirim sangat lambat); banyak request ke end
 Mitigation    : http.Server: ReadHeaderTimeout 5s, ReadTimeout 15s, WriteTimeout 30s, IdleTimeout 60s; Caddy timeouts
                 serupa. Postgres: statement_timeout 5s (API), lock_timeout 2s, idle_in_transaction_session_timeout 10s
                 (ADR-011). Pool berukuran tetap (api 10–20 koneksi). Batas rentang tanggal 366 hari, limit list ≤ 100
-                (Step 5 §6). Endpoint mahal (calculate, import, finalize) punya tier heavy per tenant. Body limit (T-SH-12).
+                (kontrak API §6). Endpoint mahal (calculate, import, finalize) punya tier heavy per tenant. Body limit (T-SH-12).
 Detection     : http_in_flight_requests, db_pool_wait_seconds, p99 latency → alert.
-Test          : server_timeouts_configured, list_range_limit_enforced, load test Step 9.
+Test          : server_timeouts_configured, list_range_limit_enforced, load test desain DevOps.
 Status        : MVP. Residual Medium: DDoS volumetrik di luar kemampuan satu VM. Production: CDN/WAF/DDoS protection.
 ```
 

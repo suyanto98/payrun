@@ -9,7 +9,7 @@ Banyak pekerjaan tidak boleh (atau tidak perlu) dijalankan di request HTTP:
 - LedgerPay: memanggil bank untuk payout, mengirim webhook ke merchant, memproses webhook masuk, reconciliation, notifikasi.
 - PayRun: kalkulasi payroll per chunk, generate PDF payslip, import CSV absensi, job terjadwal.
 
-Masalah utamanya adalah **dual-write** (Step 1 LedgerPay C4): jika kode melakukan `COMMIT` ke DB lalu `publish` ke broker, salah satu bisa gagal. Hasilnya, pesan hilang (uang sudah di-hold tetapi payout tidak pernah dikirim) atau pesan terkirim untuk transaksi yang di-rollback.
+Masalah utamanya adalah **dual-write** (strategi produk LedgerPay C4): jika kode melakukan `COMMIT` ke DB lalu `publish` ke broker, salah satu bisa gagal. Hasilnya, pesan hilang (uang sudah di-hold tetapi payout tidak pernah dikirim) atau pesan terkirim untuk transaksi yang di-rollback.
 
 ## Options
 
@@ -25,7 +25,7 @@ Masalah utamanya adalah **dual-write** (Step 1 LedgerPay C4): jika kode melakuka
 
 **Postgres-backed queue yang ditulis sendiri satu kali**, sebagai package `platform/jobs`, dipakai oleh kedua project.
 
-Bentuk tabel (sketsa, DDL final di Step 4):
+Bentuk tabel (sketsa, DDL final di desain database):
 
 ```text
 jobs(id, kind, payload jsonb, tenant_id NULL, status[queued|running|succeeded|dead],
@@ -56,10 +56,10 @@ RETURNING *;
 | DLQ | `attempts >= max_attempts` → `status='dead'`; alert + tombol replay manual di ops console |
 | Delivery | **At-least-once.** Setiap handler **wajib idempoten** (upsert, transisi state kondisional, dedupe key) |
 | Latensi | Polling interval pendek (±500 ms); `LISTEN/NOTIFY` opsional untuk membangunkan worker segera |
-| Penyelesaian transaksional | Runner menyediakan `jobs.CompleteInTx(tx, job)` dengan **fencing**: `UPDATE jobs SET status='succeeded' WHERE id=$1 AND locked_by=$worker AND status='running'`. Kalau hasilnya 0 baris, lease worker ini sudah diambil worker lain (*zombie worker*), sehingga seluruh transaksi bisnis di-rollback. Tanpa fencing, worker yang lambat bisa, misalnya, menambah `chunks_done` dua kali (Step 3 PFS-02). Dengan begitu, handler bisa menandai job `succeeded` **di transaksi yang sama** dengan kerja bisnisnya (dipakai oleh chunk payroll, ADR-P05, dan inbox webhook, ADR-L08). Handler yang memanggil pihak luar tetap memakai state machine + idempotency key, karena panggilan jaringan tidak bisa ikut transaksi |
+| Penyelesaian transaksional | Runner menyediakan `jobs.CompleteInTx(tx, job)` dengan **fencing**: `UPDATE jobs SET status='succeeded' WHERE id=$1 AND locked_by=$worker AND status='running'`. Kalau hasilnya 0 baris, lease worker ini sudah diambil worker lain (*zombie worker*), sehingga seluruh transaksi bisnis di-rollback. Tanpa fencing, worker yang lambat bisa, misalnya, menambah `chunks_done` dua kali (desain domain PFS-02). Dengan begitu, handler bisa menandai job `succeeded` **di transaksi yang sama** dengan kerja bisnisnya (dipakai oleh chunk payroll, ADR-P05, dan inbox webhook, ADR-L08). Handler yang memanggil pihak luar tetap memakai state machine + idempotency key, karena panggilan jaringan tidak bisa ikut transaksi |
 | Ordering | Tidak dijamin global. Handler yang butuh urutan memakai transisi state monoton, bukan urutan job |
 
-### Amandemen (Step 11): verifikasi rencana query claim
+### Amandemen (demo script): verifikasi rencana query claim
 Kondisi `(status='queued' AND run_at <= now()) OR (status='running' AND locked_until < now())` bisa berakhir dengan BitmapOr + sort, bukan index scan yang rapi pada partial index. Kalau `EXPLAIN (ANALYZE, BUFFERS)` saat coding menunjukkan itu bermasalah, pakai alternatif yang lebih sederhana: **lease reaper** terpisah (`UPDATE jobs SET status='queued', run_at=now() WHERE status='running' AND locked_until < now()`, dijalankan tiap beberapa detik), sehingga query claim hanya memakai partial index `ix_jobs_claimable (run_at) WHERE status='queued'`. Fencing tetap aman, karena `CompleteInTx` mensyaratkan `status='running' AND locked_by=$worker`. Job yang sudah di-reap tidak bisa diselesaikan oleh worker zombie.
 
 ### Catatan implementasi (Sprint 6)
@@ -72,7 +72,7 @@ Kondisi `(status='queued' AND run_at <= now()) OR (status='running' AND locked_u
 
 - Menghapus dual-write dengan cara paling sederhana: satu `COMMIT` mencakup efek bisnis dan pekerjaan lanjutannya.
 - Volume portfolio (ratusan–ribuan job/menit di load test) jauh di bawah batas praktis Postgres queue.
-- Menulisnya sendiri memberi bahan interview yang dalam (lease, visibility, idempotent consumer, poison message). Dibangun sekali di LedgerPay lalu dipakai ulang PayRun (Step 1 `03-cross-project.md` §1.1).
+- Menulisnya sendiri memberi bahan interview yang dalam (lease, visibility, idempotent consumer, poison message). Dibangun sekali di LedgerPay lalu dipakai ulang PayRun (strategi produk §1.1).
 - **Kenapa bukan RabbitMQ**, padahal sudah familiar dari pekerjaan: RabbitMQ tidak menghapus dual-write. Kita tetap butuh outbox + relay ke broker, ditambah broker yang harus dioperasikan. Tanpa kebutuhan fan-out atau throughput, broker hanya menambah failure mode.
 - **Kenapa bukan River:** River adalah pilihan production yang sangat masuk akal dan menjadi jalur migrasi utama. Hand-rolled dipilih karena tujuan portfolio adalah *memahami* mekanismenya.
 
@@ -101,4 +101,4 @@ Kondisi `(status='queued' AND run_at <= now()) OR (status='running' AND locked_u
 
 ## Related
 
-- [ADR-004](ADR-004-postgresql.md) · [ADR-011](ADR-011-transaction-management.md) · [ADR-L06](ADR-L06-payout-unknown-outcome.md) · [ADR-L08](ADR-L08-inbound-webhook-inbox.md) · [ADR-P05](ADR-P05-payroll-run-execution.md)
+- [ADR-004](ADR-004-postgresql.md) · [ADR-011](ADR-011-transaction-management.md) · ADR-L06 · ADR-L08 · [ADR-P05](ADR-P05-payroll-run-execution.md)

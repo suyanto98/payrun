@@ -100,7 +100,7 @@ CREATE TABLE employees (
     CONSTRAINT ck_employees_bidx_len CHECK ((nik_bidx IS NULL OR octet_length(nik_bidx) = 32)
         AND (npwp_bidx IS NULL OR octet_length(npwp_bidx) = 32))
 );
--- Index FK fk_employees_user_id (Step 12 C4); juga jalur "employee milik user ini" (self-service).
+-- Index FK fk_employees_user_id (final review C4); juga jalur "employee milik user ini" (self-service).
 CREATE INDEX ix_employees_user_id ON employees (user_id);
 CREATE INDEX ix_employees_name_prefix ON employees (tenant_id, lower(full_name) text_pattern_ops, id);
 CREATE INDEX ix_employees_status ON employees (tenant_id, status);

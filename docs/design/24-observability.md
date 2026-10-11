@@ -1,7 +1,7 @@
-# Step 8.1 — Observability (LedgerPay & PayRun)
+# Observability (LedgerPay & PayRun)
 
-> Bagian dari [Step 8](00-index.md). Konvensi metrik, log, kardinalitas, dan SLO di `00-index.md` bersifat mengikat.
-> Dokumen ini mengonsolidasikan **semua** metrik yang muncul di Step 1–7 (open items O4 + O14) ke satu katalog dengan nama final. Tabel pemetaan nama lama → nama final ada di §4.
+> Bagian dari desain observability & testing. Konvensi metrik, log, kardinalitas, dan SLO di `00-index.md` bersifat mengikat.
+> Dokumen ini mengonsolidasikan **semua** metrik yang muncul di dokumen desain (open items O4 + O14) ke satu katalog dengan nama final. Tabel pemetaan nama lama → nama final ada di §4.
 
 ## Daftar isi
 1. [Logging](#1-logging)
@@ -42,7 +42,7 @@ Semua log berupa satu objek JSON per baris (`log/slog` JSON handler) ke stdout. 
 | `role` | string | aksi ops/admin | `OPS` |
 | `job_id`, `job_kind`, `attempt` | uuid/string/int | log job | `payout.submit`, `2` |
 | ID bisnis | uuid | sesuai konteks | `transfer_id`, `topup_id`, `payout_id`, `intent_id`, `journal_id`, `run_id`, `calc_version`, `chunk_no`, `employee_id` |
-| `error_code` | code katalog (Step 5) | respons 4xx/5xx | `INSUFFICIENT_BALANCE` |
+| `error_code` | code katalog (kontrak API) | respons 4xx/5xx | `INSUFFICIENT_BALANCE` |
 | `error_class` | `retryable`/`permanent` | kegagalan job | |
 | `err` | string ringkas | `ERROR`/`WARN` | `context deadline exceeded` |
 | `pg_code`, `constraint` | string | error DB terpetakan | `23514`, `ck_accounts_balance_non_negative` |
@@ -84,7 +84,7 @@ Tidak ada sampling log di V1. Volume demo kecil, dan kehilangan satu log di jalu
 | `trace_id` | Satu trace OpenTelemetry | OTel SDK | `traceparent` (W3C) di header keluar dan di `jobs.trace_parent` (§5.3) |
 
 Aturan:
-- Panggilan keluar membawa **dua** header: `X-Request-ID` baru per panggilan (supaya log provider bisa dicocokkan per HTTP call) dan `X-Correlation-ID` milik alur. Step 7 `03` §10 menulis "header `X-Request-ID` pada panggilan keluar". Dokumen ini mempertegasnya menjadi dua header.
+- Panggilan keluar membawa **dua** header: `X-Request-ID` baru per panggilan (supaya log provider bisa dicocokkan per HTTP call) dan `X-Correlation-ID` milik alur. `23-background-jobs.md` §10 menulis "header `X-Request-ID` pada panggilan keluar". Dokumen ini mempertegasnya menjadi dua header.
 - Webhook masuk: `correlation_id` = `correlation_id` yang dikirim provider di payload (mock mengembalikan `metadata.correlation_id` dari charge), atau, kalau tidak ada, ID event inbox. Dengan begitu, top-up bisa dilacak dari `POST /topups` sampai kredit saldo.
 - Job turunan (`payout.status_check:{id}:{n}`, `payroll.calc_chunk`, `payslip.render`) mewarisi `correlation_id` job induknya.
 
@@ -118,7 +118,7 @@ Satu query `{project="ledgerpay"} | json | correlation_id="01JPB7Q2"` menampilka
 | Endpoint | Proses | Memeriksa | Timeout | Tidak memeriksa (sengaja) |
 |---|---|---|---|---|
 | `GET /healthz` | api, worker, mock | Proses hidup dan event loop responsif (handler mengembalikan 200) | — | Dependency apa pun. Liveness yang memeriksa DB membuat restart berantai saat DB lambat |
-| `GET /readyz` | api | (1) `SELECT 1` ke DB, timeout 1 dtk; (2) versi migrasi DB **≥ versi minimum** yang dikompilasi ke binary (bukan `=`; dengan `=`, app N-1 langsung not-ready setelah migrasi expand dan rollback app tidak pernah bisa ready, Step 9 `03`); (3) pool tidak jenuh (`acquired < max` atau acquire sukses dalam 200 ms) | 1,5 dtk total | mock-provider (api tetap melayani transfer saat provider mati; degradasi ditangani state machine) |
+| `GET /readyz` | api | (1) `SELECT 1` ke DB, timeout 1 dtk; (2) versi migrasi DB **≥ versi minimum** yang dikompilasi ke binary (bukan `=`; dengan `=`, app N-1 langsung not-ready setelah migrasi expand dan rollback app tidak pernah bisa ready, `29-deploy-migrations-backup.md`); (3) pool tidak jenuh (`acquired < max` atau acquire sukses dalam 200 ms) | 1,5 dtk total | mock-provider (api tetap melayani transfer saat provider mati; degradasi ditangani state machine) |
 | `GET /readyz` | worker | (1) DB ping; (2) migrasi; (3) **heartbeat claim loop**: setiap lane menulis timestamp in-memory tiap iterasi; ready jika semua lane < 3× polling interval (±1,5 dtk; lane panjang < 30 dtk) | 1,5 dtk | Antrean kosong/penuh (bukan urusan readiness) |
 
 Endpoint health dilayani di **port internal** yang sama dengan `/metrics` (misalnya `:9090`), tidak lewat Caddy, sehingga tidak bisa dipanggil dari internet. Di port publik hanya ada `/api/v1/...`.
@@ -154,7 +154,7 @@ Gauge `app_ready{service}` (1/0) diperbarui setiap kali `/readyz` dievaluasi, da
 - `docker-compose.yml`: `healthcheck` setiap service memakai `/healthz` (liveness → restart). `depends_on: condition: service_healthy` hanya untuk `postgres` (pg_isready) dan job `migrate` (`service_completed_successfully`).
 - **Urutan startup:** `postgres` (healthy) → `migrate` (selesai, exit 0) → `api`, `worker`, `mock` → `caddy`. `api` menolak ready sampai versi migrasi DB ≥ versi minimum binary, sehingga image baru dengan migrasi yang belum dijalankan tidak pernah menerima trafik.
 - Caddy: `reverse_proxy` dengan `health_uri /readyz` (port internal), `health_interval 5s`. Upstream yang tidak ready dikeluarkan dari rotasi. Ini relevan di V2 dengan api×N; di V1 dengan satu instance, Caddy mengembalikan 502/503 yang jujur.
-- Deploy (Step 9): gate "health check" di pipeline menunggu `/readyz` 200 setelah restart, sebelum menganggap deploy sukses.
+- Deploy (desain DevOps): gate "health check" di pipeline menunggu `/readyz` 200 setelah restart, sebelum menganggap deploy sukses.
 
 ---
 
@@ -179,42 +179,42 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 | `app_http_requests_total` | counter | `route`, `method`, `status` | Request selesai. `route` = template (terbatas), `status` = kode HTTP | A-06 | LF-13, PF-17 |
 | `app_http_request_duration_seconds` | histogram (HTTP) | `route`, `method` | Latency server-side | A-07 | SLO |
 | `app_http_in_flight_requests` | gauge | — | Request yang sedang diproses | — | — |
-| `app_http_rejected_total` | counter | `reason` (`body_too_large`, `unknown_field`, `bad_json`, `unsupported_media`) | Request ditolak sebelum handler | — | Step 6 T-SH-11/12 |
-| `app_rate_limited_total` | counter | `tier` | Respons 429 | — | Step 5 §7 |
-| `app_errors_total` | counter | `code` (code katalog Step 5) | Respons error per code. Label terbatas karena katalognya tertutup | — | Step 5 `01` |
-| `app_db_pool_acquired_conns` / `app_db_pool_idle_conns` / `app_db_pool_max_conns` | gauge | `service` | Statistik `pgxpool.Stat()` | A-08 | Step 7 `01` §6 |
-| `app_db_pool_acquire_duration_seconds` | histogram (DB) | `service` | Waktu menunggu koneksi | A-08 | Step 7 |
-| `app_db_pool_acquire_timeout_total` | counter | `service` | Acquire > 2 dtk → `503` | A-08 | Step 7 `01` |
+| `app_http_rejected_total` | counter | `reason` (`body_too_large`, `unknown_field`, `bad_json`, `unsupported_media`) | Request ditolak sebelum handler | — | Threat model T-SH-11/12 |
+| `app_rate_limited_total` | counter | `tier` | Respons 429 | — | Kontrak API §7 |
+| `app_errors_total` | counter | `code` (code katalog kontrak API) | Respons error per code. Label terbatas karena katalognya tertutup | — | `15-api-error-catalogue.md` |
+| `app_db_pool_acquired_conns` / `app_db_pool_idle_conns` / `app_db_pool_max_conns` | gauge | `service` | Statistik `pgxpool.Stat()` | A-08 | Desain transaksi & concurrency §6 |
+| `app_db_pool_acquire_duration_seconds` | histogram (DB) | `service` | Waktu menunggu koneksi | A-08 | Desain transaksi & concurrency |
+| `app_db_pool_acquire_timeout_total` | counter | `service` | Acquire > 2 dtk → `503` | A-08 | Desain transaksi & concurrency |
 | `app_db_query_duration_seconds` | histogram (DB) | `query` (nama query sqlc, contoh `PostJournalEntries`) | Latency per query. Nama query sqlc terbatas (ditentukan di kode), jadi aman sebagai label | — | — |
 | `app_db_tx_retries_total` | counter | `reason` (`deadlock`, `serialization`) | Retry `WithTx` | — | ADR-011 |
-| `app_db_deadlocks_total` | counter | — | `40P01` terdeteksi (sebelum retry) | — | Step 7 `01` §4 |
+| `app_db_deadlocks_total` | counter | — | `40P01` terdeteksi (sebelum retry) | — | Desain transaksi & concurrency §4 |
 | `app_db_lock_timeouts_total` | counter | `kind` (`resource`, `idempotency`) | `55P03` → `RESOURCE_BUSY` / `REQUEST_IN_PROGRESS` | — | ADR-L02/L03 |
-| `app_db_constraint_violations_total` | counter | `constraint` (nama constraint terpetakan) | Pelanggaran constraint yang terpetakan ke error domain. Lonjakan constraint yang "seharusnya ditangkap APP lebih dulu" = indikasi bug | — | Step 3 `02` |
-| `app_db_unmapped_errors_total` | counter | `pg_code` | Error DB tanpa pemetaan → 500 | A-06 | Step 6 T-SH-21 |
-| `app_job_enqueued_total` | counter | `kind` | Job ditulis ke outbox | — | Step 7 `03` §10 |
-| `app_job_queue_depth` | gauge | `kind`, `status` | Jumlah job per status (query periodik 15 dtk) | — | Step 7 |
-| `app_job_oldest_age_seconds` | gauge | `kind` | `now() − min(run_at)` untuk job `queued` yang jatuh tempo | A-05 | Step 7 |
-| `app_outbox_lag_seconds` | gauge | — | Umur job tertua yang belum pernah diklaim (`attempts = 0`): seberapa lama side effect tertunda sejak commit | A-03 | Step 7, SLO |
-| `app_backup_last_success_timestamp_seconds` | gauge | `db` | Waktu backup terakhir yang sukses (via textfile collector node_exporter; ditambahkan dari Step 9 `03`). Alert jika > 26 jam | — | Step 9
-| `app_job_duration_seconds` | histogram (JOB) | `kind`, `outcome` (`ok`, `retry`, `dead`, `fenced`) | Durasi eksekusi | — | Step 7 |
-| `app_job_failures_total` | counter | `kind`, `class` (`retryable`, `permanent`) | Kegagalan per percobaan | — | Step 7 |
+| `app_db_constraint_violations_total` | counter | `constraint` (nama constraint terpetakan) | Pelanggaran constraint yang terpetakan ke error domain. Lonjakan constraint yang "seharusnya ditangkap APP lebih dulu" = indikasi bug | — | Desain domain |
+| `app_db_unmapped_errors_total` | counter | `pg_code` | Error DB tanpa pemetaan → 500 | A-06 | Threat model T-SH-21 |
+| `app_job_enqueued_total` | counter | `kind` | Job ditulis ke outbox | — | `23-background-jobs.md` §10 |
+| `app_job_queue_depth` | gauge | `kind`, `status` | Jumlah job per status (query periodik 15 dtk) | — | Desain transaksi & concurrency |
+| `app_job_oldest_age_seconds` | gauge | `kind` | `now() − min(run_at)` untuk job `queued` yang jatuh tempo | A-05 | Desain transaksi & concurrency |
+| `app_outbox_lag_seconds` | gauge | — | Umur job tertua yang belum pernah diklaim (`attempts = 0`): seberapa lama side effect tertunda sejak commit | A-03 | Desain transaksi & concurrency, SLO |
+| `app_backup_last_success_timestamp_seconds` | gauge | `db` | Waktu backup terakhir yang sukses (via textfile collector node_exporter; ditambahkan dari `29-deploy-migrations-backup.md`). Alert jika > 26 jam | — | Desain DevOps
+| `app_job_duration_seconds` | histogram (JOB) | `kind`, `outcome` (`ok`, `retry`, `dead`, `fenced`) | Durasi eksekusi | — | Desain transaksi & concurrency |
+| `app_job_failures_total` | counter | `kind`, `class` (`retryable`, `permanent`) | Kegagalan per percobaan | — | Desain transaksi & concurrency |
 | `app_job_dead_total` | counter | `kind` | Job masuk DLQ | A-04 | ADR-006 |
-| `app_job_lease_expired_total` | counter | `kind` | Klaim mengambil job dengan lease kedaluwarsa (worker sebelumnya mati/lambat) | — | Step 7 |
-| `app_job_lease_lost_total` | counter | `kind` | Worker kehilangan lease saat heartbeat | — | Step 7 |
+| `app_job_lease_expired_total` | counter | `kind` | Klaim mengambil job dengan lease kedaluwarsa (worker sebelumnya mati/lambat) | — | Desain transaksi & concurrency |
+| `app_job_lease_lost_total` | counter | `kind` | Worker kehilangan lease saat heartbeat | — | Desain transaksi & concurrency |
 | `app_job_fenced_total` | counter | `kind` | `CompleteInTx` 0 baris → transaksi di-rollback (zombie worker) | — | ADR-006, PFS-02 |
 | `app_outbound_requests_total` | counter | `target` (`provider`, `bank`, `merchant_webhook`, `storage`), `outcome` (`ok`, `http_4xx`, `http_5xx`, `timeout`, `conn_error`, `blocked`) | Panggilan HTTP keluar | — | — |
 | `app_outbound_request_duration_seconds` | histogram (HTTP) | `target` | Latency panggilan keluar | — | — |
-| `app_authn_failures_total` | counter | `reason` (`invalid_credentials`, `locked`, `token_invalid`, `token_expired`) | Kegagalan autentikasi | — | Step 6 T-SH-01/03 |
+| `app_authn_failures_total` | counter | `reason` (`invalid_credentials`, `locked`, `token_invalid`, `token_expired`) | Kegagalan autentikasi | — | Threat model T-SH-01/03 |
 | `app_authn_lockouts_total` | counter | — | Akun dikunci (lockout bertahap) | — | C-03 |
 | `app_refresh_reuse_detected_total` | counter | — | Reuse refresh token → family dicabut | A-11 | C-05 |
 | `app_csrf_rejected_total` | counter | `reason` (`missing_header`, `bad_origin`) | Refresh/logout ditolak | — | C-08 |
-| `app_authz_denied_total` | counter | `outcome` (`forbidden_403`, `hidden_404`) | Penolakan otorisasi. Lonjakan `hidden_404` dari satu principal = indikasi enumerasi/BOLA | — | Step 6 T-SH-13 |
+| `app_authz_denied_total` | counter | `outcome` (`forbidden_403`, `hidden_404`) | Penolakan otorisasi. Lonjakan `hidden_404` dari satu principal = indikasi enumerasi/BOLA | — | Threat model T-SH-13 |
 | `app_idempotency_replays_total` | counter | `route` | Respons replay (`Idempotent-Replayed`) | — | ADR-L02 |
 | `app_idempotency_key_reused_total` | counter | `route` | `422 IDEMPOTENCY_KEY_REUSED` | — | ADR-L02 |
-| `app_invalid_state_transitions_total` | counter | `entity` | Guard `WHERE status=…` 0 baris → 409 | — | Step 3 |
-| `app_pii_ciphertext_by_version` | gauge | `key_version` | Jumlah ciphertext per versi kunci (untuk memantau re-encrypt; dipakai PayRun) | — | Step 6 `04` §6.3 |
+| `app_invalid_state_transitions_total` | counter | `entity` | Guard `WHERE status=…` 0 baris → 409 | — | Desain domain |
+| `app_pii_ciphertext_by_version` | gauge | `key_version` | Jumlah ciphertext per versi kunci (untuk memantau re-encrypt; dipakai PayRun) | — | `20-security-controls.md` §6.3 |
 
-> `csp_violation_total` (Step 6 T-SH-09) **tidak** dijadikan metrik V1. Laporan CSP (`report-to`) membutuhkan endpoint penerima publik yang menambah permukaan serangan. Pelanggaran CSP diuji lewat E2E (Step 8 `02`). V2: endpoint report terpisah dengan rate limit.
+> `csp_violation_total` (threat model T-SH-09) **tidak** dijadikan metrik V1. Laporan CSP (`report-to`) membutuhkan endpoint penerima publik yang menambah permukaan serangan. Pelanggaran CSP diuji lewat E2E (`25-testing-strategy.md`). V2: endpoint report terpisah dengan rate limit.
 
 ### 3.2 LedgerPay (`ledgerpay_`)
 
@@ -237,7 +237,7 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 | `ledgerpay_topups_total` | counter | `status` (`created`, `succeeded`, `failed`, `expired`, `late_credited`) | Transisi top-up | — | LF-07 |
 | `ledgerpay_payments_total` | counter | `outcome` (`succeeded`, `expired`, `insufficient_balance`, `double_confirm_rejected`) | Hasil konfirmasi pembayaran | — | LF-10, LI-13 |
 | `ledgerpay_refunds_total` | counter | `outcome` (`succeeded`, `exceeds_payment`, `insufficient_balance`) | Hasil refund | — | LF-16 |
-| `ledgerpay_refund_amount_minor_total` | counter | — (**tanpa** label `merchant`) | Nominal refund. Analisis per merchant lewat SQL/ops console, bukan metrik | — | Step 6 T-LP (refund abuse) |
+| `ledgerpay_refund_amount_minor_total` | counter | — (**tanpa** label `merchant`) | Nominal refund. Analisis per merchant lewat SQL/ops console, bukan metrik | — | Threat model T-LP (refund abuse) |
 | `ledgerpay_payouts_total` | counter | `status` (`requested`, `submitted`, `succeeded`, `failed`, `unknown`, `needs_reconciliation`) | Transisi payout | — | LF-11, ADR-L06 |
 | `ledgerpay_payout_unknown` | gauge | — | Jumlah payout berstatus `UNKNOWN` saat ini | — | ADR-L06 |
 | `ledgerpay_payout_unknown_oldest_age_seconds` | gauge | — | Umur payout `UNKNOWN` tertua | A-02 | ADR-L06, SLO |
@@ -251,10 +251,10 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 |---|---|---|---|---|---|
 | `ledgerpay_webhook_inbox_received_total` | counter | `outcome` (`accepted`, `duplicate`, `signature_invalid`, `stale_timestamp`) | Hasil endpoint `/webhooks/provider` | — | ADR-L08 |
 | `ledgerpay_webhook_signature_failures_total` | counter | — | Signature tidak valid (subset di atas, dipisah untuk alert) | A-10 | C-32 |
-| `ledgerpay_webhook_inbox_processed_total` | counter | `outcome` (`applied`, `duplicate`, `stale`, `conflict`) | Hasil pemrosesan inbox (Step 4 O2) | — | Step 4 |
+| `ledgerpay_webhook_inbox_processed_total` | counter | `outcome` (`applied`, `duplicate`, `stale`, `conflict`) | Hasil pemrosesan inbox (desain database O2) | — | Desain database |
 | `ledgerpay_webhook_late_total` | counter | — | Kredit dari webhook sukses setelah top-up `EXPIRED` (status lunak) | — | ADR-L08 |
 | `ledgerpay_webhook_conflict_total` | counter | — | Konflik status final → recon item | — | FS-07 |
-| `ledgerpay_webhook_inbox_pending` | gauge | — | Event `RECEIVED` yang belum diproses | — | Step 7 |
+| `ledgerpay_webhook_inbox_pending` | gauge | — | Event `RECEIVED` yang belum diproses | — | Desain transaksi & concurrency |
 | `ledgerpay_webhook_inbox_dead_total` | counter | — | Event inbox → `DEAD` (8 percobaan, atau amount mismatch) | A-04 | ADR-L08 |
 | `ledgerpay_webhook_verify_fetch_total` | counter | `outcome` (`match`, `mismatch`, `error`) | Verify-by-fetch sebelum kredit | — | Amandemen ADR-L08 |
 | `ledgerpay_webhook_deliveries_total` | counter | `outcome` (`delivered`, `http_error`, `timeout`, `blocked`) | Percobaan webhook keluar ke merchant | — | LF-15 |
@@ -266,11 +266,11 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 | Metrik | Tipe | Label | Arti | Alert | Sumber |
 |---|---|---|---|---|---|
 | `ledgerpay_recon_runs_total` | counter | `outcome` (`completed`, `failed`) | Recon run | A-12 | LF-17 |
-| `ledgerpay_recon_mismatches_total` | counter | `category` (5 kategori Step 3) | Mismatch baru ditemukan | — | LF-17 |
+| `ledgerpay_recon_mismatches_total` | counter | `category` (5 kategori desain domain) | Mismatch baru ditemukan | — | LF-17 |
 | `ledgerpay_recon_open_items` | gauge | `category` | Item `OPEN` saat ini | — | LF-18 |
-| `ledgerpay_recon_open_item_oldest_age_seconds` | gauge | — | Umur item `OPEN` tertua | — | Step 3 `02` |
+| `ledgerpay_recon_open_item_oldest_age_seconds` | gauge | — | Umur item `OPEN` tertua | — | Desain domain |
 | `ledgerpay_ops_actions_total` | counter | `action` | Aksi ops ter-audit (resolve, retry, replay, API key) | — | LF-18 |
-| `ledgerpay_merchant_api_requests_total` | counter | `route`, `status` (tanpa `merchant`) | Trafik API merchant | — | Step 6 `04` |
+| `ledgerpay_merchant_api_requests_total` | counter | `route`, `status` (tanpa `merchant`) | Trafik API merchant | — | `20-security-controls.md` |
 
 ### 3.3 PayRun (`payrun_`)
 
@@ -294,10 +294,10 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 | `payrun_payroll_runs_total` | counter | `outcome` (`calculated`, `failed`, `approved`, `rejected`, `finalized`, `cancelled`) | Transisi run | A-12 | ADR-P05 |
 | `payrun_payroll_run_duration_seconds` | histogram (`RUN`) | `size_bucket` (`lt_100`, `lt_1k`, `lt_10k`, `ge_10k`) | Durasi `calc_started_at` → `CALCULATED` | — | SLO, PF-24 |
 | `payrun_payroll_items_calculated_total` | counter | `status` (`ok`, `error`) | Item yang dihitung | — | PF-24 |
-| `payrun_payroll_item_errors_total` | counter | `code` (kode validasi engine, katalog tertutup: `NEGATIVE_NET`, `COMPONENT_CYCLE`, …) | Item `ERROR` per kode | — | Step 3 `06` §13 |
-| `payrun_payroll_chunk_duration_seconds` | histogram (`JOB`) | — | Durasi txRead + compute + txWrite per chunk | — | Step 7 §5 |
+| `payrun_payroll_item_errors_total` | counter | `code` (kode validasi engine, katalog tertutup: `NEGATIVE_NET`, `COMPONENT_CYCLE`, …) | Item `ERROR` per kode | — | `07-payroll-engine.md` §13 |
+| `payrun_payroll_chunk_duration_seconds` | histogram (`JOB`) | — | Durasi txRead + compute + txWrite per chunk | — | Desain transaksi & concurrency §5 |
 | `payrun_run_stale_rejections_total` | counter | — | Approve/finalize ditolak `RUN_STALE` | — | ADR-P07, O12 |
-| `payrun_approve_stale_candidates` | histogram (1, 5, 10, 50, 100, 500, 1000) | — | Jumlah kandidat change log per approve (biaya O12) | — | Step 7 O12 |
+| `payrun_approve_stale_candidates` | histogram (1, 5, 10, 50, 100, 500, 1000) | — | Jumlah kandidat change log per approve (biaya O12) | — | Desain transaksi & concurrency O12 |
 | `payrun_approvals_total` | counter | `subject` (`leave`, `overtime`, `payroll_run`), `decision` (`approved`, `rejected`, `cancelled`) | Keputusan approval | — | ADR-P09 |
 | `payrun_approval_self_approved_total` | counter | — | Self-approve run (pengecualian satu admin), dipantau | — | ADR-P09 |
 | `payrun_membership_sod_conflicts` | gauge | — | Jumlah membership aktif dengan `HR_ADMIN` + `PAYROLL_ADMIN` | — | Amandemen ADR-010 |
@@ -309,7 +309,7 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 |---|---|---|---|---|---|
 | `payrun_payslips_rendered_total` | counter | `outcome` (`rendered`, `failed`) | Render PDF | — | PF-22 |
 | `payrun_payslips_pending` | gauge | — | Payslip `PENDING`/`FAILED` saat ini | — | PFS-10 |
-| `payrun_payslip_render_duration_seconds` | histogram (`JOB`) | — | Per batch 20 slip | — | Step 7 `03` |
+| `payrun_payslip_render_duration_seconds` | histogram (`JOB`) | — | Per batch 20 slip | — | `23-background-jobs.md` |
 | `payrun_payslip_access_total` | counter | `actor` (`owner_employee`, `admin`) | Akses slip. Akses `admin` selalu ter-audit | — | PI-17 |
 | `payrun_attendance_imports_total` | counter | `outcome` (`completed`, `failed`, `duplicate`) | Import CSV | — | PF-21 |
 | `payrun_attendance_import_rows_total` | counter | `result` (`ok`, `error`) | Baris diproses | — | PF-21 |
@@ -318,7 +318,7 @@ Kolom **Alert** merujuk §7. **INV** = business invariant: nilai normal selalu 0
 
 ## 4. Pemetaan nama lama → nama final
 
-Dokumen Step 1–7 tidak diubah satu per satu. Tabel ini menjadi rujukan, dan nama final dipakai sejak Step 8.
+Dokumen dokumen desain tidak diubah satu per satu. Tabel ini menjadi rujukan, dan nama final dipakai sejak desain observability & testing.
 
 | Nama di dokumen sebelumnya | Nama final | Catatan |
 |---|---|---|
@@ -409,10 +409,10 @@ Email, nama, NIK/NPWP, nomor rekening, nominal gaji, isi body, token, API key, q
 ### 5.3 Menyambung request → job (keputusan)
 **`traceparent` disimpan di kolom `jobs.trace_parent text NULL`**, bukan di payload. Kolom ini ditulis saat enqueue (di transaksi bisnis yang sama) dari span aktif.
 
-- Alasan memakai kolom: payload adalah kontrak domain (Step 7 `03`, hanya berisi ID). Konteks tracing adalah metadata infrastruktur yang dibaca runner secara generik, sama seperti `correlation_id`.
+- Alasan memakai kolom: payload adalah kontrak domain (`23-background-jobs.md`, hanya berisi ID). Konteks tracing adalah metadata infrastruktur yang dibaca runner secara generik, sama seperti `correlation_id`.
 - Worker membuat span `job <kind>` sebagai **root baru dengan link** ke span producer, bukan sebagai child. Job bisa berjalan menit atau jam kemudian, dan trace dengan durasi berjam-jam sulit dibaca. Link tetap membuat Jaeger bisa melompat dari request ke job.
 - Job turunan menyalin `trace_parent` dari span job induk.
-- **Delta skema:** tambahkan `trace_parent text NULL` ke `jobs` (Step 4 `01-shared-tables.md`). Dicatat sebagai open item di `00-index.md`.
+- **Delta skema:** tambahkan `trace_parent text NULL` ke `jobs` (`10-db-shared-tables.md`). Dicatat sebagai open item di `00-index.md`.
 
 ### 5.4 Sampling
 - **V1 (demo/staging):** 100% (`AlwaysSample`). Volumenya kecil, dan saat demo setiap trace harus ada.
@@ -425,7 +425,7 @@ Email, nama, NIK/NPWP, nomor rekening, nominal gaji, isi body, token, API key, q
 
 Semua dashboard berupa JSON di `deploy/grafana/dashboards/` dan di-provision otomatis (`deploy/grafana/provisioning/`). Tidak ada dashboard yang dibuat lewat klik di UI tanpa diekspor ke repo.
 
-> **Amandemen Step 12 (S15): V1 hanya 3 dashboard.** (1) **LedgerPay — Money & Integrity** = gabungan Money Movement + Integrity & Recon; (2) **Platform** = gabungan HTTP & DB + Jobs; (3) **PayRun — Payroll & Tenancy** = gabungan Payroll Runs + Tenancy & Security. Panel di tabel di bawah tetap menjadi acuan isi; pemisahan menjadi 6 dashboard = V2. Panel "Explore logs" hanya aktif jika profile `obs-full` (Loki) menyala.
+> **Amandemen final review (S15): V1 hanya 3 dashboard.** (1) **LedgerPay — Money & Integrity** = gabungan Money Movement + Integrity & Recon; (2) **Platform** = gabungan HTTP & DB + Jobs; (3) **PayRun — Payroll & Tenancy** = gabungan Payroll Runs + Tenancy & Security. Panel di tabel di bawah tetap menjadi acuan isi; pemisahan menjadi 6 dashboard = V2. Panel "Explore logs" hanya aktif jika profile `obs-full` (Loki) menyala.
 
 | Dashboard | Panel | Pertanyaan yang dijawab |
 |---|---|---|
@@ -460,9 +460,9 @@ File `deploy/prometheus/rules/{platform,ledgerpay,payrun}.yml`. Severity: **crit
 | A-11 | `RefreshTokenReuseSpike` | `increase(app_refresh_reuse_detected_total[15m]) > 5` | 0m | warning | §8.5 |
 | A-12 | `BatchJobFailed` | `increase(payrun_payroll_runs_total{outcome="failed"}[15m]) > 0 or increase(ledgerpay_recon_runs_total{outcome="failed"}[1h]) > 0` | 0m | warning | §8.3 |
 | A-13 | `PayRunInvariantViolated` | `sum(increase(payrun_tenant_isolation_violations_total[5m])) > 0 or sum(increase(payrun_finalized_mutation_attempts_total[5m])) > 0 or sum(increase(payrun_period_lock_bypass_total[5m])) > 0 or max(payrun_payroll_total_mismatch_runs) > 0 or increase(payrun_reproducibility_failures_total[1h]) > 0` | 0m | critical | §8.6 |
-| A-14 | `BackupStale` (Step 12: R4-11) | `time() - max(app_backup_last_success_timestamp_seconds) > 26*3600` | 10m | warning | Step 9 `03` runbook "restore from backup" / cek job backup |
-| A-15 | `DiskAlmostFull` (Step 12: R4-11) | `1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} > 0.85` (node_exporter) | 15m | warning | Step 9 `03` runbook "disk full" |
-| A-16 | `TLSCertExpiringSoon` (Step 12: R4-11) | `min(app_tls_cert_expiry_timestamp_seconds) - time() < 14*86400`. Metrik diisi cron harian di VM (`openssl s_client` per domain → textfile collector node_exporter), cara paling sederhana tanpa blackbox exporter | 1h | warning | Cek log ACME Caddy, DNS, port 80 terbuka; Step 9 `03` provisioning |
+| A-14 | `BackupStale` (final review R4-11) | `time() - max(app_backup_last_success_timestamp_seconds) > 26*3600` | 10m | warning | `29-deploy-migrations-backup.md` runbook "restore from backup" / cek job backup |
+| A-15 | `DiskAlmostFull` (final review R4-11) | `1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} > 0.85` (node_exporter) | 15m | warning | `29-deploy-migrations-backup.md` runbook "disk full" |
+| A-16 | `TLSCertExpiringSoon` (final review R4-11) | `min(app_tls_cert_expiry_timestamp_seconds) - time() < 14*86400`. Metrik diisi cron harian di VM (`openssl s_client` per domain → textfile collector node_exporter), cara paling sederhana tanpa blackbox exporter | 1h | warning | Cek log ACME Caddy, DNS, port 80 terbuka; `29-deploy-migrations-backup.md` provisioning |
 
 Catatan:
 - `increase()` pada counter yang baru muncul bisa memberi false negative pada sampel pertama. Untuk metrik INV, counter diinisialisasi ke 0 saat startup untuk setiap nilai label yang diketahui (`table`, `site`), sehingga kenaikan pertama pun tertangkap.
@@ -485,14 +485,14 @@ Format: **Dampak → Lihat dulu → Investigasi → Pulihkan → Setelahnya**. Q
   WHERE NOT a.is_system GROUP BY a.id HAVING a.balance <> COALESCE(SUM(CASE e.direction WHEN 'C' THEN e.amount ELSE -e.amount END),0);
   ```
   Arah tanda mengikuti normal side akun liability (kredit menambah). Cari journal terakhir yang menyentuh akun tersebut, lalu `correlation_id`-nya: `{project="ledgerpay"} | json | journal_id="<id>"`. Kalau `ledger_mutation_attempts_total` naik: `{project="ledgerpay", level="ERROR"} | json | msg="ledger.invariant_violation"`, dan periksa apakah ada migrasi/akses manual (audit log, `pg_stat_activity`).
-- **Pulihkan:** **jangan** UPDATE saldo. Bekukan akun terdampak (`FROZEN`) lewat ops. Koreksi dengan journal `ADJUSTMENT_MANUAL` yang ber-referensi dan ter-audit, setelah akar masalah dipahami. Kalau penyebabnya bug di versi baru, rollback deploy (Step 9).
+- **Pulihkan:** **jangan** UPDATE saldo. Bekukan akun terdampak (`FROZEN`) lewat ops. Koreksi dengan journal `ADJUSTMENT_MANUAL` yang ber-referensi dan ter-audit, setelah akar masalah dipahami. Kalau penyebabnya bug di versi baru, rollback deploy (desain DevOps).
 - **Setelahnya:** postmortem; tambah test yang mereproduksi; tinjau apakah constraint DB bisa mencegahnya.
 - *Stale:* job `ledger.verify` / `payrun verify-run` tidak berjalan → periksa `app_job_dead_total{kind="ledger.verify"}` dan scheduler (§8.3).
 
 ### 8.2 `PayoutUnknownTooOld`
 - **Dampak:** dana user tertahan > 1 jam (SLO).
 - **Lihat dulu:** *Money Movement* → `payout_unknown`, umur tertua, distribusi `payout_status_checks_total{result}`.
-- **Investigasi:** `GET /v1/ops/payouts?status=UNKNOWN` (Step 5). Untuk payout tertua: `{project="ledgerpay"} | json | payout_id="<id>"`, lalu cek apakah status check berjalan (`job_kind="payout.status_check"`) dan apa hasilnya. Hasil `still_unknown` terus-menerus berarti provider bermasalah; `not_found` berarti ikuti aturan safe window (ADR-L06). Cek juga `app_outbound_requests_total{target="bank",outcome}`.
+- **Investigasi:** `GET /v1/ops/payouts?status=UNKNOWN` (kontrak API). Untuk payout tertua: `{project="ledgerpay"} | json | payout_id="<id>"`, lalu cek apakah status check berjalan (`job_kind="payout.status_check"`) dan apa hasilnya. Hasil `still_unknown` terus-menerus berarti provider bermasalah; `not_found` berarti ikuti aturan safe window (ADR-L06). Cek juga `app_outbound_requests_total{target="bank",outcome}`.
 - **Pulihkan:** kalau provider sehat dan status check gagal karena bug, perbaiki lalu retry job (`POST /v1/ops/jobs/{id}/retry`). Kalau ada bukti dari provider (laporan settlement/portal): `POST /v1/ops/payouts/{id}/resolve` dengan referensi bukti + alasan (wajib, `RESOLUTION_EVIDENCE_REQUIRED`). **Tidak pernah** submit ulang manual tanpa jawaban `NOT_FOUND` setelah safe window.
 - **Setelahnya:** pastikan item masuk recon besok; catat waktu resolusi.
 
@@ -515,19 +515,19 @@ Format: **Dampak → Lihat dulu → Investigasi → Pulihkan → Setelahnya**. Q
 - **Lihat dulu:** *Platform — HTTP & DB*: route mana, code apa (`app_errors_total`), apakah bersamaan dengan saturasi pool atau lonjakan `app_db_unmapped_errors_total`.
 - **Investigasi:** `{project=~"ledgerpay|payrun", level="ERROR"} | json | line_format "{{.route}} {{.error_code}} {{.err}}"`. Trace lambat di Jaeger (filter `http.route`, durasi > 200 ms): lihat span `db.tx` (menunggu lock?) vs query tertentu. Di DB: `SELECT * FROM pg_stat_activity WHERE state <> 'idle' ORDER BY xact_start`; lock: `pg_locks` join `pg_stat_activity` untuk `wait_event_type = 'Lock'`; query mahal: `pg_stat_statements` urut `mean_exec_time`.
 - **Pulihkan:** transaksi `idle in transaction` dibatalkan otomatis oleh `idle_in_transaction_session_timeout` (10 dtk). Query liar → `pg_cancel_backend`. Lonjakan setelah deploy → rollback. Pool jenuh karena hot row (O11) → catat sebagai bukti untuk optimasi V2, dan sementara batasi rate tier `money-write`. Readiness gagal karena migrasi tidak cocok → jalankan job migrate yang tertinggal.
-- **Setelahnya:** tambah index/ubah query berdasarkan `EXPLAIN ANALYZE` (Step 8 `03`).
+- **Setelahnya:** tambah index/ubah query berdasarkan `EXPLAIN ANALYZE` (`26-performance-plan.md`).
 
 ### 8.5 `WebhookSignatureFailures` / `RefreshTokenReuseSpike`
 - **Dampak:** kemungkinan serangan (webhook palsu/replay, pencurian refresh token), atau salah konfigurasi secret.
 - **Investigasi:** webhook: `{project="ledgerpay"} | json | msg="webhook.signature_invalid"`, kelompokkan per IP sumber (dari log Caddy). Kalau semua event gagal setelah rotasi secret → salah konfigurasi. Kalau sporadis dari IP asing → serangan; karena verify-by-fetch dan HMAC, tidak ada saldo tercipta. Refresh reuse: `msg="auth.refresh_reuse_detected"` per `user_id` dan IP. Satu user dengan banyak IP berarti kemungkinan token dicuri.
-- **Pulihkan:** salah konfigurasi → perbaiki secret (dual-secret window, Step 6 `04` §6.2). Serangan → blokir IP di Caddy/ufw. Untuk user terdampak, family sudah dicabut otomatis: paksa reset password dan beri notifikasi.
-- **Setelahnya:** playbook Step 6 `04` §7.3.
+- **Pulihkan:** salah konfigurasi → perbaiki secret (dual-secret window, `20-security-controls.md` §6.2). Serangan → blokir IP di Caddy/ufw. Untuk user terdampak, family sudah dicabut otomatis: paksa reset password dan beri notifikasi.
+- **Setelahnya:** playbook `20-security-controls.md` §7.3.
 
 ### 8.6 `PayRunInvariantViolated`
 - **Dampak:** potensi kebocoran lintas tenant atau payroll final yang berubah. Ini insiden tertinggi di PayRun.
 - **Lihat dulu:** *PayRun — Tenancy & Security*: metrik INV mana yang naik, dan label `site`/`table`-nya.
 - **Investigasi:** `{project="payrun", level="ERROR"} | json | msg=~"tenant.isolation_violation|payroll_run.finalized_mutation|period.lock_bypass"`, lalu ambil `request_id`, `route`, `tenant_id`, `user_id`. Periksa katalog RLS di DB produksi (query catalogue test C-36: tabel tanpa `relrowsecurity`/`relforcerowsecurity`, role app dengan `BYPASSRLS`). Untuk `period_lock_bypass`: cari jalur kode yang menulis tanpa `PeriodGuard` (route di log).
-- **Pulihkan:** isolation violation → request sudah digagalkan oleh pemeriksaan defensif. Kalau konfigurasi RLS rusak, rollback migrasi/deploy segera dan nonaktifkan endpoint terdampak. Ikuti playbook Step 6 `04` §7.2 (dugaan kebocoran lintas tenant), termasuk penilaian kewajiban notifikasi UU PDP. Mutation/bypass → tidak ada data yang berubah (trigger menolak); perbaiki kode, deploy.
+- **Pulihkan:** isolation violation → request sudah digagalkan oleh pemeriksaan defensif. Kalau konfigurasi RLS rusak, rollback migrasi/deploy segera dan nonaktifkan endpoint terdampak. Ikuti playbook `20-security-controls.md` §7.2 (dugaan kebocoran lintas tenant), termasuk penilaian kewajiban notifikasi UU PDP. Mutation/bypass → tidak ada data yang berubah (trigger menolak); perbaiki kode, deploy.
 - **Setelahnya:** tambah kasus ke isolation test suite / authz matrix; postmortem wajib.
 
 ---

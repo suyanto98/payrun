@@ -65,7 +65,7 @@ paths:
       summary: Log in; tid only if the user has exactly one active tenant
       description: |
         Unknown email, wrong password, inactive and locked accounts all answer the same
-        `401 INVALID_CREDENTIALS` (no Retry-After; Step 12 R2-5). Sets the refresh cookie.
+        `401 INVALID_CREDENTIALS` (no Retry-After; final review R2-5). Sets the refresh cookie.
       x-endpoint: A1
       x-feature: PF-02
       x-roles: "public"

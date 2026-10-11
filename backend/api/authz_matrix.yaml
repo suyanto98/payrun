@@ -306,7 +306,7 @@ routes:
   - id: Y6
     route: "GET /payroll-runs/{id}/items"
     access: tenant
-    audit: payroll.bulk_read   # SETIAP request, semua role (Step 12 R2-6)
+    audit: payroll.bulk_read   # SETIAP request, semua role (final review R2-6)
     cases:
       - {target: run_item, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
   - id: Y6s

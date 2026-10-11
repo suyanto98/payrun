@@ -19,7 +19,7 @@ var files embed.FS
 
 // MinSchemaVersion adalah versi skema minimum yang dibutuhkan binary ini.
 // Readiness lulus jika versi DB >= nilai ini (bukan "=", supaya rollback app N-1 tetap ready;
-// docs/design/29-deploy-migrations-backup.md, Step 12 R3-8). Naikkan saat menambah migrasi
+// docs/design/29-deploy-migrations-backup.md, final review R3-8). Naikkan saat menambah migrasi
 // yang WAJIB ada untuk kode baru.
 const MinSchemaVersion int64 = 11
 

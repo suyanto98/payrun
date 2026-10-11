@@ -4,7 +4,7 @@
 Dashboard adalah kode: diubah di sini, di-review di PR, di-provision otomatis. Tidak ada dashboard
 yang dibuat lewat klik di UI (docs/design/24-observability.md §6). Jalankan: make dashboards
 
-Amandemen Step 12 (S15): PayRun V1 = satu dashboard domain "PayRun — Payroll & Tenancy" (gabungan
+Amandemen final review (S15): PayRun V1 = satu dashboard domain "PayRun — Payroll & Tenancy" (gabungan
 Payroll Runs + Tenancy & Security) + satu dashboard "Platform" (HTTP, DB, jobs).
 """
 import json, pathlib

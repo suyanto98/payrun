@@ -122,7 +122,7 @@ func TestLogin_ErrorsAreIndistinguishable(t *testing.T) {
 }
 
 // Lockout bertahap (C-03): gagal ke-5 mengunci 1 menit. Selama terkunci, password BENAR pun ditolak
-// dengan respons yang sama persis dengan password salah, tanpa Retry-After (Step 12 R2-5: status lock
+// dengan respons yang sama persis dengan password salah, tanpa Retry-After (final review R2-5: status lock
 // tidak boleh menjadi oracle enumerasi akun). Setelah lock lewat, login berhasil dan counter direset.
 func TestLogin_ProgressiveLockout(t *testing.T) {
 	e := newEnv(t)

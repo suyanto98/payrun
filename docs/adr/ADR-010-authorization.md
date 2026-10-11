@@ -48,7 +48,7 @@ func CanApproveLeave(p Principal, req LeaveRequest, approverOf func(emp uuid.UUI
 
 - **404 vs 403:** 403 membocorkan bahwa resource dengan ID tersebut **ada**, sehingga penyerang bisa melakukan enumerasi. 404 memperlakukan "tidak ada" dan "bukan milikmu" secara identik. (Untuk aksi pada resource yang memang terlihat tetapi tidak boleh diubah, misalnya employee melihat run payroll tapi tidak boleh finalize, dipakai 403.)
 - Query scoping membuat kebocoran butuh **dua** kesalahan, bukan satu: policy lupa **dan** query lupa.
-- Policy sebagai fungsi biasa bisa diuji dengan table-driven test dan menjadi dasar *authorization matrix test* (Step 8).
+- Policy sebagai fungsi biasa bisa diuji dengan table-driven test dan menjadi dasar *authorization matrix test* (desain observability & testing).
 - **Kenapa bukan OPA/Casbin/Cedar sekarang:** jumlah aturan masih puluhan, dan aturan relasi butuh data dari DB. Policy engine menambah bahasa kedua tanpa mengurangi kode.
 
 ## Trade-offs
@@ -70,9 +70,9 @@ func CanApproveLeave(p Principal, req LeaveRequest, approverOf func(emp uuid.UUI
 - *"403 atau 404?"* → Jelaskan enumerasi dan kapan 403 tetap tepat.
 - *"Bagaimana kamu tahu tidak ada endpoint yang lupa dicek?"* → Authorization matrix test yang memanggil setiap endpoint dengan principal yang salah.
 
-## Amandemen (Step 5, 2026-10-01)
+## Amandemen (kontrak API, 2026-10-01)
 
-**Separation of duties (PayRun):** `HR_ADMIN` mengelola gaji, `PAYROLL_ADMIN` menjalankan payroll, dan approver run harus berbeda dari pembuatnya (kecuali pengecualian satu admin, ADR-P09). Satu orang dengan role `HR_ADMIN` + `PAYROLL_ADMIN` **diizinkan** di V1, karena UMKM sering hanya punya satu orang HR/finance. Kombinasi ini menghasilkan audit `membership.sod_conflict` dan ditampilkan sebagai peringatan di halaman member. Matriks lengkap ada di Step 5 `05-payrun-authorization-matrix.md`.
+**Separation of duties (PayRun):** `HR_ADMIN` mengelola gaji, `PAYROLL_ADMIN` menjalankan payroll, dan approver run harus berbeda dari pembuatnya (kecuali pengecualian satu admin, ADR-P09). Satu orang dengan role `HR_ADMIN` + `PAYROLL_ADMIN` **diizinkan** di V1, karena UMKM sering hanya punya satu orang HR/finance. Kombinasi ini menghasilkan audit `membership.sod_conflict` dan ditampilkan sebagai peringatan di halaman member. Matriks lengkap ada di `17-api-authorization-matrix.md`.
 
 ## Related
 

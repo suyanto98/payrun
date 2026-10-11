@@ -112,7 +112,7 @@ func (e env) firstItem(t *testing.T, f *tenantFx, run uuid.UUID) (uuid.UUID, uui
 	return run, uuid.MustParse(items[0]["id"].(string))
 }
 
-// TestFinalize_StaleAfterApproveRejected (Step 7 `22` §3.4, §4.c): input berubah SETELAH approve → finalize
+// TestFinalize_StaleAfterApproveRejected (`22-tx-concurrency.md` §3.4, §4.c): input berubah SETELAH approve → finalize
 // memeriksa stale ulang → 409 RUN_STALE; run tetap APPROVED dan periode tidak terkunci.
 func TestFinalize_StaleAfterApproveRejected(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())

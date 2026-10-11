@@ -18,7 +18,7 @@ import (
 )
 
 // Bagian iam yang dipakai signup (modul tenancy) lewat interface di composition root, dan alur
-// verifikasi email (Step 12 R2-8; keputusan S1: tenant PENDING_VERIFICATION sampai email diverifikasi).
+// verifikasi email (final review R2-8; keputusan S1: tenant PENDING_VERIFICATION sampai email diverifikasi).
 
 // SignupIdentity menentukan pendaftar:
 //   - email baru → exists=false (password belum diperiksa);

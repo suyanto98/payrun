@@ -1,7 +1,7 @@
-# Step 3.8 — PayRun: Payroll Failure Scenarios
+# PayRun: Payroll Failure Scenarios
 
 > Format setiap skenario: **Setup → Request → Failure → Detection → Handling → Recovery → Final State**, lalu invariant yang dijaga, test otomatis, dan demo terkait.
-> Nama state, job, dan ID invariant mengikuti [glosarium](00-index.md). Mekanisme: [ADR-P05](../step-02-features-and-architecture/adr/ADR-P05-payroll-run-execution.md) (run + chunk), [ADR-P07](../step-02-features-and-architecture/adr/ADR-P07-snapshot-and-period-lock.md) (fingerprint), [ADR-P09](../step-02-features-and-architecture/adr/ADR-P09-approval-workflow.md) (approval), [ADR-006](../step-02-features-and-architecture/adr/ADR-006-background-processing-postgres-queue.md) (job runner), [ADR-011](../step-02-features-and-architecture/adr/ADR-011-transaction-management.md) (transaksi), [ADR-P01](../step-02-features-and-architecture/adr/ADR-P01-multi-tenancy-pooled-rls.md)/[ADR-P02](../step-02-features-and-architecture/adr/ADR-P02-tenant-context.md) (tenancy).
+> Nama state, job, dan ID invariant mengikuti glosarium. Mekanisme: [ADR-P05](../adr/ADR-P05-payroll-run-execution.md) (run + chunk), [ADR-P07](../adr/ADR-P07-snapshot-and-period-lock.md) (fingerprint), [ADR-P09](../adr/ADR-P09-approval-workflow.md) (approval), [ADR-006](../adr/ADR-006-background-processing-postgres-queue.md) (job runner), [ADR-011](../adr/ADR-011-transaction-management.md) (transaksi), [ADR-P01](../adr/ADR-P01-multi-tenancy-pooled-rls.md)/[ADR-P02](../adr/ADR-P02-tenant-context.md) (tenancy).
 
 ## Setup bersama
 
@@ -354,7 +354,7 @@ Semua edit **diizinkan**, karena periode berstatus `PROCESSING` (ADR-P07).
 | Skenario | Alasan / arah |
 |---|---|
 | Failover DB dengan kehilangan transaksi (replica async) | V1 single DB; V2 memakai managed HA + PITR. Idempotency key dan fingerprint tetap membuat replay aman |
-| Kerusakan object storage / bucket terhapus | Backup storage dan regenerasi dari snapshot (PDF deterministik) dibahas di Step 9 |
+| Kerusakan object storage / bucket terhapus | Backup storage dan regenerasi dari snapshot (PDF deterministik) dibahas di desain DevOps |
 | Noisy neighbor: run tenant besar menunda tenant lain | Fairness per tenant di job runner (PF-27, P2) |
 | Membuka ulang periode final (kasus legal) | Workflow *reopen* dengan approval ganda (ADR-P07, future) |
 | Clock skew antar worker | Tidak relevan: semua lease dan timestamp memakai `now()` milik database, bukan jam worker |

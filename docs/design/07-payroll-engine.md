@@ -1,7 +1,7 @@
-# Step 3.6 — PayRun: Payroll Engine sebagai Business-Rule Engine
+# PayRun: Payroll Engine sebagai Business-Rule Engine
 
-> Referensi: [ADR-P03](../step-02-features-and-architecture/adr/ADR-P03-payroll-engine.md) (pure function + komponen ter-parameter), [ADR-P04](../step-02-features-and-architecture/adr/ADR-P04-effective-dating.md) (effective dating), [ADR-P05](../step-02-features-and-architecture/adr/ADR-P05-payroll-run-execution.md) (eksekusi run), [ADR-P06](../step-02-features-and-architecture/adr/ADR-P06-decimal-rounding.md) (decimal & pembulatan), [ADR-P07](../step-02-features-and-architecture/adr/ADR-P07-snapshot-and-period-lock.md) (fingerprint & snapshot), [PF-12](../step-02-features-and-architecture/03-payrun-features.md).
-> ID invariant (PI-xx) dan nama state mengikuti [glosarium](00-index.md).
+> Referensi: [ADR-P03](../adr/ADR-P03-payroll-engine.md) (pure function + komponen ter-parameter), [ADR-P04](../adr/ADR-P04-effective-dating.md) (effective dating), [ADR-P05](../adr/ADR-P05-payroll-run-execution.md) (eksekusi run), [ADR-P06](../adr/ADR-P06-decimal-rounding.md) (decimal & pembulatan), [ADR-P07](../adr/ADR-P07-snapshot-and-period-lock.md) (fingerprint & snapshot), [PF-12](03-features.md).
+> ID invariant (PI-xx) dan nama state mengikuti glosarium.
 
 > ⚠️ **Semua tarif pajak, persentase BPJS, cap, dan pembagi lembur di dokumen ini adalah CONTOH (placeholder) untuk menjelaskan mekanisme engine.** Engine membaca semua nilai itu dari *ruleset* yang dapat dikonfigurasi. Ruleset bawaan PayRun berlabel **"simplified — not compliance-certified"**, dan angkanya wajib diverifikasi terhadap regulasi yang berlaku sebelum ditulis di README atau demo publik.
 
@@ -81,7 +81,7 @@ Pipeline tetap (ADR-P03). Di dalam satu stage, komponen `PERCENT_OF` yang merefe
 |---|---|---|
 | Referensi ke komponen yang tidak ada / `INACTIVE` | Saat simpan konfigurasi | 422 `INVALID_COMPONENT_REFERENCE` |
 | Siklus (`A = 10% × B`, `B = 5% × A`) | Saat simpan (deteksi siklus di graf) | 422 `COMPONENT_CYCLE` |
-| Referensi ke stage yang lebih akhir (misalnya earning = % dari pajak) | Saat simpan | 422 `INVALID_COMPONENT_REFERENCE` (katalog Step 5; Step 12) |
+| Referensi ke stage yang lebih akhir (misalnya earning = % dari pajak) | Saat simpan | 422 `INVALID_COMPONENT_REFERENCE` (katalog kontrak API; final review) |
 | Kondisi yang sama tetapi lolos (misalnya komponen dinonaktifkan setelah di-assign) | Saat kalkulasi, defensif | Item `ERROR` dengan kode yang sama (§13) |
 
 Validasi ganda ini disengaja: validasi saat simpan memberi UX yang baik, sedangkan validasi defensif di engine memastikan data lama/korup tidak menghasilkan angka diam-diam.

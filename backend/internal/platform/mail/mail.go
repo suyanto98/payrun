@@ -1,5 +1,5 @@
 // Package mail mengirim email transaksional (verifikasi email, undangan) lewat SMTP. Dev/demo: Mailpit
-// menangkap semua email (Step 12 R2-8). Sprint 1 mengirim langsung SETELAH transaksi commit, dengan
+// menangkap semua email (final review R2-8). Sprint 1 mengirim langsung SETELAH transaksi commit, dengan
 // endpoint "kirim ulang" sebagai pemulihan; Sprint 4 memindahkannya ke outbox job (ADR-006).
 package mail
 

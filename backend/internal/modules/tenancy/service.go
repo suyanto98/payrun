@@ -229,7 +229,7 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 	return res, nil
 }
 
-// createTenantTx: fase tenant signup (13-db-rls §2.3, Step 12 C2): app.tenant_id = tenant baru, app.user_id
+// createTenantTx: fase tenant signup (13-db-rls §2.3, final review C2): app.tenant_id = tenant baru, app.user_id
 // kosong; tenant + settings + komponen sistem + jenis cuti + membership OWNER + audit.
 func (s *Service) createTenantTx(ctx context.Context, tx pgx.Tx, tenantID, ownerID uuid.UUID, name, slug, timezone, status string, meta reqmeta.Meta) error {
 	if err := db.SetTenant(ctx, tx, tenantID); err != nil {

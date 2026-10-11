@@ -12,7 +12,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Golden test (Step 3 `06` §17). Setiap kasus punya:
+// Golden test (`07-payroll-engine.md` §17). Setiap kasus punya:
 //   - input yang dibangun di Go (mudah dibaca dan dibandingkan dengan hitungan manual di komentar);
 //   - ekspektasi EKSPLISIT (net, status, kode issue, baris kunci) yang dihitung manual: golden file
 //     tidak dipercaya buta, karena golden yang salah hanya mengunci bug;
@@ -104,7 +104,7 @@ func goldenCases() []goldenCase {
 		{"full_month_basic", march, expect{net: "4800000", // 5.000.000 − (100.000 + 50.000 + 50.000); pajak 0 (≤ 5,4 jt)
 			lines: map[string]string{"BASE_SALARY": "5000000", "BPJS_JHT_EE": "100000", "BPJS_JP_EE": "50000", "BPJS_KES_EE": "50000"}}},
 
-		{"tono_march_2026", tono, expect{net: "6888609", // Step 3 `06` §15
+		{"tono_march_2026", tono, expect{net: "6888609", // `07-payroll-engine.md` §15
 			lines: map[string]string{"BASE_SALARY": "6300000", "TUNJ_JABATAN": "500000", "TRANSPORT": "380000", "OVERTIME": "419653",
 				"ABSENCE_UNPAID_LEAVE": "330000", "BPJS_JHT_EE": "136000", "BPJS_JP_EE": "68000", "BPJS_KES_EE": "68000", "PPH21": "109044"}}},
 

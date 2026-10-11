@@ -1,6 +1,6 @@
-# Step 5.1 — Error Catalogue
+# Error Catalogue
 
-> Format respons: RFC 9457 (lihat [`00-index.md`](00-index.md) §4). `code` adalah kontrak: tidak boleh diganti nama tanpa versi API baru.
+> Format respons: RFC 9457 (lihat `00-index.md` §4). `code` adalah kontrak: tidak boleh diganti nama tanpa versi API baru.
 > Kolom **Retry?**: apakah request **yang sama persis** (dengan `Idempotency-Key` yang sama) layak diulang.
 > **Aturan:** endpoint di file 02/04 hanya boleh memakai code dari katalog ini. Code baru harus ditambahkan di sini lebih dulu.
 
@@ -19,7 +19,7 @@
 | 401 | `INVALID_CREDENTIALS` | Email/password salah (pesan tidak membedakan keduanya) | Tidak | — | Login |
 | 401 | `REFRESH_TOKEN_REUSED` | Refresh token lama dipakai ulang; seluruh family dicabut | Tidak | Login ulang | ADR-009 |
 | 403 | `FORBIDDEN` | Resource terlihat, tetapi aksi tidak diizinkan untuk role ini | Tidak | — | Policy (ADR-010) |
-| 403 | ~~`ACCOUNT_LOCKED`~~ | **Tidak dikirim ke client (Step 12 R2-5).** Login terkunci menjawab `401 INVALID_CREDENTIALS`, sama persis dengan kredensial salah, agar tidak menjadi oracle enumerasi akun. *(Sprint 1: tanpa `Retry-After`, karena header yang hanya muncul untuk akun terkunci juga oracle.)* Status lock hanya di log/metrik | Tidak | Tunggu | `users.locked_until` |
+| 403 | ~~`ACCOUNT_LOCKED`~~ | **Tidak dikirim ke client (final review R2-5).** Login terkunci menjawab `401 INVALID_CREDENTIALS`, sama persis dengan kredensial salah, agar tidak menjadi oracle enumerasi akun. *(Sprint 1: tanpa `Retry-After`, karena header yang hanya muncul untuk akun terkunci juga oracle.)* Status lock hanya di log/metrik | Tidak | Tunggu | `users.locked_until` |
 | 404 | `NOT_FOUND` | Resource tidak ada **atau** tidak boleh diketahui pemanggil | Tidak | — | Scoping query / RLS |
 | 409 | `REQUEST_IN_PROGRESS` | Request dengan key yang sama masih diproses | Ya, sama persis | Ulangi dengan backoff | ADR-L02 (`lock_timeout`) |
 | 409 | `RESOURCE_BUSY` | Lock resource tidak didapat dalam `lock_timeout` (2 dtk) | Ya, sama persis | Ulangi dengan backoff | ADR-011 (`55P03`) |
@@ -101,7 +101,7 @@
 
 | Error Postgres | Kondisi | Code |
 |---|---|---|
-| `23505` unique violation | Nama constraint dipetakan per tabel (Step 4 §mapping) | Code spesifik (contoh `EMAIL_ALREADY_REGISTERED`), atau alur replay untuk `uq_idempotency_keys_scope` |
+| `23505` unique violation | Nama constraint dipetakan per tabel (desain database §mapping) | Code spesifik (contoh `EMAIL_ALREADY_REGISTERED`), atau alur replay untuk `uq_idempotency_keys_scope` |
 | `23514` check violation | `ck_accounts_balance_non_negative` / `ck_leave_balances_min` / `ck_journals_balanced` | `INSUFFICIENT_BALANCE` / `INSUFFICIENT_LEAVE_BALANCE` / `INTERNAL_ERROR` (journal tidak seimbang = bug; alert) |
 | `23P01` exclusion violation | `ex_*` | `OVERLAPPING_PERIOD` / `OVERLAPPING_LEAVE` |
 | `23503` FK violation | Referensi ke resource yang tidak ada (atau milik tenant lain, terhalang composite FK) | `NOT_FOUND` (tidak membedakan keduanya) |

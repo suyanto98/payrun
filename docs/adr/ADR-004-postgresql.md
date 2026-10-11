@@ -4,7 +4,7 @@ Status: Accepted · Tanggal: 2026-10-01 · Berlaku untuk: LedgerPay, PayRun
 
 ## Context / Problem
 
-Kedua project menyimpan data yang menuntut **strong consistency**: ledger dan saldo (LedgerPay), payroll final dan isolasi tenant (PayRun). Banyak invariant di Step 1 sebaiknya ditegakkan oleh database, bukan hanya kode aplikasi, karena kode aplikasi bisa salah, sedangkan constraint tidak bisa dilewati. Database juga dipakai sebagai queue (ADR-006) agar tidak menambah infrastruktur.
+Kedua project menyimpan data yang menuntut **strong consistency**: ledger dan saldo (LedgerPay), payroll final dan isolasi tenant (PayRun). Banyak invariant di strategi produk sebaiknya ditegakkan oleh database, bukan hanya kode aplikasi, karena kode aplikasi bisa salah, sedangkan constraint tidak bisa dilewati. Database juga dipakai sebagai queue (ADR-006) agar tidak menambah infrastruktur.
 
 ## Options
 
@@ -62,4 +62,4 @@ Fitur yang **sengaja dipakai** (setiap fitur menegakkan invariant tertentu):
 
 ## Related
 
-- [ADR-005](ADR-005-data-access-sqlc.md) · [ADR-006](ADR-006-background-processing-postgres-queue.md) · [ADR-011](ADR-011-transaction-management.md) · [ADR-P01](ADR-P01-multi-tenancy-pooled-rls.md) · [ADR-L01](ADR-L01-double-entry-ledger.md)
+- [ADR-005](ADR-005-data-access-sqlc.md) · [ADR-006](ADR-006-background-processing-postgres-queue.md) · [ADR-011](ADR-011-transaction-management.md) · [ADR-P01](ADR-P01-multi-tenancy-pooled-rls.md) · ADR-L01

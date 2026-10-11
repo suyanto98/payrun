@@ -1,4 +1,4 @@
-# Redocly lint config. Ruleset kustom (uang = string, error = problem+json) ditunda (Step 12: S16);
+# Redocly lint config. Ruleset kustom (uang = string, error = problem+json) ditunda (final review S16);
 # untuk sekarang dipakai ruleset "recommended" saja.
 extends:
   - recommended

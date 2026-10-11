@@ -1,4 +1,4 @@
--- Sprint 5: approval generik (ADR-P09), change log input payroll untuk deteksi stale (O12, Step 7
+-- Sprint 5: approval generik (ADR-P09), change log input payroll untuk deteksi stale (O12, desain transaksi & concurrency
 -- `22` §3.3), dan PeriodGuard di DB (PI-14, jaring pengaman di bawah PeriodGuard aplikasi).
 --
 -- Ditunda: trigger PeriodGuard untuk attendance/leave/overtime (tabelnya dibuat di S6), cleanup
@@ -30,7 +30,7 @@ CREATE TABLE approval_requests (
     CONSTRAINT fk_approval_requests_decided_by FOREIGN KEY (decided_by) REFERENCES users (id),
     CONSTRAINT ck_approval_requests_subject_type CHECK (subject_type IN ('LEAVE_REQUEST', 'OVERTIME_REQUEST', 'PAYROLL_RUN')),
     CONSTRAINT ck_approval_requests_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')),
-    -- PI-11 (versi terkoreksi Step 3): requester ≠ approver, kecuali pengecualian satu admin untuk run.
+    -- PI-11 (versi terkoreksi desain domain): requester ≠ approver, kecuali pengecualian satu admin untuk run.
     CONSTRAINT ck_approval_requests_not_self CHECK (approver_id <> requester_id
         OR (self_approved AND subject_type = 'PAYROLL_RUN' AND self_approval_reason IS NOT NULL)),
     CONSTRAINT ck_approval_requests_self_flag CHECK (NOT self_approved OR approver_id = requester_id),
@@ -55,7 +55,7 @@ ALTER TABLE payroll_runs ADD COLUMN approval_request_id uuid;
 -- ---------------------------------------------------------------- payroll_input_changes (O12)
 -- Satu baris per (periode, karyawan); changed_at = clock_timestamp() SETELAH PeriodGuard mendapat lock
 -- periode, sehingga perubahan yang commit setelah kalkulasi membaca selalu punya changed_at >
--- calc_started_at (Step 7 `22` §4.d1).
+-- calc_started_at (`22-tx-concurrency.md` §4.d1).
 CREATE TABLE payroll_input_changes (
     tenant_id    uuid        NOT NULL,
     period_id    uuid        NOT NULL,

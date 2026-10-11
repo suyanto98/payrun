@@ -28,7 +28,7 @@ import (
 	"payrun/internal/platform/tracing"
 )
 
-// Eksekusi run (ADR-P05, Step 7 `22` §3.2):
+// Eksekusi run (ADR-P05, `22-tx-concurrency.md` §3.2):
 //
 //	calculate (HTTP)  periode FOR UPDATE → run CALCULATING, calc_version+1 → job payroll.plan
 //	payroll.plan      run FOR UPDATE (guard versi) → eligible → K job calc_chunk (dedupe per chunk)
@@ -128,7 +128,7 @@ func (j *Jobs) plan(ctx context.Context, job *jobs.Job) error {
 		if err := q.SetPlan(ctx, store.SetPlanParams{EligibleCount: ptr(int32(len(eligible))), ChunksTotal: int32(chunks), ID: p.RunID}); err != nil { //nolint:gosec // G115
 			return err
 		}
-		if chunks == 0 { // Step 12 R1-3: run 0 karyawan langsung CALCULATED dengan total 0
+		if chunks == 0 { // final review R1-3: run 0 karyawan langsung CALCULATED dengan total 0
 			if done, err = j.finish(ctx, q, job.TenantID, p.RunID, p.CalcVersion, 0, info.Year, info.Month); err != nil {
 				return err
 			}

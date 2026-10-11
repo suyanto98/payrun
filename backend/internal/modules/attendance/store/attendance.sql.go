@@ -221,7 +221,7 @@ type InsertClockInRow struct {
 	Version          int32
 }
 
-// Modul attendance (PF-08). Semua [tenant]. Urutan lock (Step 7 `22` §1): [1b] tenant_settings → [2]
+// Modul attendance (PF-08). Semua [tenant]. Urutan lock (`22-tx-concurrency.md` §1): [1b] tenant_settings → [2]
 // periode FOR SHARE (PeriodGuard) → [6] attendance_records → [7] change log/audit.
 // D1: satu catatan per (employee, work_date). Clock-in kedua → 0 baris (ON CONFLICT) → baca yang ada.
 func (q *Queries) InsertClockIn(ctx context.Context, arg InsertClockInParams) (InsertClockInRow, error) {

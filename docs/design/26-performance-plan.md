@@ -1,6 +1,6 @@
-# Step 8.3 — Performance Test Plan
+# Performance Test Plan
 
-> Bagian dari [Step 8](00-index.md). SLO (§4), prinsip performance (§6), dan O20 di `00-index.md` **mengikat**.
+> Bagian dari desain observability & testing. SLO (§4), prinsip performance (§6), dan O20 di `00-index.md` **mengikat**.
 > Master prompt Phase 12: jangan hanya bilang "scalable". Tentukan bottleneck, ukur, lalu putuskan.
 > **Semua angka di dokumen ini adalah skenario uji atau hipotesis**, bukan klaim kapasitas. Hasil nyata diisi setelah load test, dan selalu disertai spesifikasi mesin.
 
@@ -14,10 +14,10 @@ Format: *expected bottleneck → kenapa → cara mendeteksi → mitigasi yang su
 
 | Area | Bottleneck yang diperkirakan | Kenapa | Deteksi | Sudah ada di desain | Jika terbukti |
 |---|---|---|---|---|---|
-| **Login (argon2id)** | **CPU dan memori**, bukan DB | argon2id m=64 MiB, t=3, p=2 ≈ 100–250 ms CPU per hash (Step 6 C-02). Di 2 vCPU, maksimal ±8–15 login/dtk. Lebih kritis: **64 MiB per hash yang berjalan bersamaan**. 20 login paralel ≈ 1,3 GB RAM, sehingga VM 4 GB bisa OOM | pprof CPU (`argon2.IDKey` dominan), RSS container, `app_http_request_duration_seconds{route="/auth/login"}` | Rate limit `auth-strict` (5/menit per IP+email), lockout | **Semaphore konkurensi hashing** (misalnya maksimal 4 hash bersamaan; sisanya menunggu ≤ 2 dtk lalu `503`). *Keputusan baru:* semaphore ini masuk **MVP**, karena tanpa itu login bisa dipakai sebagai vektor DoS memori. Lebih lanjut: turunkan `m` ke 19–32 MiB sambil menaikkan `t` (rekomendasi OWASP), atau pisahkan auth ke instance sendiri |
+| **Login (argon2id)** | **CPU dan memori**, bukan DB | argon2id m=64 MiB, t=3, p=2 ≈ 100–250 ms CPU per hash (threat model C-02). Di 2 vCPU, maksimal ±8–15 login/dtk. Lebih kritis: **64 MiB per hash yang berjalan bersamaan**. 20 login paralel ≈ 1,3 GB RAM, sehingga VM 4 GB bisa OOM | pprof CPU (`argon2.IDKey` dominan), RSS container, `app_http_request_duration_seconds{route="/auth/login"}` | Rate limit `auth-strict` (5/menit per IP+email), lockout | **Semaphore konkurensi hashing** (misalnya maksimal 4 hash bersamaan; sisanya menunggu ≤ 2 dtk lalu `503`). *Keputusan baru:* semaphore ini masuk **MVP**, karena tanpa itu login bisa dipakai sebagai vektor DoS memori. Lebih lanjut: turunkan `m` ke 19–32 MiB sambil menaikkan `t` (rekomendasi OWASP), atau pisahkan auth ke instance sendiri |
 | **Connection pool** | Pool api (20) habis saat banyak request menunggu lock | Request yang menunggu `lock_timeout` 2 dtk memegang koneksi | `db_pool_in_use`, `db_pool_acquire_timeout_total`, `pg_stat_activity` (`wait_event_type = Lock`) | Acquire timeout 2 dtk → `503`; transaksi < 50 ms; tanpa network di dalam tx | Pool per kelas endpoint (uang vs baca); PgBouncer mode transaction (perhatian: `SET LOCAL` tetap aman, `SET` sesi tidak; prepared statement perlu `pgx` mode `QueryExecModeCacheDescribe`) |
 | **Polling job** | Query claim berulang saat idle | Polling 500 ms × jumlah lane × replika | `pg_stat_statements` (calls claim query), CPU Postgres saat idle | Partial index claimable kecil; idle backoff hingga 2 dtk | `LISTEN/NOTIFY` (P2) untuk membangunkan lane |
-| **Bloat `jobs`** | Index dan heap membengkak, claim melambat | Banyak UPDATE status + DELETE retensi | `pg_stat_user_tables.n_dead_tup`, ukuran index | Retensi 7 hari (batch), `fillfactor` (Step 4), autovacuum agresif per tabel | Partisi `jobs` per hari + `DROP PARTITION` (tanpa DELETE) |
+| **Bloat `jobs`** | Index dan heap membengkak, claim melambat | Banyak UPDATE status + DELETE retensi | `pg_stat_user_tables.n_dead_tup`, ukuran index | Retensi 7 hari (batch), `fillfactor` (desain database), autovacuum agresif per tabel | Partisi `jobs` per hari + `DROP PARTITION` (tanpa DELETE) |
 | **JSON encoding** | Minor | Respons kecil, list dibatasi 100 | pprof (`encoding/json`) | Limit 100, field minimal | `goccy/go-json` / `jsoniter` hanya jika > 10% CPU |
 | **Logging** | I/O stdout saat beban tinggi | Satu log per request + per job | pprof, throughput turun saat `level=debug` | `slog` JSON, `info` di perf env | Sampling log sukses (bukan error) |
 | **Tracing** | Overhead span | Span per query pgx | Bandingkan p95 dengan dan tanpa OTel | Sampling `parentbased_traceidratio` (perf env 10%) | Matikan span per query, sisakan span per tx |
@@ -27,9 +27,9 @@ Format: *expected bottleneck → kenapa → cara mendeteksi → mitigasi yang su
 | Area | Bottleneck yang diperkirakan | Kenapa | Deteksi | Sudah ada di desain | Jika terbukti |
 |---|---|---|---|---|---|
 | **Hot row wallet user** | Serialisasi per user | Disengaja (Demo B) | Lock wait per akun | Lock hanya ms | Tidak perlu: perilaku bisnis yang benar |
-| **Hot row wallet merchant (O11)** | Throughput maksimal pembayaran ke satu merchant | Satu baris di-lock per pembayaran. Lock 2–5 ms → batas teoretis 200–500/dtk, dan antrean terasa saat utilisasi > ~70% | `pg_locks` + `pg_stat_activity` lock wait, p95/p99 confirm, eksperimen E-1 (§6) | `FOR NO KEY UPDATE`, tx pendek | `MERCHANT_PENDING` non-materialized + sweep (Step 7 O11 V2), **hanya** jika aturan keputusan E-1 terpenuhi |
+| **Hot row wallet merchant (O11)** | Throughput maksimal pembayaran ke satu merchant | Satu baris di-lock per pembayaran. Lock 2–5 ms → batas teoretis 200–500/dtk, dan antrean terasa saat utilisasi > ~70% | `pg_locks` + `pg_stat_activity` lock wait, p95/p99 confirm, eksperimen E-1 (§6) | `FOR NO KEY UPDATE`, tx pendek | `MERCHANT_PENDING` non-materialized + sweep (desain transaksi & concurrency O11 V2), **hanya** jika aturan keputusan E-1 terpenuhi |
 | **Akun sistem** | Tidak ada (hipotesis) | Tidak materialized → hanya INSERT (ADR-L07) | Lock wait pada akun sistem harus 0 | ADR-L07 | — |
-| **Insert `journal_entries`** | I/O + index maintenance (3 index) + deferred trigger keseimbangan (3× per journal 2 entry) | Tabel terbesar (20–25 juta baris di skenario) | `pg_stat_statements` (INSERT entries, fungsi trigger), WAL rate | Index minimal; trigger memakai index `journal_id` | Penanda per-tx untuk trigger (Step 4 catatan); partisi bulanan (V2) |
+| **Insert `journal_entries`** | I/O + index maintenance (3 index) + deferred trigger keseimbangan (3× per journal 2 entry) | Tabel terbesar (20–25 juta baris di skenario) | `pg_stat_statements` (INSERT entries, fungsi trigger), WAL rate | Index minimal; trigger memakai index `journal_id` | Penanda per-tx untuk trigger (desain database catatan); partisi bulanan (V2) |
 | **Riwayat wallet** | N+1 (detail polimorfik) dan offset scan | Lihat §2.1 | Jumlah query per request (log debug / `pg_stat_statements` calls), EXPLAIN | Cursor `(created_at, id)` + index `ix_journal_entries_account_created` INCLUDE | Read replica (V2) |
 | **Verifikasi saldo (`ledger.verify`)** | Scan besar | Σ entries per akun untuk 100 ribu akun | Durasi job, buffers di EXPLAIN | Index-only scan `INCLUDE (direction, amount)`; RR-RO | Verifikasi inkremental sejak checkpoint (`account_balance_snapshots`, V2) |
 | **Webhook inbox burst** | Lane inbox (4) dan verify-by-fetch ke provider | Setiap event = 1 panggilan HTTP ke provider + 1 tx | `webhook_inbox` RECEIVED count, umur event tertua, latency provider | Respons 200 cepat (insert saja), dedupe di DB | Naikkan lane inbox; batch verify jika provider mendukung |
@@ -49,7 +49,7 @@ Format: *expected bottleneck → kenapa → cara mendeteksi → mitigasi yang su
 | **Lock period (O3)** | HR edit tertahan saat approve/finalize | `FOR UPDATE` period vs `FOR SHARE` penulis | Lock wait penulis input selama approve (PR-5) | Approve/finalize hanya ms (setelah O12) | Finalize besar dipecah: freeze via status, bukan UPDATE per item |
 | **Render PDF** | **CPU** worker | Render PDF ±50–200 ms per slip (library Go) | `payslip_render_duration_seconds`, CPU worker | Lane `documents` (2) terpisah dari `payroll`; batch 20 | Instance worker documents terpisah; template lebih sederhana |
 | **Import CSV 50 ribu baris** | Parsing + validasi + upsert | Validasi per baris (employee lookup) | Durasi job, query per baris | Lookup employee batch per N baris (map in-memory per batch) | Staging table + validasi set-based SQL |
-| **Noisy neighbor** | Tenant 10 ribu memonopoli lane `payroll` | Chunk dari satu run membanjiri antrean | Umur job tertua per tenant kecil saat run besar berjalan (PR-2) | Lane terpisah | Batas konkurensi per tenant (P2, Step 7 `03` §9), diuji A/B di PR-2 |
+| **Noisy neighbor** | Tenant 10 ribu memonopoli lane `payroll` | Chunk dari satu run membanjiri antrean | Umur job tertua per tenant kecil saat run besar berjalan (PR-2) | Lane terpisah | Batas konkurensi per tenant (P2, `23-background-jobs.md` §9), diuji A/B di PR-2 |
 
 ---
 
@@ -98,11 +98,11 @@ Ditambah data per run yang di-cache in-memory oleh job (sekali per job, bukan pe
 
 | Aspek | Spesifikasi |
 |---|---|
-| **Target (angka resmi untuk README)** | VM 2 vCPU / 4 GB RAM / SSD, **sama** dengan target deployment (Step 9). Compose: api, worker, postgres, mock-provider, caddy, prometheus |
+| **Target (angka resmi untuk README)** | VM 2 vCPU / 4 GB RAM / SSD, **sama** dengan target deployment (desain DevOps). Compose: api, worker, postgres, mock-provider, caddy, prometheus |
 | Laptop pengembang | Dicatat **terpisah** dan tidak pernah dicampur dengan angka VM |
 | Load generator | k6 di **mesin/container terpisah** (bukan di VM target), supaya CPU k6 tidak mencuri CPU sistem yang diuji |
 | Postgres (perf env, VM 4 GB) | `shared_buffers = 1GB`, `effective_cache_size = 2.5GB`, `work_mem = 16MB`, `maintenance_work_mem = 256MB`, `max_connections = 100`, `wal_compression = on`, `random_page_cost = 1.1` (SSD), `shared_preload_libraries = 'pg_stat_statements,auto_explain'`, `auto_explain.log_min_duration = 100ms`, `track_io_timing = on` |
-| Pool | api 20, worker 10, mock 5 (Step 7). Pool tidak diperbesar untuk "memenangkan" benchmark |
+| Pool | api 20, worker 10, mock 5 (desain transaksi & concurrency). Pool tidak diperbesar untuk "memenangkan" benchmark |
 | Dicatat per run | git SHA, versi Go/Postgres/k6, spesifikasi mesin, konfigurasi Postgres, ukuran dataset, durasi warm-up, waktu mulai (UTC), environment variable yang relevan (pool, lane, chunk size) |
 | Warm-up | 2 menit beban rendah sebelum pengukuran (cache, JIT pool koneksi) |
 
@@ -113,7 +113,7 @@ Ditambah data per run yang di-cache in-memory oleh job (sekali per job, bukan pe
 | | LedgerPay | PayRun |
 |---|---|---|
 | Alat | `ledgerpay seed --profile=perf` (subcommand Go, deterministik dengan seed acak tetap) | `payrun seed --profile=perf` |
-| Volume | 100.000 user · 1.000 merchant · **1 juta journal (Step 12: S7; 10 juta = opsional)** (≈ 2,2 juta entries) · 200 ribu payout · riwayat 12 bulan | 1.000 tenant · 100.000 employee · 12 bulan attendance (≈ 25 juta baris) · 11 run final per tenant (bulan ke-12 disisakan untuk diuji) |
+| Volume | 100.000 user · 1.000 merchant · **1 juta journal (final review S7; 10 juta = opsional)** (≈ 2,2 juta entries) · 200 ribu payout · riwayat 12 bulan | 1.000 tenant · 100.000 employee · 12 bulan attendance (≈ 25 juta baris) · 11 run final per tenant (bulan ke-12 disisakan untuk diuji) |
 | Distribusi | Aktivitas Pareto: 20% user menghasilkan 80% transaksi; 10 merchant "populer" | Ukuran tenant: 900 tenant 10–50 karyawan, 95 tenant 100–500, 4 tenant 2.000, **1 tenant 10.000** (target PR-1) |
 | Cara tulis | `COPY` (pgx `CopyFrom`) per tabel, dalam batch 50.000 baris | `COPY` per tenant |
 | Kecepatan (perkiraan) | COPY ±100–200 ribu baris/dtk → entries ±3–6 menit; total seed termasuk index ±20–40 menit | ±15–30 menit |
@@ -132,7 +132,7 @@ Ditambah data per run yang di-cache in-memory oleh job (sekali per job, bukan pe
 
 ## 5. Skenario load test (k6)
 
-> **Amandemen Step 12 (S7/R4-13, otoritatif):** **subset V1** yang wajib dijalankan dan dilaporkan: **LedgerPay LP-2, LP-3, LP-4 (E-1), LP-9**; **PayRun PR-1, PR-3, PR-4 (E-2)**. Skenario lain (LP-1, LP-5–LP-8, PR-2, PR-5–PR-7) = opsional/V2, dijalankan hanya jika ada buffer. Skenario wajib master prompt tetap tercakup: 10.000 transaksi (LP-2), 100.000 karyawan (PR-3), run besar (PR-1). "1.000 concurrent requests" (LP-1) dan "1.000 payroll run" (PR-2) didokumentasikan sebagai rencana, dan baru dijalankan saat buffer tersedia.
+> **Amandemen final review (S7/R4-13, otoritatif):** **subset V1** yang wajib dijalankan dan dilaporkan: **LedgerPay LP-2, LP-3, LP-4 (E-1), LP-9**; **PayRun PR-1, PR-3, PR-4 (E-2)**. Skenario lain (LP-1, LP-5–LP-8, PR-2, PR-5–PR-7) = opsional/V2, dijalankan hanya jika ada buffer. Skenario wajib master prompt tetap tercakup: 10.000 transaksi (LP-2), 100.000 karyawan (PR-3), run besar (PR-1). "1.000 concurrent requests" (LP-1) dan "1.000 payroll run" (PR-2) didokumentasikan sebagai rencana, dan baru dijalankan saat buffer tersedia.
 
 **Model beban.** *Closed model* (VU tetap + think time) mensimulasikan populasi user yang menunggu respons, dan dipakai ketika master prompt menyebut "N concurrent requests". *Open model* (`constant-arrival-rate` / `ramping-arrival-rate`) mensimulasikan laju kedatangan yang tidak peduli sistem lambat, dan dipakai untuk mencari throughput maksimal tanpa *coordinated omission*.
 
@@ -176,7 +176,7 @@ Ditambah data per run yang di-cache in-memory oleh job (sekali per job, bukan pe
 | Hipotesis | Lock wallet merchant ±2–5 ms per pembayaran. Throughput berkelanjutan ≥ 150 pembayaran/dtk dengan p95 confirm < 200 ms di VM 2 vCPU |
 | Metode | LP-4 (step load). Per tahap: laju yang benar-benar tercapai, p95/p99 confirm, rata-rata dan p95 lock wait pada baris akun merchant (sampling `pg_locks` JOIN `pg_stat_activity` tiap 1 dtk), CPU Postgres |
 | Hasil yang diharapkan | Kurva latency datar sampai ±60–70% batas serial, lalu naik tajam (perilaku antrean M/D/1) |
-| **Aturan keputusan** | Laju berkelanjutan < **100/dtk** **atau** p95 lock wait > **50 ms** pada 100/dtk → implementasikan `MERCHANT_PENDING` (Step 7 O11 V2) dan ulangi E-1. Jika lulus → pertahankan V1 dan dokumentasikan angkanya sebagai baseline |
+| **Aturan keputusan** | Laju berkelanjutan < **100/dtk** **atau** p95 lock wait > **50 ms** pada 100/dtk → implementasikan `MERCHANT_PENDING` (desain transaksi & concurrency O11 V2) dan ulangi E-1. Jika lulus → pertahankan V1 dan dokumentasikan angkanya sebagai baseline |
 | Kontrol | Jalankan pembanding: pembayaran ke **100 merchant berbeda** dengan laju total sama, untuk memisahkan efek hot row dari batas sistem secara umum |
 
 ### E-2 — Biaya approve: change log vs recompute penuh (O12)
@@ -240,7 +240,7 @@ Menceritakan bottleneck yang ditemukan beserta perbaikannya justru sinyal senior
 
 | Aspek | Isi |
 |---|---|
-| Kapan | **(Step 12: S19) Ditunda sampai setelah M4 (LedgerPay) / M7 (PayRun).** Setelah itu: nightly (GitHub Actions `schedule`) + manual (`workflow_dispatch`). **Tidak** di setiap PR (lambat dan berisik di runner shared) |
+| Kapan | **(final review S19) Ditunda sampai setelah M4 (LedgerPay) / M7 (PayRun).** Setelah itu: nightly (GitHub Actions `schedule`) + manual (`workflow_dispatch`). **Tidak** di setiap PR (lambat dan berisik di runner shared) |
 | Lingkungan | Runner GitHub (2–4 vCPU), compose ringan, dataset kecil (`seed --profile=smoke`: 1.000 user, 10 tenant, 1 tenant 500 karyawan) |
 | Skenario | LP-2 mini (1.000 transfer @ 50/dtk), LP-3 mini (200 req, 1 wallet), PR-1 mini (run 500 karyawan), PR-3 mini (50 VU, 2 mnt) |
 | Threshold k6 | Fungsional **keras**: invariant 0, `500` = 0, LP-3 tepat N sukses → gagal = workflow merah. Performa **lunak**: p95 dibandingkan median 7 run terakhir; regresi > 30% → peringatan (anotasi + issue otomatis), bukan merah, karena runner shared berisik |

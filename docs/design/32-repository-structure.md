@@ -1,8 +1,8 @@
-# Step 10.1 — Repository Structure
+# Repository Structure
 
 > **Amandemen (PayRun, 2026-10-10):** tata letak luar repo `payrun` disamakan dengan pola `backend/` + `frontend/`: seluruh Go module (tree `cmd/`, `internal/`, `db/`, `api/` di bawah) berada di `backend/`, SPA (`web/` di bawah) menjadi `frontend/`. Isi dan aturan di dalam module tidak berubah (modul tetap `internal/modules/<x>`, depguard sama). LedgerPay diubah dengan cara yang sama di hari yang sama.
 
-> Bagian dari [Step 10](00-index.md). Keputusan di `00-index.md` §4 **mengikat**: polyrepo `ledgerpay`, `payrun`, `infra`.
+> Bagian dari roadmap. Keputusan di `00-index.md` §4 **mengikat**: polyrepo `ledgerpay`, `payrun`, `infra`.
 > Phase 14 master prompt: struktur disesuaikan dengan arsitektur yang dipilih (modular monolith, satu binary per project, ADR-001), tanpa memaksakan monorepo.
 
 ---
@@ -13,7 +13,7 @@
 | Pertimbangan | Polyrepo (dipilih) | Monorepo |
 |---|---|---|
 | Cara interviewer menilai | Satu link = satu project utuh (README, CI, riwayat commit, issue) | Interviewer harus memahami struktur workspace dulu |
-| Kode runtime yang dibagi | Tidak ada. Skeleton **disalin** (Step 1 §1.1) | Akan menggoda untuk membuat `pkg/shared`, sehingga coupling tumbuh diam-diam |
+| Kode runtime yang dibagi | Tidak ada. Skeleton **disalin** (strategi produk §1.1) | Akan menggoda untuk membuat `pkg/shared`, sehingga coupling tumbuh diam-diam |
 | CI | Workflow sederhana per repo | Butuh path filter, matrix per project, cache terpisah |
 | Deploy | Image per project, tag SHA per repo | Sama, tetapi trigger lebih rumit |
 | Biaya | Fix skeleton harus di-port manual ke repo kedua | Satu fix berlaku untuk semua |
@@ -100,7 +100,7 @@ ledgerpay/
 │   ├── invariants/                  # checker LI-01..LI-15, dipanggil di t.Cleanup
 │   ├── testdb/                      # bootstrap testcontainers + CREATE DATABASE … TEMPLATE
 │   ├── chaos/                       # suite chaos (toxiproxy opsional, kill worker via subprocess)
-│   ├── k6/                          # LP-1 … LP-9 (Step 8 `03`)
+│   ├── k6/                          # LP-1 … LP-9 (`26-performance-plan.md`)
 │   └── demo-verify/                 # skrip headless Demo A–D (nightly)
 ├── deploy/
 │   ├── Dockerfile                   # multi-stage → distroless nonroot; build arg TAGS=demo
@@ -112,7 +112,7 @@ ledgerpay/
 ├── docs/
 │   ├── adr/                         # ADR-001…013 + ADR-L01…L08 (nomor dipertahankan)
 │   ├── design/                      # dokumen version 2 yang relevan (dikurasi, lihat §7)
-│   ├── runbooks/                    # dari Step 8 `01` §8 + Step 9 `03` §8
+│   ├── runbooks/                    # dari `24-observability.md` §8 + `29-deploy-migrations-backup.md` §8
 │   └── demo/                        # skrip demo, screenshot, link video
 ├── .github/
 │   ├── workflows/{pr,main,nightly,rollback,perf}.yml
@@ -136,11 +136,11 @@ ledgerpay/
 | `policy.go` | Fungsi otorisasi (`CanReadPayout(principal, payout)`) | Pure function, diuji unit |
 | `errors.go` | `var ErrXxx` → dipetakan ke code katalog | — |
 | `jobs.go` | Handler job modul (jika ada) | Idempoten, `CompleteInTx` |
-| `*_test.go` | Unit (`_test`), integration (`//go:build integration`) | Lihat Step 8 `02` |
+| `*_test.go` | Unit (`_test`), integration (`//go:build integration`) | Lihat `25-testing-strategy.md` |
 
 ### 2.2 Keputusan: mock provider di repo yang sama
 `cmd/mockprovider` + `internal/mockprovider` tinggal di repo `ledgerpay`, tetapi dikompilasi sebagai **binary dan image terpisah**, dengan database sendiri.
-- **Alasan:** kontrak mock dan LedgerPay berevolusi bersama (Step 5 `03`). Test integration memakai mock in-process (`httptest.Server`, Step 8 `02`), dan itu butuh import package-nya. Tidak ada konsumen lain.
+- **Alasan:** kontrak mock dan LedgerPay berevolusi bersama (kontrak API). Test integration memakai mock in-process (`httptest.Server`, `25-testing-strategy.md`), dan itu butuh import package-nya. Tidak ada konsumen lain.
 - **Batas tetap dijaga:** depguard melarang `internal/modules/*` meng-import `internal/mockprovider` (dan sebaliknya), kecuali dari `test/`. LedgerPay hanya berbicara dengan mock lewat HTTP.
 - **Repo terpisah ditolak** karena perubahan kontrak akan butuh dua PR yang tersinkron, tanpa manfaat bagi portfolio.
 
@@ -201,7 +201,7 @@ payrun/
 ├── test/
 │   ├── fixture/                     # Tenant("alpha") dengan user setiap role, Tenant("beta")
 │   ├── invariants/                  # checker PI-01..PI-19
-│   ├── isolation/                   # cross-tenant suite + authz matrix (Step 5 `05`) table-driven
+│   ├── isolation/                   # cross-tenant suite + authz matrix (`17-api-authorization-matrix.md`) table-driven
 │   ├── k6/                          # PR-1 … PR-7
 │   └── demo-verify/                 # Demo A–C
 └── …                                # deploy/, docs/, .github/, Makefile — sama dengan LedgerPay
@@ -209,14 +209,14 @@ payrun/
 
 Perbedaan penting:
 - **`payroll/engine`** adalah package terisolasi dengan golden data di dalamnya. Depguard memastikan package ini tidak bisa menyentuh I/O (§5).
-- **`db/checks/`** berisi query katalog yang dijalankan oleh migration test di CI **dan** sebagai post-migrate check saat deploy (Step 9 `02`).
+- **`db/checks/`** berisi query katalog yang dijalankan oleh migration test di CI **dan** sebagai post-migrate check saat deploy (`28-cicd.md`).
 - **`test/isolation/`** adalah artefak Demo A: output test-nya ditampilkan langsung di depan interviewer.
 
 ---
 
 ## 4. `infra/`
 
-> **Step 12 (R4-8/S3):** repo `infra` dan image `edge` baru dibuat di **PayRun Sprint 0**. Selama LedgerPay, isi yang setara (compose demo, Caddyfile, skrip deploy/backup) tinggal di folder `deploy/` repo `ledgerpay`, dan SPA dibawa image project sendiri.
+> **Final review (R4-8/S3):** repo `infra` dan image `edge` baru dibuat di **PayRun Sprint 0**. Selama LedgerPay, isi yang setara (compose demo, Caddyfile, skrip deploy/backup) tinggal di folder `deploy/` repo `ledgerpay`, dan SPA dibawa image project sendiri.
 
 ```text
 infra/
@@ -234,11 +234,11 @@ infra/
 │   └── Dockerfile                   # caddy + web-dist kedua project (artefak CI masing-masing repo)
 ├── observability/
 │   ├── prometheus.yml
-│   ├── rules/{platform,ledgerpay,payrun}.yml      # alert (Step 8 `01` §7)
+│   ├── rules/{platform,ledgerpay,payrun}.yml      # alert (`24-observability.md` §7)
 │   ├── alertmanager.yml
 │   ├── grafana/
 │   │   ├── provisioning/{datasources,dashboards}/*.yml
-│   │   └── dashboards/*.json        # 6 dashboard (Step 8 `01` §6), di-review lewat PR
+│   │   └── dashboards/*.json        # 6 dashboard (`24-observability.md` §6), di-review lewat PR
 │   ├── loki.yml
 │   ├── promtail.yml
 │   └── jaeger/                      # konfigurasi (jika perlu selain default)
@@ -262,11 +262,11 @@ infra/
 ├── .github/workflows/
 │   ├── ci.yml                       # caddy validate, compose config, promtool, amtool, shellcheck, …
 │   ├── deploy-infra.yml             # sync config → caddy reload / up -d service shared
-│   └── restore-drill.yml            # mingguan (Step 9 `03`)
+│   └── restore-drill.yml            # mingguan (`29-deploy-migrations-backup.md`)
 └── README.md                        # cara membangun ulang VM dari nol (RTO 2 jam)
 ```
 
-> Workflow `deploy-infra.yml` di Step 9 `02` memakai path filter `caddy/`. Path itu diselaraskan menjadi **`edge/`** sesuai tree ini.
+> Workflow `deploy-infra.yml` di `28-cicd.md` memakai path filter `caddy/`. Path itu diselaraskan menjadi **`edge/`** sesuai tree ini.
 
 ---
 
@@ -351,20 +351,20 @@ D2 (akses internal modul lain) sulit diekspresikan sepenuhnya dengan depguard. Y
 
 ## 7. Lokasi dokumen desain setelah coding dimulai
 
-| Dokumen di `version 2/` | Masuk ke `ledgerpay/docs/` | Masuk ke `payrun/docs/` |
+| Dokumen desain pra-coding | Masuk ke `ledgerpay/docs/` | Masuk ke `payrun/docs/` |
 |---|---|---|
-| Step 1 (strategi) | `design/00-product.md` (bagian LedgerPay + overview) | `design/00-product.md` (bagian PayRun + overview) |
-| Step 2 feature + arsitektur | `design/01-features.md`, `02-architecture.md` | idem untuk PayRun |
+| Strategi produk | `design/00-product.md` (bagian LedgerPay + overview) | `design/00-product.md` (bagian PayRun + overview) |
+| Fitur + arsitektur | `design/01-features.md`, `02-architecture.md` | idem untuk PayRun |
 | ADR | `adr/ADR-001…013` + `ADR-L01…L08` | `adr/ADR-001…013` + `ADR-P01…P09` |
-| Step 3–9 | File LedgerPay + bagian shared, diringkas per topik (`03-domain.md`, `04-database.md`, …) | idem untuk PayRun |
+| Domain s.d. DevOps | File LedgerPay + bagian shared, diringkas per topik (`03-domain.md`, `04-database.md`, …) | idem untuk PayRun |
 | Runbook | `runbooks/*.md` | `runbooks/*.md` |
-| Infra (Step 9 `01`, `03`, `04`) | — | — (masuk `infra/README.md` + `infra/docs/`) |
+| Infra (`27-docker-compose.md`, `03`, `04`) | — | — (masuk `infra/README.md` + `infra/docs/`) |
 
 **Aturan living docs:**
 1. PR yang mengubah perilaku yang terdokumentasi (state machine, constraint, kontrak API, invariant) **wajib** memperbarui dokumen terkait di PR yang sama. Ini menjadi checklist di template PR.
-2. Keputusan baru atau perubahan keputusan berarti **ADR baru** dengan status `Supersedes ADR-xxx`. ADR lama tidak diedit, kecuali bagian "Amandemen" yang sudah dipakai di Step 5–9.
-3. Test meta `TestTraceability_DocsReferenceExistingTests` (Step 8 `02`) mencegah dokumen merujuk test yang sudah tidak ada.
-4. Folder `version 2/` tetap menjadi arsip desain pra-coding dan tidak lagi diperbarui setelah dokumen dipindah ke repo.
+2. Keputusan baru atau perubahan keputusan berarti **ADR baru** dengan status `Supersedes ADR-xxx`. ADR lama tidak diedit, kecuali bagian "Amandemen" yang sudah dipakai di dokumen desain.
+3. Test meta `TestTraceability_DocsReferenceExistingTests` (`25-testing-strategy.md`) mencegah dokumen merujuk test yang sudah tidak ada.
+4. Dokumen di `docs/design/` adalah sumber kebenaran; tidak ada salinan lain yang diperbarui terpisah.
 
 ---
 
@@ -376,6 +376,6 @@ D2 (akses internal modul lain) sulit diekspresikan sepenuhnya dengan depguard. Y
 | Commit | Conventional Commits: `feat(payout): …`, `fix(ledger): …`, `test(transfer): …`, `docs(adr): …`; `!` untuk breaking API |
 | Merge | Squash merge ke `main`; judul PR = pesan commit |
 | Template PR | **Apa & kenapa** · **Invariant / state machine yang tersentuh** (LI/PI) · **Test yang ditambah** (nama) · **Dokumen/ADR diperbarui?** (ya/tidak + link) · **Migrasi** (expand/contract?) · **Screenshot** (jika UI) · Checklist: lint, test, gen sinkron |
-| CODEOWNERS | Tidak dipakai (solo). Branch protection memakai *conversation resolution* + checklist (Step 9 `02`) |
+| CODEOWNERS | Tidak dipakai (solo). Branch protection memakai *conversation resolution* + checklist (`28-cicd.md`) |
 | Label issue | `type:feature`, `type:bug`, `type:chore`, `area:<modul>`, `priority:P0..P3`, `skeleton` (perlu di-port), `flaky` (karantina, SLA 7 hari), `sprint:<n>` |
 | Versi | Tag `vMAJOR.MINOR.PATCH` di milestone (contoh `v0.7.0` = M3 siap melamar); deploy tetap memakai SHA |

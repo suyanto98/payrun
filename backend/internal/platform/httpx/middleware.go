@@ -20,7 +20,7 @@ type requestIDKey struct{}
 
 // reqInfo adalah holder yang dibuat di awal request dan diisi middleware yang berjalan LEBIH
 // DALAM (contoh: auth mengisi user_id). AccessLog berjalan di luar auth, jadi ia membaca holder
-// ini setelah handler selesai — begitulah log akses bisa memuat user_id (skema log Step 8).
+// ini setelah handler selesai — begitulah log akses bisa memuat user_id (skema log desain observability & testing).
 type reqInfo struct {
 	mu       sync.Mutex
 	userID   string

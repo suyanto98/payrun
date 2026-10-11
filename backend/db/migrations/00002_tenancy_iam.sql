@@ -2,9 +2,9 @@
 -- 13-db-rls-consistency-indexing.md §1–§2). Setiap tabel ber-tenant lahir dengan ENABLE + FORCE RLS
 -- dan policy-nya di migrasi yang sama (PRD: "tabel tenant baru wajib RLS di migrasi yang sama").
 --
--- Mode eksklusif (Step 12 C2): transaksi tenant hanya punya app.tenant_id, transaksi platform hanya
+-- Mode eksklusif (final review C2): transaksi tenant hanya punya app.tenant_id, transaksi platform hanya
 -- app.user_id. Policy "self" mensyaratkan current_tenant() IS NULL. Semua policy memakai helper
--- current_tenant()/current_user_id() (nullif '' → NULL; Step 12 C3), dibungkus subselect (initplan).
+-- current_tenant()/current_user_id() (nullif '' → NULL; final review C3), dibungkus subselect (initplan).
 
 -- +goose Up
 
@@ -109,7 +109,7 @@ CREATE TABLE memberships (
 );
 CREATE UNIQUE INDEX uq_memberships_invited_email ON memberships (tenant_id, lower(invited_email)) WHERE status = 'INVITED';
 -- Desain: partial (user_id) WHERE status = 'ACTIVE'. Dibuat PENUH karena juga menjadi index FK
--- fk_memberships_user_id (Step 12 C4: index FK harus mencakup semua baris). Jalur login/daftar tenant
+-- fk_memberships_user_id (final review C4: index FK harus mencakup semua baris). Jalur login/daftar tenant
 -- (lintas tenant, satu-satunya index yang tidak diawali tenant_id) tetap memakainya.
 CREATE INDEX ix_memberships_user ON memberships (user_id);
 CREATE TRIGGER trg_memberships_updated_at BEFORE UPDATE ON memberships
@@ -368,7 +368,7 @@ REVOKE ALL ON FUNCTION auth_lookup_user(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION auth_lookup_user(text) TO payrun_app;
 
 -- ---------------------------------------------------------------- grants (matriks §1.2, per tabel)
--- users: password_hash TIDAK bisa dibaca payrun_app (Step 12 R2-7); hash hanya lewat auth_lookup_user.
+-- users: password_hash TIDAK bisa dibaca payrun_app (final review R2-7); hash hanya lewat auth_lookup_user.
 GRANT SELECT (id, email, display_name, status, failed_login_count, locked_until,
               last_login_at, created_at, updated_at, version) ON users TO payrun_app;
 GRANT INSERT, UPDATE ON users TO payrun_app;

@@ -4,7 +4,7 @@ Status: Accepted · Tanggal: 2026-10-01 · Berlaku untuk: LedgerPay, PayRun
 
 ## Context / Problem
 
-Cache mempercepat read, tetapi memperkenalkan data basi dan bug invalidasi. Untuk data finansial (saldo, status pembayaran, payroll final), data basi bisa membuat user mengambil keputusan dari angka yang salah. Di sistem multi-tenant, cache key yang salah bisa **membocorkan data antar tenant** (Step 1 PayRun C1).
+Cache mempercepat read, tetapi memperkenalkan data basi dan bug invalidasi. Untuk data finansial (saldo, status pembayaran, payroll final), data basi bisa membuat user mengambil keputusan dari angka yang salah. Di sistem multi-tenant, cache key yang salah bisa **membocorkan data antar tenant** (strategi produk PayRun C1).
 
 ## Options
 
@@ -34,7 +34,7 @@ Belum ada bottleneck yang terukur. Index yang tepat + query sederhana cukup untu
 ## Trade-offs
 
 - Beban read seluruhnya ke Postgres.
-- Dashboard dengan agregasi bisa lambat pada data besar. Ini akan dideteksi lewat load test di Step 8.
+- Dashboard dengan agregasi bisa lambat pada data besar. Ini akan dideteksi lewat load test di desain observability & testing.
 
 ## Future Migration
 

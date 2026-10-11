@@ -4,7 +4,7 @@ Semua langkah di sini dijalankan dengan asersi oleh `make demo-live` terhadap st
 (tanpa stack, test integrasi) adalah `make demo-verify` (nightly). Kalau satu janji tidak terpenuhi, skripnya berhenti
 dengan `DEMO FAILED`. Pola setiap segmen: **masalah → mekanisme → bukti**.
 
-Disesuaikan dari rencana Step 11 (`docs/design/33-demo-script.md`) dengan yang benar-benar dibangun: tenant demo dibuat
+Disesuaikan dari rencana demo script (`docs/design/33-demo-script.md`) dengan yang benar-benar dibangun: tenant demo dibuat
 oleh `make seed-demo` (seed-0 = **Alpha**, 100 karyawan; seed-1 = **Beta**, 10–50 karyawan; password
 `correct horse battery`), tidak ada toolbar demo di UI, fault dipasang lewat `POST /api/v1/demo/faults` dengan
 `X-Demo-Token` (OWNER saja).

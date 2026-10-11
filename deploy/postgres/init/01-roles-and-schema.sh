@@ -3,7 +3,7 @@
 # Membuat role, schema, dan extension; tabel dibuat oleh migrasi (dijalankan sebagai payrun_owner).
 # Versi Go dari skrip yang sama ada di internal/platform/db/dbtest (dipakai test). Ubah keduanya.
 #
-# Empat role (docs/design/13-db-rls-consistency-indexing.md §1, Step 9 `01`):
+# Empat role (docs/design/13-db-rls-consistency-indexing.md §1, `27-docker-compose.md`):
 #   payrun_owner     pemilik schema + tabel; HANYA job migrasi. FORCE RLS tetap berlaku untuknya.
 #   payrun_app       api + worker. NOBYPASSRLS dan BUKAN owner: RLS selalu berlaku (ADR-P01).
 #   payrun_readonly  investigasi/laporan; SELECT saja, tetap di bawah RLS.

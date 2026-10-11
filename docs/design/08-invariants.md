@@ -1,6 +1,6 @@
-# Step 3.7 — PayRun: Payroll Invariants
+# PayRun: Payroll Invariants
 
-> ID dan ringkasan invariant: [`00-index.md`](00-index.md). File ini merinci **pernyataan presisi, konsekuensi bisnis, penjaga, deteksi, dan test** untuk setiap invariant.
+> ID dan ringkasan invariant: `00-index.md`. File ini merinci **pernyataan presisi, konsekuensi bisnis, penjaga, deteksi, dan test** untuk setiap invariant.
 > Label penjaga: `DB-CONSTRAINT` · `DB-TX` · `LOCK` · `RLS` · `APP` · `IDEMPOTENCY` · `JOB` · `TEST` · `OBS`.
 > **Aturan:** setiap invariant P0 punya minimal satu penjaga di level database/transaksi (`DB-CONSTRAINT`, `DB-TX`, `LOCK`, atau `RLS`).
 
@@ -15,7 +15,7 @@
   - `RLS`: policy `USING` + `WITH CHECK`, `FORCE ROW LEVEL SECURITY`; `current_setting(…, true)` → fail closed.
   - `DB-CONSTRAINT`: `tenant_id NOT NULL`.
   - `APP`: tenant hanya dari JWT `tid`; `WithTenantTx` satu-satunya akses DB; query menulis `WHERE tenant_id` (lint).
-  - `TEST`: suite isolasi (§3 di [`05`](05-payrun-multi-tenancy.md)), test katalog RLS.
+  - `TEST`: suite isolasi (§3 di [`05`](06-multi-tenancy.md)), test katalog RLS.
 - **Deteksi:** `tenant_isolation_violation_total` (dinaikkan oleh defensive check yang membandingkan `tenant_id` hasil load dengan `Principal.TenantID`); startup check role app bukan owner/BYPASSRLS.
 
 ### PI-02 — Referensi lintas tenant mustahil
@@ -85,7 +85,7 @@
 - **Deteksi:** warning engine untuk karyawan aktif dengan net = 0; diff vs bulan lalu (PF-23).
 
 ### PI-08 — Hanya cuti/lembur `APPROVED` sebelum cut-off yang dihitung
-- **Presisi:** input lembur/cuti tidak dibayar = request dengan `status = 'APPROVED'`, tanggal di period, dan `approval.decided_at < period.cut_off`. Yang disetujui setelah cut-off masuk period berikutnya sebagai adjustment/input bulan depan (keputusan detail di [`06`](06-payrun-payroll-engine.md)).
+- **Presisi:** input lembur/cuti tidak dibayar = request dengan `status = 'APPROVED'`, tanggal di period, dan `approval.decided_at < period.cut_off`. Yang disetujui setelah cut-off masuk period berikutnya sebagai adjustment/input bulan depan (keputusan detail di [`06`](07-payroll-engine.md)).
 - **Konsekuensi:** lembur yang belum disetujui ikut dibayar; atau dibayar dua kali (bulan ini dan bulan depan).
 - **Penjaga:** `APP` (filter di `InputProvider.Overtime/UnpaidLeave`); `DB-TX` (fingerprint mencakup daftar request yang dipakai, sehingga approval baru sebelum approve run membuat run stale, PI-13); `TEST` (lembur disetujui tepat setelah cut-off).
 - **Deteksi:** fingerprint mismatch saat approve (`RUN_STALE`).
@@ -127,15 +127,15 @@
 ### PI-13 — Run hanya bisa di-approve jika fingerprint input saat ini = fingerprint kalkulasi
 - **Presisi:** pada transisi `PENDING_APPROVAL → APPROVED` dan `APPROVED → FINALIZED`, `run_fingerprint(data saat ini) = run.input_fingerprint@calc_version`.
 - **Konsekuensi:** run yang disetujui tidak mencerminkan data terbaru (absensi dikoreksi, adjustment baru) → gaji salah tetapi tampak "approved".
-- **Penjaga (mekanisme final, Step 7 O12 + Step 12):** `LOCK` approve/finalize memegang `payroll_periods FOR UPDATE`, sementara penulis input memegang `FOR SHARE` dan menulis `payroll_input_changes` (+ `tenant_settings` lock untuk celah D1); `DB-TX` kandidat = perubahan sejak `calc_started_at`, lalu fingerprint **hanya kandidat** dihitung ulang di transaksi yang sama dengan transisi (lebih dari 200 kandidat → langsung `RUN_STALE`); `APP` `InputProvider` yang sama untuk kalkulasi dan fingerprint (§8 di [`04`](04-payrun-domain-model.md)).
+- **Penjaga (mekanisme final, desain transaksi & concurrency O12 + final review):** `LOCK` approve/finalize memegang `payroll_periods FOR UPDATE`, sementara penulis input memegang `FOR SHARE` dan menulis `payroll_input_changes` (+ `tenant_settings` lock untuk celah D1); `DB-TX` kandidat = perubahan sejak `calc_started_at`, lalu fingerprint **hanya kandidat** dihitung ulang di transaksi yang sama dengan transisi (lebih dari 200 kandidat → langsung `RUN_STALE`); `APP` `InputProvider` yang sama untuk kalkulasi dan fingerprint (§8 di [`04`](05-domain-model.md)).
 - **Deteksi:** `409 RUN_STALE {employees_changed}`; metrik `payroll_run_stale_total`.
 - **Test:** koreksi absensi setelah `CALCULATED` → approve ditolak; recalculate → approve sukses.
-- **Keterbatasan:** ~~window race di Read Committed~~ **ditutup** di Step 7 (O3/O12): lock periode membuat penulis input menunggu selama approve, dan argumen berbasis lock menjamin semua perubahan yang tidak terlihat oleh kalkulasi masuk kandidat.
+- **Keterbatasan:** ~~window race di Read Committed~~ **ditutup** di desain transaksi & concurrency (O3/O12): lock periode membuat penulis input menunggu selama approve, dan argumen berbasis lock menjamin semua perubahan yang tidak terlihat oleh kalkulasi masuk kandidat.
 
 ### PI-14 — Input untuk period `FINALIZED` tidak bisa diubah
 - **Presisi:** tidak ada INSERT/UPDATE/DELETE pada attendance, leave/overtime request, salary/component assignment, atau employment span yang menyentuh tanggal di period berstatus `FINALIZED` milik tenant tersebut.
 - **Konsekuensi:** snapshot dan data operasional berbeda; slip tidak bisa dijelaskan dari data sumber.
-- **Nuansa effective dating (dari Step 4):** yang diperiksa adalah rentang tanggal yang **nilainya berubah**, bukan seluruh rentang lama dan baru. Contoh: menutup `salary_assignments` lama `[Jan, ∞)` menjadi `[Jan, Jun)` untuk kenaikan gaji Juni hanya mengubah rentang `[Jun, ∞)`, jadi tetap diizinkan walaupun Januari–Mei sudah final. Pemeriksaan naif atas seluruh rentang akan memblokir setiap kenaikan gaji (detail di Step 4 `06-payrun-schema.md`).
+- **Nuansa effective dating (dari desain database):** yang diperiksa adalah rentang tanggal yang **nilainya berubah**, bukan seluruh rentang lama dan baru. Contoh: menutup `salary_assignments` lama `[Jan, ∞)` menjadi `[Jan, Jun)` untuk kenaikan gaji Juni hanya mengubah rentang `[Jun, ∞)`, jadi tetap diizinkan walaupun Januari–Mei sudah final. Pemeriksaan naif atas seluruh rentang akan memblokir setiap kenaikan gaji (detail di `12-db-schema.md`).
 - **Penjaga:**
   - `APP`: `PeriodGuard.EnsureWritable` di semua modul input → `409 PERIOD_LOCKED`.
   - `DB-CONSTRAINT`: trigger di tabel input:
@@ -162,7 +162,7 @@
 ### PI-16 — Tenant selalu punya ≥ 1 `OWNER` aktif
 - **Presisi:** untuk setiap tenant `ACTIVE`, `count(memberships WHERE status='ACTIVE' AND 'OWNER' = ANY(roles)) ≥ 1`.
 - **Konsekuensi:** tenant tanpa admin; tidak ada yang bisa mengelola membership atau finalize.
-- **Penjaga:** `DB-CONSTRAINT` (constraint trigger `DEFERRABLE INITIALLY DEFERRED` pada `memberships` AFTER UPDATE/DELETE: hitung owner tersisa untuk `OLD.tenant_id`; 0 → exception), sehingga transfer kepemilikan dalam satu tx (tambah owner baru, cabut lama) tetap lolos; `LOCK` (`pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role owner (Step 7; bukan `tenants FOR UPDATE`, yang akan memblok cek FK `KEY SHARE` dari semua INSERT di tenant itu), untuk menserialkan dua pencabutan owner paralel yang masing-masing melihat "masih ada satu lagi"); `APP` (pesan error ramah).
+- **Penjaga:** `DB-CONSTRAINT` (constraint trigger `DEFERRABLE INITIALLY DEFERRED` pada `memberships` AFTER UPDATE/DELETE: hitung owner tersisa untuk `OLD.tenant_id`; 0 → exception), sehingga transfer kepemilikan dalam satu tx (tambah owner baru, cabut lama) tetap lolos; `LOCK` (`pg_advisory_xact_lock(hashtextextended('owners:'||tenant_id, 0))` sebelum mengubah role owner (desain transaksi & concurrency; bukan `tenants FOR UPDATE`, yang akan memblok cek FK `KEY SHARE` dari semua INSERT di tenant itu), untuk menserialkan dua pencabutan owner paralel yang masing-masing melihat "masih ada satu lagi"); `APP` (pesan error ramah).
 - **Test:** dua owner saling mencabut secara paralel → satu gagal.
 
 ### PI-17 — Slip gaji hanya untuk pemilik + role berwenang; akses non-pemilik ter-audit

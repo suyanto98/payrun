@@ -57,7 +57,7 @@ func blocked(ch chan httpOut, d time.Duration) bool {
 	}
 }
 
-// TestApprove_BlocksConcurrentInputWrite (Step 7 `22` §4.c, O3; DoD test O3): approve memegang periode
+// TestApprove_BlocksConcurrentInputWrite (`22-tx-concurrency.md` §4.c, O3; DoD test O3): approve memegang periode
 // FOR UPDATE di antara verifikasi fingerprint dan COMMIT. Koreksi gaji yang datang saat itu MENUNGGU
 // (PeriodGuard FOR SHARE), lalu tercatat SETELAH approve commit — run disetujui dengan input yang memang
 // dihitung, dan perubahan berikutnya tetap punya jejak di change log (finalize akan menangkapnya).

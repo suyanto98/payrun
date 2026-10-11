@@ -1,4 +1,4 @@
--- Sprint 1: verifikasi email (Step 12 R2-8; keputusan S1: tenant hasil signup berstatus
+-- Sprint 1: verifikasi email (final review R2-8; keputusan S1: tenant hasil signup berstatus
 -- PENDING_VERIFICATION sampai email owner diverifikasi lewat link sekali pakai).
 -- Desain: docs/design/13-db-rls-consistency-indexing.md, "Catatan implementasi (Sprint 1)".
 

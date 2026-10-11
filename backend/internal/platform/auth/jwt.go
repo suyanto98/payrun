@@ -29,7 +29,7 @@ const clockSkew = 30 * time.Second
 // Tokens menerbitkan dan memverifikasi access token HS256.
 // keys berisi SEMUA kunci yang masih valid untuk verifikasi (map kid → secret); activeKID
 // adalah kunci untuk menandatangani. Rotasi: tambahkan kunci baru, jadikan aktif, lalu buang
-// kunci lama setelah semua token lama kedaluwarsa (≥ 15 menit). Runbook: Step 6 `04` §6.1.
+// kunci lama setelah semua token lama kedaluwarsa (≥ 15 menit). Runbook: `20-security-controls.md` §6.1.
 type Tokens struct {
 	keys      map[string][]byte
 	activeKID string

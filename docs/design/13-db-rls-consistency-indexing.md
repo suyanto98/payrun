@@ -1,6 +1,6 @@
-# Step 4.7 — PayRun: Role DB, RLS, Konsistensi, Index, Volume & Seed
+# PayRun: Role DB, RLS, Konsistensi, Index, Volume & Seed
 
-> Skema: [`06-payrun-schema.md`](06-payrun-schema.md). Tabel shared dan keputusan RLS-nya: [`01-shared-tables.md`](01-shared-tables.md). Analisis multi-tenancy: [Step 3 `05`](../step-03-domain-design/05-payrun-multi-tenancy.md). ADR-P01, ADR-P02.
+> Skema: [`12-db-schema.md`](12-db-schema.md). Tabel shared dan keputusan RLS-nya: [`10-db-shared-tables.md`](10-db-shared-tables.md). Analisis multi-tenancy: [`06-multi-tenancy.md`](06-multi-tenancy.md). ADR-P01, ADR-P02.
 
 ---
 
@@ -14,7 +14,7 @@
 | `payrun_app` | `LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB`, **bukan owner** | api + worker | Semua tabel bisnis `FORCE ROW LEVEL SECURITY` |
 | `payrun_readonly` | `LOGIN NOBYPASSRLS` | Investigasi ops / laporan platform (opsional) | `SELECT` saja; tetap di bawah RLS kecuali tabel platform yang ditentukan |
 
-**Startup check (fail fast):** api dan worker menjalankan query berikut saat boot dan menolak start kalau hasilnya tidak sesuai harapan (Step 3 `05` §5, residual risk "salah konfigurasi role"):
+**Startup check (fail fast):** api dan worker menjalankan query berikut saat boot dan menolak start kalau hasilnya tidak sesuai harapan (`06-multi-tenancy.md` §5, residual risk "salah konfigurasi role"):
 
 ```sql
 SELECT r.rolsuper, r.rolbypassrls,
@@ -45,7 +45,7 @@ Grant di atas diberikan per tabel di migrasi (bukan `GRANT ALL ON ALL TABLES`). 
 ### 2.1 Template tenant (tabel bisnis)
 
 ```sql
--- Helper (dibuat sekali oleh migrasi awal; LANGUAGE sql STABLE, BUKAN SECURITY DEFINER)  (Step 12: C3)
+-- Helper (dibuat sekali oleh migrasi awal; LANGUAGE sql STABLE, BUKAN SECURITY DEFINER)  (final review C3)
 CREATE FUNCTION payrun.current_tenant() RETURNS uuid LANGUAGE sql STABLE AS
   $$ SELECT nullif(current_setting('app.tenant_id', true), '')::uuid $$;
 CREATE FUNCTION payrun.current_user_id() RETURNS uuid LANGUAGE sql STABLE AS
@@ -59,11 +59,11 @@ CREATE POLICY tenant_isolation ON payrun.<t>
 ```
 
 - `current_setting(…, true)` mengembalikan NULL jika setting tidak ada, sehingga `tenant_id = NULL` → tidak ada baris (**fail closed**).
-- **Pitfall string kosong (Step 12: C3):** setelah GUC kustom pernah disetel di suatu sesi (termasuk lewat `set_config(…, true)` yang sudah berakhir), `current_setting(…, true)` mengembalikan `''`, bukan NULL. Cast mentah `''::uuid` → error `invalid input syntax`, sehingga login/audit gagal **acak** tergantung koneksi pool mana yang didapat. Karena itu **semua** policy wajib memakai helper `payrun.current_tenant()` / `payrun.current_user_id()` (yang membungkus `nullif(…, '')`), tidak pernah `current_setting(…)::uuid` mentah. Dibungkus subselect `(SELECT …)` agar dievaluasi sekali per query (initplan), bukan per baris. Dicek oleh query katalog (e) di §2.5.
+- **Pitfall string kosong (final review C3):** setelah GUC kustom pernah disetel di suatu sesi (termasuk lewat `set_config(…, true)` yang sudah berakhir), `current_setting(…, true)` mengembalikan `''`, bukan NULL. Cast mentah `''::uuid` → error `invalid input syntax`, sehingga login/audit gagal **acak** tergantung koneksi pool mana yang didapat. Karena itu **semua** policy wajib memakai helper `payrun.current_tenant()` / `payrun.current_user_id()` (yang membungkus `nullif(…, '')`), tidak pernah `current_setting(…)::uuid` mentah. Dibungkus subselect `(SELECT …)` agar dievaluasi sekali per query (initplan), bukan per baris. Dicek oleh query katalog (e) di §2.5.
 
-**Diterapkan ke:** `tenant_settings`, `memberships`¹, `invitations`, `departments`, `positions`, `holidays`, `employees`, `employment_spans`, `org_assignments`, `component_definitions`, `employee_components`, `salary_assignments`, `attendance_records`, `attendance_imports`, `attendance_import_errors`, `leave_types`, `leave_balances`, `leave_requests`, `overtime_requests`, `approval_requests`, `payroll_periods`, `payroll_runs`, `payroll_items`, `payroll_lines`, `payroll_item_snapshots`, `payroll_input_changes` *(Step 7)*, `adjustments`, `payslips`, `idempotency_keys`, `audit_log`² (+ `tenants`³, `users`⁴ dengan policy khusus).
+**Diterapkan ke:** `tenant_settings`, `memberships`¹, `invitations`, `departments`, `positions`, `holidays`, `employees`, `employment_spans`, `org_assignments`, `component_definitions`, `employee_components`, `salary_assignments`, `attendance_records`, `attendance_imports`, `attendance_import_errors`, `leave_types`, `leave_balances`, `leave_requests`, `overtime_requests`, `approval_requests`, `payroll_periods`, `payroll_runs`, `payroll_items`, `payroll_lines`, `payroll_item_snapshots`, `payroll_input_changes` *(desain transaksi & concurrency)*, `adjustments`, `payslips`, `idempotency_keys`, `audit_log`² (+ `tenants`³, `users`⁴ dengan policy khusus).
 
-¹ ditambah policy self (§2.3) · ² policy WITH CHECK khusus (lihat `01-shared-tables.md` §5) · ³ ⁴ policy khusus (§2.3).
+¹ ditambah policy self (§2.3) · ² policy WITH CHECK khusus (lihat `10-db-shared-tables.md` §5) · ³ ⁴ policy khusus (§2.3).
 
 > `tenant_settings` memakai PK `tenant_id` (tanpa `id`). Template tetap berlaku karena kolomnya bernama `tenant_id`.
 
@@ -84,25 +84,25 @@ Daftar ini adalah **allowlist** di test katalog (§2.5). Tabel lain tanpa RLS me
 ```sql
 CREATE POLICY tenants_current ON payrun.tenants
   USING (id = (SELECT payrun.current_tenant())
-         OR ((SELECT payrun.current_tenant()) IS NULL             -- cabang self HANYA di mode platform (Step 12: C2)
+         OR ((SELECT payrun.current_tenant()) IS NULL             -- cabang self HANYA di mode platform (final review C2)
              AND EXISTS (SELECT 1 FROM payrun.memberships m      -- daftar tenant milik user (WithPlatformTx)
                          WHERE m.tenant_id = tenants.id AND m.status = 'ACTIVE'
                            AND m.user_id = (SELECT payrun.current_user_id()))))
   WITH CHECK (id = (SELECT payrun.current_tenant()));
 ```
-Signup (satu transaksi, dua fase berurutan; Step 12: C2): **fase platform** (`app.user_id` saja) → buat/temukan `users`; lalu app membuat `tenant_id` baru (UUIDv7) → `set_config('app.tenant_id', new_id, true)` **dan** `set_config('app.user_id', '', true)` → **fase tenant**: INSERT `tenants`, `tenant_settings`, `memberships` (OWNER), dan seed (§6), semuanya lolos `WITH CHECK` tenant biasa. Tidak ada policy "boleh INSERT tenant apa pun", dan tidak pernah ada momen kedua setting aktif bersamaan.
+Signup (satu transaksi, dua fase berurutan; final review C2): **fase platform** (`app.user_id` saja) → buat/temukan `users`; lalu app membuat `tenant_id` baru (UUIDv7) → `set_config('app.tenant_id', new_id, true)` **dan** `set_config('app.user_id', '', true)` → **fase tenant**: INSERT `tenants`, `tenant_settings`, `memberships` (OWNER), dan seed (§6), semuanya lolos `WITH CHECK` tenant biasa. Tidak ada policy "boleh INSERT tenant apa pun", dan tidak pernah ada momen kedua setting aktif bersamaan.
 
 **`memberships`** (template tenant + akses diri sendiri):
 ```sql
 CREATE POLICY memberships_self_read ON payrun.memberships FOR SELECT
-  USING ((SELECT payrun.current_tenant()) IS NULL                -- hanya mode platform (Step 12: C2)
+  USING ((SELECT payrun.current_tenant()) IS NULL                -- hanya mode platform (final review C2)
          AND user_id = (SELECT payrun.current_user_id()));
 ```
-Policy permisif digabung dengan OR terhadap `tenant_isolation`. **Mode eksklusif (Step 12: C2):** tanpa syarat `current_tenant() IS NULL`, user yang anggota beberapa tenant akan melihat baris membership miliknya di tenant lain saat berada di konteks tenant A (kebocoran metadata, dan C-46 menembak 500 sebagai false positive). Jalur `WithPlatformTx` (login, daftar tenant, switch tenant) hanya bisa **membaca** membership milik user itu sendiri. Policy ini sengaja `FOR SELECT` saja, sehingga user tidak bisa membuat atau mengubah membership di tenant lain lewat jalur self. Semua penulisan membership memakai `WithTenantTx` (undangan, accept via token ber-tenant, revoke).
+Policy permisif digabung dengan OR terhadap `tenant_isolation`. **Mode eksklusif (final review C2):** tanpa syarat `current_tenant() IS NULL`, user yang anggota beberapa tenant akan melihat baris membership miliknya di tenant lain saat berada di konteks tenant A (kebocoran metadata, dan C-46 menembak 500 sebagai false positive). Jalur `WithPlatformTx` (login, daftar tenant, switch tenant) hanya bisa **membaca** membership milik user itu sendiri. Policy ini sengaja `FOR SELECT` saja, sehingga user tidak bisa membuat atau mengubah membership di tenant lain lewat jalur self. Semua penulisan membership memakai `WithTenantTx` (undangan, accept via token ber-tenant, revoke).
 
-**`users`**: dua policy (`users_self`, `users_tenant_member_read`) + fungsi `auth_lookup_user` untuk login. Didefinisikan di `01-shared-tables.md` §1.
+**`users`**: dua policy (`users_self`, `users_tenant_member_read`) + fungsi `auth_lookup_user` untuk login. Didefinisikan di `10-db-shared-tables.md` §1.
 
-**`audit_log`**: `USING` tenant aktif; `WITH CHECK` mengizinkan baris platform (`tenant_id IS NULL`) hanya jika tidak ada tenant context. Didefinisikan di `01-shared-tables.md` §5. Ditambah (Step 12: R2-3) policy baca baris platform khusus role investigasi:
+**`audit_log`**: `USING` tenant aktif; `WITH CHECK` mengizinkan baris platform (`tenant_id IS NULL`) hanya jika tidak ada tenant context. Didefinisikan di `10-db-shared-tables.md` §5. Ditambah (final review R2-3) policy baca baris platform khusus role investigasi:
 ```sql
 CREATE POLICY audit_platform_read ON payrun.audit_log FOR SELECT TO payrun_readonly
   USING (tenant_id IS NULL);
@@ -115,7 +115,7 @@ Tanpa policy ini baris audit platform (login gagal, signup) tidak terbaca role m
 
 | Helper | Setting yang diset (transaction-local) | Tabel yang terlihat | Dipakai oleh |
 |---|---|---|---|
-| `WithTenantTx(ctx, tid)` / `WithTenantTxFor(tid)` | `app.tenant_id` **saja** (Step 12: C2; identitas principal untuk audit diteruskan sebagai parameter aplikasi, bukan GUC) | Semua baris tenant `tid` | Semua modul bisnis, job tenant |
+| `WithTenantTx(ctx, tid)` / `WithTenantTxFor(tid)` | `app.tenant_id` **saja** (final review C2; identitas principal untuk audit diteruskan sebagai parameter aplikasi, bukan GUC) | Semua baris tenant `tid` | Semua modul bisnis, job tenant |
 | `WithPlatformTx(ctx, uid)` | `app.user_id` saja | `users` (self), `memberships` (self, read), `tenants` (yang user ikuti) | `iam` (login, list tenant, switch), `tenancy` (signup sebelum tenant dibuat) |
 | Tanpa helper (pool mentah) | — | Hanya tabel tanpa RLS (`jobs`, `rulesets`, …) | `platform/jobs` (claim), `platform` startup check |
 
@@ -161,13 +161,13 @@ WHERE n.nspname = 'payrun' AND c.relkind = 'v'
   AND NOT coalesce('security_invoker=true' = ANY (c.reloptions), false);
 -- harus 0 baris
 
--- (e) (Step 12: C3) Policy yang memakai current_setting( mentah, bukan helper current_tenant()/current_user_id()
+-- (e) (final review C3) Policy yang memakai current_setting( mentah, bukan helper current_tenant()/current_user_id()
 SELECT schemaname, tablename, policyname FROM pg_policies
 WHERE schemaname = 'payrun'
   AND (coalesce(qual, '') LIKE '%current_setting(%' OR coalesce(with_check, '') LIKE '%current_setting(%');
 -- harus 0 baris
 
--- (f) (Step 12: C4) FK tanpa index yang diawali kolom FK-nya — berlaku untuk KEDUA project (ganti nama schema)
+-- (f) (final review C4) FK tanpa index yang diawali kolom FK-nya — berlaku untuk KEDUA project (ganti nama schema)
 SELECT con.conrelid::regclass AS tbl, con.conname
 FROM pg_constraint con
 JOIN pg_namespace n ON n.oid = con.connamespace AND n.nspname = 'payrun'
@@ -180,7 +180,7 @@ WHERE con.contype = 'f'
 -- di tabel anak untuk cek FK (contoh nyata: payslips.item_id saat cleanup calc_version).
 ```
 
-Ditambah test perilaku (Step 3 `05` §3): RLS bypass test, pool leakage test (`MaxConns = 1`), dan `WITH CHECK` test.
+Ditambah test perilaku (`06-multi-tenancy.md` §3): RLS bypass test, pool leakage test (`MaxConns = 1`), dan `WITH CHECK` test.
 
 ---
 
@@ -250,7 +250,7 @@ Skenario uji (`00-index.md` §8): 1.000 tenant, 100.000 employee, tenant terbesa
 | `payroll_items` | ~1,2 juta | ~200 B | ~0,3 GB | |
 | Lainnya | < 1 juta | | < 1 GB total | |
 
-**Kesimpulan V1:** total ±25–30 GB/tahun pada skenario uji. Satu instance Postgres menangani ini **tanpa partisi**. Load test (Step 8) memvalidasi query Q4, Q5, Q12, dan Q17 pada data sintetis 1 tahun.
+**Kesimpulan V1:** total ±25–30 GB/tahun pada skenario uji. Satu instance Postgres menangani ini **tanpa partisi**. Load test (desain observability & testing) memvalidasi query Q4, Q5, Q12, dan Q17 pada data sintetis 1 tahun.
 
 **Kandidat partisi (V2/V3):**
 
@@ -259,7 +259,7 @@ Skenario uji (`00-index.md` §8): 1.000 tenant, 100.000 employee, tenant terbesa
 | `audit_log` | `RANGE (created_at)` bulanan | Retensi = `DROP PARTITION` (murah); arsip ke object storage | PK harus memuat `created_at` → `(id, created_at)` |
 | `attendance_records` | `RANGE (work_date)` tahunan | Query selalu ber-rentang tanggal → partition pruning; data lama jarang disentuh | PK/unique harus memuat `work_date`: `(tenant_id, id, work_date)`; unique `(tenant_id, employee_id, work_date)` sudah memuatnya |
 | `payroll_lines`, `payroll_item_snapshots` | `RANGE` per tahun via `created_at`, **atau** `HASH (tenant_id)` | Time: arsip run lama. Hash: menyebar tenant besar | Time: lookup per item butuh kunci partisi (denormalisasi `period`). Hash: tidak membantu retensi |
-| Semua (V3 cell) | Bukan partisi, tetapi **cell** per kelompok tenant (Step 2 arsitektur V3) | Blast radius, ukuran per cluster | Routing koneksi |
+| Semua (V3 cell) | Bukan partisi, tetapi **cell** per kelompok tenant (desain arsitektur V3) | Blast radius, ukuran per cluster | Routing koneksi |
 
 **Kenapa tidak `HASH (tenant_id)` sejak awal:** hash per tenant tidak membantu masalah yang benar-benar akan muncul lebih dulu (retensi data lama, vacuum tabel besar). Hash juga membuat setiap query tanpa `tenant_id`, misalnya job platform, memindai semua partisi. Partisi waktu cocok dengan pola akses dan retensi. Isolasi tenant besar lebih baik diselesaikan di level cell/silo (V3).
 
@@ -291,13 +291,13 @@ Dijalankan oleh use case signup, **di transaksi yang sama** dengan INSERT `tenan
 | `holidays` | 0 | Diisi tenant sendiri. Opsi "impor libur nasional tahun ini" dari daftar statis di kode adalah P2 |
 | `audit_log` | 1 | `tenant.created` |
 
-`rulesets` **tidak** di-seed per tenant. Ruleset bersifat global, diisi migrasi data (`ID-SIMPLIFIED` versi `2026.1`, berlabel *simplified — not compliance-certified*, dengan nilai placeholder dari Step 3 `06`).
+`rulesets` **tidak** di-seed per tenant. Ruleset bersifat global, diisi migrasi data (`ID-SIMPLIFIED` versi `2026.1`, berlabel *simplified — not compliance-certified*, dengan nilai placeholder dari `07-payroll-engine.md`).
 
 ---
 
 ## 7. Pemetaan constraint → error domain (PayRun)
 
-> **(Step 12: R1-6)** Tabel pemetaan versi Step 4 di sini sudah **basi** (memakai kode seperti `RUN_ALREADY_EXISTS` + `200`, `SELF_APPROVAL_NOT_ALLOWED`, `EFFECTIVE_PERIOD_OVERLAP` yang kemudian diganti/dilebur). **Sumber otoritatif adalah [Step 5 `01-error-catalogue.md`](../step-05-api-contract/01-error-catalogue.md) §3 (code PayRun) dan §4 (pemetaan error database → code).** Lapisan `platform/db` memetakan `(SQLSTATE, constraint name)` sesuai katalog itu; nama constraint di [`06`](06-payrun-schema.md) tetap kontrak.
+> **(final review R1-6)** Tabel pemetaan versi desain database di sini sudah **basi** (memakai kode seperti `RUN_ALREADY_EXISTS` + `200`, `SELF_APPROVAL_NOT_ALLOWED`, `EFFECTIVE_PERIOD_OVERLAP` yang kemudian diganti/dilebur). **Sumber otoritatif adalah [`15-api-error-catalogue.md`](15-api-error-catalogue.md) §3 (code PayRun) dan §4 (pemetaan error database → code).** Lapisan `platform/db` memetakan `(SQLSTATE, constraint name)` sesuai katalog itu; nama constraint di [`06`](12-db-schema.md) tetap kontrak.
 
 Catatan khusus yang tidak ada di katalog:
 
@@ -305,7 +305,7 @@ Catatan khusus yang tidak ada di katalog:
 |---|---|
 | `23505` `uq_payroll_items_version` | Tidak muncul ke API (`ON CONFLICT` di chunk) |
 | `23505` `uq_attendance_records_day` (clock-in) | Bukan error: idempoten, kembalikan record yang ada |
-| `23505` `uq_payroll_periods_month` | Tidak seharusnya muncul: create run memakai `INSERT … ON CONFLICT DO NOTHING` + `SELECT` di bawah `tenant_settings FOR UPDATE` (Step 12: R1-8). Jika tetap muncul → `INTERNAL` + alert (bug) |
+| `23505` `uq_payroll_periods_month` | Tidak seharusnya muncul: create run memakai `INSERT … ON CONFLICT DO NOTHING` + `SELECT` di bawah `tenant_settings FOR UPDATE` (final review R1-8). Jika tetap muncul → `INTERNAL` + alert (bug) |
 | `23514` `ck_payroll_items_ok_amounts`, `P0006`, `42501` | Bug → `INTERNAL` (500) + alert |
 | `23514` `ck_jobs_tenant_matches_context` | Bug → `INTERNAL` + `payrun_tenant_isolation_violations_total` |
 
@@ -318,7 +318,7 @@ Migrasi `db/migrations/00002_tenancy_iam.sql`. Deviasi dari desain di atas, masi
 | Aspek | Desain | Implementasi S1 | Alasan |
 |---|---|---|---|
 | `auth_lookup_user` di bawah `FORCE RLS` | Fungsi `SECURITY DEFINER` milik `payrun_owner` | Sama, **ditambah** policy `users_owner_auth_lookup ON users FOR SELECT TO payrun_owner USING (true)` | `FORCE ROW LEVEL SECURITY` juga berlaku untuk owner. Tanpa policy ini fungsi berjalan sebagai owner tanpa tenant/user context dan selalu melihat 0 baris: login tidak akan pernah berhasil. Policy hanya untuk role migrasi (kredensialnya tidak ada di container api/worker), SELECT saja |
-| `ix_memberships_user` | Partial `(user_id) WHERE status = 'ACTIVE'` | Penuh `(user_id)` | Index ini sekaligus index FK `fk_memberships_user_id`; Step 12 C4 mensyaratkan index FK mencakup semua baris (`TestCatalog_EveryFKHasIndex`) |
+| `ix_memberships_user` | Partial `(user_id) WHERE status = 'ACTIVE'` | Penuh `(user_id)` | Index ini sekaligus index FK `fk_memberships_user_id`; final review C4 mensyaratkan index FK mencakup semua baris (`TestCatalog_EveryFKHasIndex`) |
 | `jobs_enforce_tenant` | `nullif(current_setting(...), '')::uuid` | `payrun.current_tenant()` | Satu definisi helper (C3) |
 | Batas penulisan jalur platform | depguard (`tenancy`/`iam` saja) | forbidigo `db.(WithPlatformTx\|SetPlatformUser\|SetTenant)` di luar `internal/modules/(iam\|tenancy)` | depguard membatasi import package, bukan pemakaian fungsi |
 | Verifikasi email (R2-8, migrasi `00003`) | Tidak dirinci | `users.email_verified_at`; status tenant `PENDING_VERIFICATION`; tabel `email_verifications` (hash token + `user_id`, TTL 24 jam) **tanpa RLS**, masuk allowlist §2.2 | Pola `refresh_tokens`: endpoint verifikasi tidak terautentikasi (link di email), lookup berdasarkan hash 256-bit, tabel tanpa data tenant dan tanpa PII. Hanya modul `iam` |

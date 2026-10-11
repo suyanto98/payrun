@@ -26,8 +26,8 @@ PayRun menghasilkan dan menerima file: payslip PDF (P1), file CSV import absensi
 
 ## Reason
 
-- Payslip PDF yang di-generate async adalah alasan nyata (Step 1 PayRun §6.3). LedgerPay tidak punya kebutuhan itu, jadi tidak ditambahkan.
-- `tenant_id` di prefix key membuat isolasi tenant berlaku juga untuk file (Step 1 PayRun C1: "file storage path").
+- Payslip PDF yang di-generate async adalah alasan nyata (strategi produk PayRun §6.3). LedgerPay tidak punya kebutuhan itu, jadi tidak ditambahkan.
+- `tenant_id` di prefix key membuat isolasi tenant berlaku juga untuk file (strategi produk PayRun C1: "file storage path").
 - Presigned URL pendek membatasi dampak jika URL bocor (dibagikan, tercatat di log proxy).
 
 ## Trade-offs

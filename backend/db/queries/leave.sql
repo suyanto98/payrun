@@ -1,5 +1,5 @@
 -- Modul leave (PF-09). Semua [tenant]. Approve: [1b][2] PeriodGuard → [4] approval → [5] saldo FOR UPDATE
--- → [6] request → [7] change log/audit (Step 7 `22` §3.1).
+-- → [6] request → [7] change log/audit (`22-tx-concurrency.md` §3.1).
 
 -- name: ListLeaveTypes :many
 SELECT tenant_id, id, code, name, is_paid, annual_quota_days, max_negative_days, status FROM leave_types ORDER BY code;

@@ -1,7 +1,7 @@
-# Step 2.3 — PayRun: Feature Matrix & Feature Specification
+# PayRun: Feature Matrix & Feature Specification
 
-> Referensi: [Step 1 PayRun](../step-01-product-and-system-strategy/02-payrun.md) (workflow W1–W5, business rules BR1–BR11, challenges C1–C11).
-> Skala dan arti prioritas: lihat [`00-index.md`](00-index.md).
+> Referensi: [strategi produk PayRun](02-product-strategy.md) (workflow W1–W5, business rules BR1–BR11, challenges C1–C11).
+> Skala dan arti prioritas: lihat `00-index.md`.
 
 ---
 
@@ -29,9 +29,9 @@
 | PF-18 | UI: dashboard HR, payroll run, self-service employee | 4 | 3 | 2 | 4 | **P0** |
 | PF-19 | Adjustment pasca-final (masuk periode berikutnya) | 4 | 3 | 4 | 4 | **P1** |
 | PF-20 | PII encryption + masking | 4 | 3 | 5 | 3 | **P1** |
-| PF-21 | Attendance CSV import (async, laporan validasi) | 4 | 3 | 4 | 3 | **P2** (diturunkan di Step 12: S10) |
+| PF-21 | Attendance CSV import (async, laporan validasi) | 4 | 3 | 4 | 3 | **P2** (diturunkan di final review S10) |
 | PF-22 | Payslip PDF async + object storage | 4 | 3 | 3 | 4 | **P1** |
-| PF-23 | Diff payroll vs bulan lalu + warning anomali | 4 | 2 | 4 | 4 | **P2** (diturunkan di Step 12: S9) |
+| PF-23 | Diff payroll vs bulan lalu + warning anomali | 4 | 2 | 4 | 4 | **P2** (diturunkan di final review S9) |
 | PF-24 | Tenant-aware metrics & dashboard | 3 | 3 | 4 | 3 | **P1** |
 | PF-25 | Export file transfer bank (CSV) | 3 | 1 | 3 | 2 | **P2** |
 | PF-26 | Leave accrual terjadwal | 3 | 2 | 3 | 1 | **P2** |
@@ -48,7 +48,7 @@
 |---|---|---|
 | P0 | 18 | MVP yang bisa dipakai + Demo A, B, C (sebagian) |
 | P1 | 5 | "Selesai": koreksi pasca-final, PII, import, PDF, review berkualitas |
-| P2 | 6 | Hardening SaaS (+ PF-21, PF-23 sejak Step 12) |
+| P2 | 6 | Hardening SaaS (+ PF-21, PF-23 sejak final review) |
 | P3 | 4 | Diskusi interview / stretch |
 
 > P0 PayRun lebih banyak daripada LedgerPay. Ini konsekuensi dari domain yang *lebar*. Mitigasinya: banyak fitur P0 PayRun adalah CRUD sederhana (PF-05, PF-06, PF-08, PF-10), sementara energi dikonsentrasikan pada PF-03, PF-07, PF-12, PF-13, dan PF-14.
@@ -95,7 +95,7 @@ Format: **Tujuan · User story · Acceptance criteria · Business rules · Edge 
 3. `POST /v1/session/switch-tenant` memeriksa membership aktif → menerbitkan access token dengan claim `tid` + roles (ADR-P02).
 4. Membership dicabut → user kehilangan akses paling lambat saat refresh berikutnya (≤ 15 menit). Operasi sensitif (finalize payroll, lihat slip gaji orang lain, ubah gaji) memeriksa ulang membership di DB.
 5. Tenant harus selalu punya minimal satu `OWNER` (tidak bisa menghapus owner terakhir).
-6. **(Step 12: R2-8)** Email diverifikasi lewat link sekali pakai sebelum user bisa menerima undangan atau mengaktifkan tenant hasil signup. Di MVP tanpa SMTP, email ditangkap Mailpit (dev/demo).
+6. **(final review R2-8)** Email diverifikasi lewat link sekali pakai sebelum user bisa menerima undangan atau mengaktifkan tenant hasil signup. Di MVP tanpa SMTP, email ditangkap Mailpit (dev/demo).
 
 **Dependency:** PF-01.
 **Bukti:** test token dengan `tid` tenant lain hasil manipulasi → ditolak (signature); test membership dicabut.
@@ -249,7 +249,7 @@ Format: **Tujuan · User story · Acceptance criteria · Business rules · Edge 
 7. Error validasi (konfigurasi tidak valid, contoh: `PERCENT_OF` mereferensikan komponen yang tidak ada) → item ditandai `ERROR` dengan pesan, tidak menggagalkan seluruh run.
 
 **Business rules:** BR4, BR5, BR11.
-**Dependency:** tidak ada (dibangun paling awal, lihat Step 1 §5.2).
+**Dependency:** tidak ada (dibangun paling awal, lihat strategi produk §5.2).
 **Bukti:** golden-file test (≥ 20 kasus: joiner, leaver, kenaikan tengah periode, lembur, cuti tidak dibayar, absen, cap BPJS, PTKP berbeda, adjustment ±, pembulatan); property test `net == Σ lines`.
 
 ---
@@ -348,7 +348,7 @@ Sama seperti LedgerPay LF-13, ditambah `tenant_id` di setiap log request/job dan
 2. Laporan hasil: baris sukses, baris gagal + alasan. Import parsial diizinkan (baris valid tetap masuk), atau mode all-or-nothing (dipilih HR).
 3. Import ulang file yang sama (hash sama) → diperingatkan; upsert per (employee, tanggal) agar idempoten.
 4. Baris untuk periode `FINALIZED` → gagal dengan alasan `PERIOD_LOCKED`.
-5. Batas ukuran file dan validasi tipe (lihat Step 6).
+5. Batas ukuran file dan validasi tipe (lihat threat model).
 
 ---
 
@@ -367,7 +367,7 @@ Sama seperti LedgerPay LF-13, ditambah `tenant_id` di setiap log request/job dan
 ---
 
 ### PF-24 — Tenant-Aware Metrics (P1)
-**Acceptance criteria:** metrik `payroll_run_duration_seconds`, `payroll_items_calculated_total`, `payroll_item_errors_total`, `job_queue_depth`, `job_dead_total`, `tenant_isolation_violation_total` (dari defensive check; harus 0). Label `tenant_id` hanya pada metrik dengan kardinalitas yang aman, atau diganti dengan *tenant tier*. Detail di Step 8.
+**Acceptance criteria:** metrik `payroll_run_duration_seconds`, `payroll_items_calculated_total`, `payroll_item_errors_total`, `job_queue_depth`, `job_dead_total`, `tenant_isolation_violation_total` (dari defensive check; harus 0). Label `tenant_id` hanya pada metrik dengan kardinalitas yang aman, atau diganti dengan *tenant tier*. Detail di desain observability & testing.
 
 ---
 
@@ -385,4 +385,4 @@ Sama seperti LedgerPay LF-13, ditambah `tenant_id` di setiap log request/job dan
 | Approval rejection | PF-11, PF-13 |
 | Tenant access violation | PF-03, PF-04 |
 
-> 10 payroll failure scenario lengkap dikerjakan di **Step 3**.
+> 10 payroll failure scenario lengkap dikerjakan di **Desain domain**.

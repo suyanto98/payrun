@@ -1,5 +1,5 @@
 -- Modul overtime (PF-10). Semua [tenant]. Approve: [1b][2] PeriodGuard (work_date) → [4] approval →
--- [6] request → [7] change log/audit (Step 7 `22` §1, tanpa saldo).
+-- [6] request → [7] change log/audit (`22-tx-concurrency.md` §1, tanpa saldo).
 
 -- name: InsertOvertimeRequest :exec
 -- Tumpang tindih jam dengan PENDING/APPROVED → ex_overtime_requests_no_overlap → 409 OVERLAPPING_PERIOD.

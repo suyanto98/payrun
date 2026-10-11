@@ -1,15 +1,15 @@
-# Step 7 — Transaction, Concurrency & Background Processing
+# Transaction, Concurrency & Background Processing
 
 > Mencakup **Phase 7** (Transaction & Concurrency) dan **Phase 8** (Background Processing) dari master prompt.
-> Input: ADR-006 (job runner + fencing), ADR-011 (transaction management), ADR-L02/L03/L06/L07/L08, ADR-P05/P07/P09; Step 3 (invariant, failure scenario); Step 4 (constraint, trigger, index); Step 5 (endpoint). Open items: **O3, O11, O12**.
+> Input: ADR-006 (job runner + fencing), ADR-011 (transaction management), ADR-L02/L03/L06/L07/L08, ADR-P05/P07/P09; desain domain (invariant, failure scenario); desain database (constraint, trigger, index); kontrak API (endpoint). Open items: **O3, O11, O12**.
 
 ## Isi
 
 | File | Isi |
 |---|---|
-| [`01-ledgerpay-transactions-concurrency.md`](01-ledgerpay-transactions-concurrency.md) | Katalog operasi: transaction boundary, isolation, lock, race condition, retry, idempotency, rollback; timeline race konkret; analisis deadlock; hot row (O11) |
-| [`02-payrun-transactions-concurrency.md`](02-payrun-transactions-concurrency.md) | Katalog operasi PayRun; race konkret; period lock (O3); stale detection berbasis change log (O12); interaksi RLS dengan transaksi |
-| [`03-background-processing.md`](03-background-processing.md) | Sync vs async; katalog job (producer, consumer, retry, backoff, DLQ, idempotent consumer, status); scheduler; model proses worker; graceful shutdown; poison message; fairness |
+| `01-ledgerpay-transactions-concurrency.md` | Katalog operasi: transaction boundary, isolation, lock, race condition, retry, idempotency, rollback; timeline race konkret; analisis deadlock; hot row (O11) |
+| [`22-tx-concurrency.md`](22-tx-concurrency.md) | Katalog operasi PayRun; race konkret; period lock (O3); stale detection berbasis change log (O12); interaksi RLS dengan transaksi |
+| [`23-background-jobs.md`](23-background-jobs.md) | Sync vs async; katalog job (producer, consumer, retry, backoff, DLQ, idempotent consumer, status); scheduler; model proses worker; graceful shutdown; poison message; fairness |
 
 ---
 
@@ -102,26 +102,26 @@ Kenapa baca dan tulis dipisah: menulis di Repeatable Read akan gagal `40001` set
 
 - Fingerprint per item tetap disimpan (bukti reproducibility PI-12 dan audit).
 - Recalculate hanya untuk karyawan yang berubah adalah optimasi V2. V1 tetap menghitung ulang seluruh run.
-- Tabel ini dan kolom `payroll_runs.calc_started_at` ditambahkan ke skema (Step 4 diperbarui di file `02`).
+- Tabel ini dan kolom `payroll_runs.calc_started_at` ditambahkan ke skema (desain database diperbarui di file `02`).
 
 ### O11 — Wallet merchant sebagai hot row
-**Keputusan V1:** tetap satu akun wallet merchant yang di-lock per pembayaran. Lock hanya di-hold ±2–5 ms (tanpa network di dalam tx), jadi batas teoretisnya ±200–500 pembayaran/detik untuk satu merchant. Angka ini jauh di atas kebutuhan portfolio, dan **dibuktikan dengan load test** (Step 9) sebelum dioptimasi.
+**Keputusan V1:** tetap satu akun wallet merchant yang di-lock per pembayaran. Lock hanya di-hold ±2–5 ms (tanpa network di dalam tx), jadi batas teoretisnya ±200–500 pembayaran/detik untuk satu merchant. Angka ini jauh di atas kebutuhan portfolio, dan **dibuktikan dengan load test** (desain DevOps) sebelum dioptimasi.
 **Jalur V2 (didokumentasikan, tidak dibangun):** pembayaran mengkredit satu akun `MERCHANT_PENDING:<merchant>` yang **non-materialized** (seperti akun sistem, ADR-L07), sehingga tidak ada row lock per pembayaran. Job sweep berkala memindahkan saldo ke wallet merchant dengan purpose journal baru `MERCHANT_SETTLEMENT`. Sharding tidak diperlukan karena akun non-materialized tidak di-lock. Trade-off: saldo merchant menjadi *eventually* tersedia, dan refund harus memperhitungkan dana pending. Detail di file `01` §5.
 
 ---
 
-## Keputusan & penyelarasan selama Step 7
+## Keputusan & penyelarasan selama desain transaksi & concurrency
 
 | Item | Keputusan | Diterapkan di |
 |---|---|---|
 | Lock akun LedgerPay | **`FOR NO KEY UPDATE`** (bukan `FOR UPDATE`), agar cek FK `KEY SHARE` dari `journal_entries` tidak terblok | §2, amandemen ADR-L03, file `01` |
 | Celah D1 (period belum ada) | `tenant_settings FOR KEY SHARE` oleh penulis input; `FOR UPDATE` oleh pembuatan period | §2, O12, file `02` |
 | Chunk txWrite | `payroll_runs FOR UPDATE` (bukan `FOR SHARE`), karena baris run di-UPDATE di tx yang sama | §5 |
-| PI-16 (dua owner saling mencabut) | **Advisory lock** `owners:<tenant>`, bukan `tenants FOR UPDATE` (yang memblok cek FK semua INSERT tenant) | Step 3 PI-16, Step 4 `06`, file `02` |
+| PI-16 (dua owner saling mencabut) | **Advisory lock** `owners:<tenant>`, bukan `tenants FOR UPDATE` (yang memblok cek FK semua INSERT tenant) | Desain domain PI-16, `12-db-schema.md`, file `02` |
 | Hot row merchant V2 (O11) | Satu akun `MERCHANT_PENDING` non-materialized + sweep + purpose `MERCHANT_SETTLEMENT`; tanpa sharding | O11, file `01` §5 |
-| Kolom & tabel baru | `payroll_runs.calc_started_at`, `payroll_input_changes` | Step 4 `06`, `07` |
-| Nama job kanonik | `payroll.plan` (bukan `orchestrate`), `maintenance.*`, `notify.send`; dedupe chunk `payroll.calc_chunk:{run}:{v}:{n}` | file `03`, Step 2/4/5 diselaraskan |
-| Webhook keluar `max_attempts` | 7 (1 + 6 retry sesuai kontrak Step 5) | Step 4 `01` |
+| Kolom & tabel baru | `payroll_runs.calc_started_at`, `payroll_input_changes` | `12-db-schema.md`, `07` |
+| Nama job kanonik | `payroll.plan` (bukan `orchestrate`), `maintenance.*`, `notify.send`; dedupe chunk `payroll.calc_chunk:{run}:{v}:{n}` | file `03`, desain fitur & arsitektur, desain database, kontrak API diselaraskan |
+| Webhook keluar `max_attempts` | 7 (1 + 6 retry sesuai kontrak kontrak API) | `10-db-shared-tables.md` |
 | Top-up | Charge dibuat *best-effort* sinkron setelah tx1; fallback sweep `topup.recover` tiap 1 menit | file `03` |
 | Payout status check | Satu job per check (`payout.status_check:{id}:{n}`), jadwal 30s/2m/10m/1h/6h, lalu `needs_reconciliation` | file `03` |
 | Payslip render | Batch 20 slip per job; status "semua selesai" dihitung lewat query | file `03` |
@@ -132,10 +132,10 @@ Kenapa baca dan tulis dipisah: menulis di Repeatable Read akan gagal `40001` set
 
 ## Open items untuk step berikutnya
 
-Masih berlaku: **O4 + O14** (metrik, Step 8), **O5** (chunk size demo, Step 11), **O16** (Step 12), **O17** (Step 11).
+Masih berlaku: **O4 + O14** (metrik, desain observability & testing), **O5** (chunk size demo, demo script), **O16** (final review), **O17** (demo script).
 
 | # | Item | Step |
 |---|---|---|
-| O18 | Skema yang belum dispesifikasikan: `demo_faults` (demo only), `leave_accruals` (P2), kolom opsional `jobs.priority` (P2), purpose `MERCHANT_SETTLEMENT` (V2 saja) | Step 9 / Step 12 |
-| O19 | Inbox: transisi status/outcome sementara di dalam satu tx (fencing UPDATE di awal, final di akhir). Pastikan CHECK kombinasi status × outcome di Step 4 tidak menolak keadaan antara, atau gunakan satu UPDATE di akhir | Coding / Step 12 |
-| O20 | Load test harus membuktikan klaim O11 (±200–500 pembayaran/detik per merchant) dan biaya approve O12 | Step 8 / Step 9 |
+| O18 | Skema yang belum dispesifikasikan: `demo_faults` (demo only), `leave_accruals` (P2), kolom opsional `jobs.priority` (P2), purpose `MERCHANT_SETTLEMENT` (V2 saja) | Desain DevOps / final review |
+| O19 | Inbox: transisi status/outcome sementara di dalam satu tx (fencing UPDATE di awal, final di akhir). Pastikan CHECK kombinasi status × outcome di desain database tidak menolak keadaan antara, atau gunakan satu UPDATE di akhir | Coding / final review |
+| O20 | Load test harus membuktikan klaim O11 (±200–500 pembayaran/detik per merchant) dan biaya approve O12 | Desain observability & testing / desain DevOps |

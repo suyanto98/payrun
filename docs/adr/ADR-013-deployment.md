@@ -17,7 +17,7 @@ Project harus bisa diakses publik untuk demo, murah (biaya pribadi), bisa di-dep
 
 ## Decision
 
-**Docker Compose di satu VM** per lingkungan demo. Penyedia hosting dipilih di Step 9 (cost).
+**Docker Compose di satu VM** per lingkungan demo. Penyedia hosting dipilih di desain DevOps (cost).
 
 | Aspek | Keputusan |
 |---|---|
@@ -80,7 +80,7 @@ Uji lokal (registry lokal menggantikan GHCR): deploy pull-mode 19 dtk, rollback 
 ## Trade-offs
 
 - Single point of failure; downtime beberapa detik saat restart `api` (diterima untuk demo, dibahas sebagai keterbatasan di README).
-- Postgres di VM yang sama: backup harus diatur sendiri (`pg_dump` terjadwal ke object storage, uji restore). Opsi managed Postgres dibandingkan di Step 9.
+- Postgres di VM yang sama: backup harus diatur sendiri (`pg_dump` terjadwal ke object storage, uji restore). Opsi managed Postgres dibandingkan di desain DevOps.
 - Deploy via SSH lebih rapuh dibanding platform terkelola.
 
 ## Future Migration

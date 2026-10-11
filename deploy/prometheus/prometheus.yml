@@ -1,4 +1,4 @@
-# Prometheus untuk profile compose `obs` (docs/design/24-observability.md, Step 12 R4-6).
+# Prometheus untuk profile compose `obs` (docs/design/24-observability.md, final review R4-6).
 # Scrape port OPS internal (9090) api dan worker; port ini tidak pernah diekspos Caddy.
 global:
   scrape_interval: 15s

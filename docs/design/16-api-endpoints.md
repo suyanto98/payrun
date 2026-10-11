@@ -1,8 +1,8 @@
-# Step 5.4 — PayRun API Contract
+# PayRun API Contract
 
-> Konvensi, header, rate tier, dan format endpoint: [`00-index.md`](00-index.md). Error code: hanya dari [`01-error-catalogue.md`](01-error-catalogue.md).
-> Fitur: Step 2 [`03-payrun-features.md`](../step-02-features-and-architecture/03-payrun-features.md) (PF-xx). State machine: Step 3 [`00-index.md`](../step-03-domain-design/00-index.md). Tabel: Step 4 [`06-payrun-schema.md`](../step-04-database-design/06-payrun-schema.md).
-> Matriks role per endpoint: [`05-payrun-authorization-matrix.md`](05-payrun-authorization-matrix.md). Kolom "Authorization" di bawah hanya ringkasan.
+> Konvensi, header, rate tier, dan format endpoint: `00-index.md`. Error code: hanya dari [`15-api-error-catalogue.md`](15-api-error-catalogue.md).
+> Fitur: desain fitur & arsitektur [`03-features.md`](03-features.md) (PF-xx). State machine: desain domain`. Tabel: desain database [`12-db-schema.md`](12-db-schema.md).
+> Matriks role per endpoint: [`17-api-authorization-matrix.md`](17-api-authorization-matrix.md). Kolom "Authorization" di bawah hanya ringkasan.
 
 ---
 
@@ -136,7 +136,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Validation:** email format valid (≤ 254); password 1–128 karakter (tidak divalidasi panjang minimum saat login).
 - **Errors:** `401 INVALID_CREDENTIALS` (email tidak ada **atau** password salah, waktu respons disamakan), `403 ACCOUNT_LOCKED` (+ `Retry-After`), `429 RATE_LIMITED`.
 - **Idempotency:** n.a. **Pagination:** n.a. **Rate limit:** `auth-strict`.
-- **Catatan:** lookup lewat `payrun.auth_lookup_user(email)` (satu-satunya `SECURITY DEFINER`, Step 4). Gagal login menaikkan `failed_login_count`; ambang mengunci `locked_until` (nilai di Step 6). Audit `auth.login_succeeded` / `auth.login_failed` (tanpa password).
+- **Catatan:** lookup lewat `payrun.auth_lookup_user(email)` (satu-satunya `SECURITY DEFINER`, desain database). Gagal login menaikkan `failed_login_count`; ambang mengunci `locked_until` (nilai di threat model). Audit `auth.login_succeeded` / `auth.login_failed` (tanpa password).
 
 ### A2 · POST `/auth/refresh`
 - **Use case:** PF-02 · **Authentication:** cookie `refresh_token` + header `X-Requested-With: fetch` · **Authorization:** —
@@ -144,7 +144,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Response `200`:** sama dengan A1 (token baru, cookie dirotasi). Kalau `X-Active-Tenant` dikirim dan membership masih `ACTIVE` → `tid` dipertahankan, dan roles dibaca ulang dari DB (perubahan role berlaku di sini). Kalau membership sudah dicabut → `200` dengan `active_tenant: null` dan token tanpa `tid`; client menampilkan pemilih tenant.
 - **Validation:** `X-Active-Tenant` harus UUID valid (selain itu `400 VALIDATION_ERROR`).
 - **Errors:** `401 UNAUTHENTICATED` (cookie tidak ada, kedaluwarsa, atau melewati `family_expires_at`), `401 REFRESH_TOKEN_REUSED` (family dicabut), `429 RATE_LIMITED`.
-- **Idempotency:** n.a. Dua refresh paralel dengan token yang sama dalam grace window 10 detik → keduanya sukses (`replaced_by`, Step 4 `01`). Di luar window → reuse detection.
+- **Idempotency:** n.a. Dua refresh paralel dengan token yang sama dalam grace window 10 detik → keduanya sukses (`replaced_by`, `10-db-shared-tables.md`). Di luar window → reuse detection.
 - **Rate limit:** `auth-strict`.
 
 ### A3 · POST `/auth/logout`
@@ -184,11 +184,11 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
   ```
   Kalau email sudah punya akun, password wajib cocok (kredensial diverifikasi). Tenant baru menjadi tambahan membership user tersebut.
 - **Response `201`:** `{ "tenant": { "id", "name", "slug" }, "access_token", "expires_in", "active_tenant": {…} }` + cookie refresh.
-- **Validation:** `company_name` 2–120; `slug` `^[a-z0-9](-?[a-z0-9]){2,39}$`; password ≥ 10 karakter (aturan lengkap di Step 6); timezone harus nama IANA valid.
+- **Validation:** `company_name` 2–120; `slug` `^[a-z0-9](-?[a-z0-9]){2,39}$`; password ≥ 10 karakter (aturan lengkap di threat model); timezone harus nama IANA valid.
 - **Errors:** `400 VALIDATION_ERROR`, `409 DUPLICATE_CODE` (`field: "slug"`), `401 INVALID_CREDENTIALS` (email sudah terdaftar dengan password berbeda), `422 IDEMPOTENCY_KEY_REUSED`, `409 REQUEST_IN_PROGRESS`, `429`.
-- **Idempotency:** **required**, disimpan di `platform_idempotency_keys` (Step 4 `01`), di-scope per email.
+- **Idempotency:** **required**, disimpan di `platform_idempotency_keys` (`10-db-shared-tables.md`), di-scope per email.
 - **Rate limit:** `auth-strict`.
-- **Catatan:** satu transaksi: `users` (jika baru) + `tenants` + `tenant_settings` + membership `OWNER` + seed default (jenis cuti, komponen sistem, kalender; Step 4 `07` §6). Audit `tenant.created`.
+- **Catatan:** satu transaksi: `users` (jika baru) + `tenants` + `tenant_settings` + membership `OWNER` + seed default (jenis cuti, komponen sistem, kalender; `13-db-rls-consistency-indexing.md` §6). Audit `tenant.created`.
 
 ### T2 · GET `/tenant`
 - **Authorization:** semua role di tenant aktif. **Response `200`:** `{ "id", "name", "slug", "status", "settings": { "timezone", "work_days", "proration_basis", "cutoff_day_of_next_month", "cutoff_time_local", "overtime_basis", "overtime_max_hours_per_day", "incomplete_attendance_policy", "ruleset_code", "net_change_warning_pct" }, "version": 3 }` + `ETag: "3"`. **Errors:** `401`, `403 FORBIDDEN` (tanpa `tid`). **Rate:** `read`.
@@ -197,7 +197,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Use case:** PF-01 · **Authorization:** `O`
 - **Request:** subset field `settings` (contoh `{ "proration_basis": "CALENDAR_DAYS", "cutoff_day_of_next_month": 3 }`) + `If-Match: "3"`.
 - **Response `200`:** `Tenant` + `ETag` baru.
-- **Validation:** sesuai CHECK Step 4 §1.2 (`cutoff_day_of_next_month` 1–28, enum, `work_days` subset 1–7, timezone IANA).
+- **Validation:** sesuai CHECK desain database §1.2 (`cutoff_day_of_next_month` 1–28, enum, `work_days` subset 1–7, timezone IANA).
 - **Errors:** `400 VALIDATION_ERROR`, `403 FORBIDDEN` (bukan OWNER), `412 VERSION_CONFLICT`, `428 PRECONDITION_REQUIRED`.
 - **Catatan:** perubahan **tidak** memengaruhi periode yang sudah ada, karena `cutoff_at` dibekukan di `payroll_periods`. Run yang sedang `CALCULATED` menjadi stale **jika** setting tersebut masuk fingerprint (proration basis, kebijakan incomplete). Audit `tenant.settings_changed` (diff).
 
@@ -281,7 +281,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
     "page": { "next_cursor": "eyJr…", "has_more": true }
   }
   ```
-- **Validation:** `q` 2–50 karakter, **prefix** match pada `lower(full_name)` atau `employee_no` (Step 4 `07` §4: tanpa `pg_trgm` di V1); filter tidak dikenal → `400`.
+- **Validation:** `q` 2–50 karakter, **prefix** match pada `lower(full_name)` atau `employee_no` (`13-db-rls-consistency-indexing.md` §4: tanpa `pg_trgm` di V1); filter tidak dikenal → `400`.
 - **Errors:** `400 VALIDATION_ERROR`, `400 INVALID_CURSOR`, `403 FORBIDDEN`.
 - **Pagination:** cursor (`lower(full_name), id` ASC jika `q` diisi; selain itu `employee_no, id`). **Rate:** `read`.
 - **Catatan:** list **tidak** memuat PII apa pun, termasuk yang ter-mask.
@@ -327,7 +327,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 ### W6 · GET `/employees/{id}/pii`
 - **Use case:** PF-20 · **Authorization:** `O`, `H`; `E` (self). `P` dan `M` → `403 FORBIDDEN` (lihat file 05 §3).
 - **Response `200`:** `{ "nik": "3174012304950001", "npwp": "…", "bank": { "name", "account_number", "holder" } }` + `Cache-Control: no-store`.
-- **Errors:** `403`, `404`. **Rate:** `read` (ditambah limit khusus 30/jam per user; dicatat di Step 6).
+- **Errors:** `403`, `404`. **Rate:** `read` (ditambah limit khusus 30/jam per user; dicatat di threat model).
 - **Catatan:** **setiap** panggilan menulis `audit_log` `employee.pii_viewed` (actor, target, field yang dibaca) di transaksi yang sama dengan dekripsi. Kalau audit gagal ditulis, respons gagal (`503`), bukan PII terkirim tanpa jejak.
 
 ### W7 · POST `/employees/{id}/org-assignments`
@@ -365,7 +365,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Validation:** `base_salary` ≥ 0, 2 desimal; `valid_from` ≥ `hire_date` dan ≤ hari ini + 366 hari.
 - **Errors:** `400`, `403`, `404`, `409 OVERLAPPING_PERIOD` (bentrok dengan perubahan masa depan; batalkan dulu), `409 PERIOD_LOCKED` (`valid_from` jatuh di periode final; pakai adjustment, PF-07 AC5), `422 IDEMPOTENCY_KEY_REUSED`, `409 REQUEST_IN_PROGRESS`.
 - **Idempotency:** **required**. **Rate:** `write`.
-- **Catatan:** satu transaksi: `UPDATE` record berlaku (tutup di `valid_from`) + `INSERT` record baru. PeriodGuard hanya memeriksa rentang yang nilainya berubah (`[valid_from, ∞)`), Step 3 PI-14. Dua HR bersamaan → satu kena `409 OVERLAPPING_PERIOD` (EXCLUDE). Run `CALCULATED` di periode yang tersentuh menjadi stale (PFS-03). Audit `salary.changed`.
+- **Catatan:** satu transaksi: `UPDATE` record berlaku (tutup di `valid_from`) + `INSERT` record baru. PeriodGuard hanya memeriksa rentang yang nilainya berubah (`[valid_from, ∞)`), desain domain PI-14. Dua HR bersamaan → satu kena `409 OVERLAPPING_PERIOD` (EXCLUDE). Run `CALCULATED` di periode yang tersentuh menjadi stale (PFS-03). Audit `salary.changed`.
 
 ### W10 · POST `/employees/{id}/component-assignments`
 - **Use case:** PF-07 · **Authorization:** `O`, `H`
@@ -391,7 +391,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
     "rounding": "HALF_UP" }
   ```
 - **Response `201`:** `ComponentDefinition` + `ETag`.
-- **Validation:** `code` `^[A-Z][A-Z0-9_]{1,40}$`; parameter sesuai `calc_type` (CHECK Step 4 §5.2: `PER_HOUR_MULTIPLIER` dan stage selain `EARNING` hanya untuk komponen sistem); `cap_min ≤ cap_max`; `rate` 0–1.
+- **Validation:** `code` `^[A-Z][A-Z0-9_]{1,40}$`; parameter sesuai `calc_type` (CHECK desain database §5.2: `PER_HOUR_MULTIPLIER` dan stage selain `EARNING` hanya untuk komponen sistem); `cap_min ≤ cap_max`; `rate` 0–1.
 - **Errors:** `400 VALIDATION_ERROR`, `409 DUPLICATE_CODE` (`field: "code"`), `403`, `422 INVALID_COMPONENT_REFERENCE` (`base_ref` tidak ada/tidak aktif/stage lebih akhir), `422 COMPONENT_CYCLE` (+ `cycle[]`).
 - **Idempotency:** natural (kode unik). **Rate:** `write`.
 
@@ -416,7 +416,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 
 ### D2 · POST `/attendance/clock-out`
 - **Response `200`:** `AttendanceRecord` (`COMPLETE`). Clock-out kedua → `200` dengan record yang sama (tidak menimpa jam pertama).
-- **Errors:** `422 CLOCK_OUT_WITHOUT_CLOCK_IN`, `422 EMPLOYEE_NOT_ACTIVE`. **Catatan:** shift lewat tengah malam ditangani dengan mencari record `INCOMPLETE` terbaru ≤ 24 jam ke belakang (Step 4 §6.1).
+- **Errors:** `422 CLOCK_OUT_WITHOUT_CLOCK_IN`, `422 EMPLOYEE_NOT_ACTIVE`. **Catatan:** shift lewat tengah malam ditangani dengan mencari record `INCOMPLETE` terbaru ≤ 24 jam ke belakang (desain database §6.1).
 
 ### D3 · GET `/attendance`
 - **Authorization:** `O`, `H`, `P` (semua); `M` (bawahan); `E` (self, `employee_id` diabaikan dan dipaksa = self).
@@ -507,7 +507,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Errors (umum):** `404 NOT_FOUND`, `409 APPROVAL_ALREADY_DECIDED` (+ `status`), `403 SELF_APPROVAL_FORBIDDEN` (lapisan defensif; CHECK DB juga menolak).
 - **Errors per subject:**
   - `LEAVE_REQUEST`: `422 INSUFFICIENT_LEAVE_BALANCE` (+ `balance`; approval tetap `PENDING`), `409 PERIOD_LOCKED`.
-  - `PAYROLL_RUN`: `409 RUN_STALE` (+ `employees_changed[]`; approval tetap `PENDING`, run tetap `PENDING_APPROVAL`; jika kandidat perubahan > 200, langsung `RUN_STALE` tanpa verifikasi per karyawan, Step 12: R1-7), `409 INVALID_STATE_TRANSITION` (run tidak `PENDING_APPROVAL`).
+  - `PAYROLL_RUN`: `409 RUN_STALE` (+ `employees_changed[]`; approval tetap `PENDING`, run tetap `PENDING_APPROVAL`; jika kandidat perubahan > 200, langsung `RUN_STALE` tanpa verifikasi per karyawan, final review R1-7), `409 INVALID_STATE_TRANSITION` (run tidak `PENDING_APPROVAL`).
 - **Idempotency:** natural (`UPDATE … WHERE status='PENDING' AND approver_id=$actor`). Approve kedua → `409 APPROVAL_ALREADY_DECIDED`. **Rate:** `write`.
 - **Transaksi `PAYROLL_RUN`** (ADR-P07 + penyelesaian O3):
   ```text
@@ -520,7 +520,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
     audit + outbox payroll_run.approved
   COMMIT
   ```
-  Penulis input (melalui `PeriodGuard`) mengambil `FOR SHARE` pada baris periode yang sama, sehingga tidak ada perubahan input yang lolos di antara hitung fingerprint dan commit. Biaya hitung ulang fingerprint sebanding dengan jumlah karyawan. Untuk tenant 10.000 karyawan, ini beberapa detik dan ditinjau di Step 9. Alternatif V2: penanda `input_changed_at` per periode.
+  Penulis input (melalui `PeriodGuard`) mengambil `FOR SHARE` pada baris periode yang sama, sehingga tidak ada perubahan input yang lolos di antara hitung fingerprint dan commit. Biaya hitung ulang fingerprint sebanding dengan jumlah karyawan. Untuk tenant 10.000 karyawan, ini beberapa detik dan ditinjau di desain DevOps. Alternatif V2: penanda `input_changed_at` per periode.
 - **Catatan PFS-08:** approve dan reject bersamaan → tepat satu yang menang (guard status), yang lain `409 APPROVAL_ALREADY_DECIDED`.
 
 ### R3 · POST `/approvals/{id}/reject`
@@ -571,16 +571,16 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Use case:** PF-13 · **Authorization:** `O`, `P`
 - **Request:** tanpa body.
 - **Response `202`:** `PayrollRun` (`status: CALCULATING`, `calc_version` naik) + `Location: /api/v1/payroll-runs/{id}`.
-- **Errors:** `409 INVALID_STATE_TRANSITION` (status bukan `DRAFT`/`CALCULATED`/`FAILED`; termasuk saat sedang `CALCULATING`, karena recalc/cancel dari `CALCULATING` ditolak, Step 3 `08`), `404`, `422 IDEMPOTENCY_KEY_REUSED`, `409 REQUEST_IN_PROGRESS`, `429 RATE_LIMITED`.
+- **Errors:** `409 INVALID_STATE_TRANSITION` (status bukan `DRAFT`/`CALCULATED`/`FAILED`; termasuk saat sedang `CALCULATING`, karena recalc/cancel dari `CALCULATING` ditolak, `09-failure-scenarios.md`), `404`, `422 IDEMPOTENCY_KEY_REUSED`, `409 REQUEST_IN_PROGRESS`, `429 RATE_LIMITED`.
 - **Idempotency:** **required**. Replay mengembalikan `202` yang sama dan tidak menaikkan `calc_version` lagi.
 - **Rate limit:** `heavy` (10/jam per tenant).
-- **Catatan:** transaksi: `payroll_periods FOR UPDATE` → `UPDATE payroll_runs SET status='CALCULATING', calc_version = calc_version + 1, calc_started_at = clock_timestamp() WHERE status IN (...)` + job `payroll.plan` (outbox). Lock period inilah yang membuat deteksi stale berbasis change log benar (Step 7 O12). Worker memecah ke chunk job (default 50 karyawan; demo 10, O5). Chunk lama dengan `calc_version` usang menjadi no-op. Crash → resume (PFS-01). Semua chunk gagal permanen → run `FAILED` + `failure_reason` (PFS-05).
+- **Catatan:** transaksi: `payroll_periods FOR UPDATE` → `UPDATE payroll_runs SET status='CALCULATING', calc_version = calc_version + 1, calc_started_at = clock_timestamp() WHERE status IN (...)` + job `payroll.plan` (outbox). Lock period inilah yang membuat deteksi stale berbasis change log benar (desain transaksi & concurrency O12). Worker memecah ke chunk job (default 50 karyawan; demo 10, O5). Chunk lama dengan `calc_version` usang menjadi no-op. Crash → resume (PFS-01). Semua chunk gagal permanen → run `FAILED` + `failure_reason` (PFS-05).
 
 ### Y6 · GET `/payroll-runs/{id}/items`
-- **Authorization:** `O`, `P`; `H`. **Setiap request** menulis satu baris audit `payroll.bulk_read` (run_id, jumlah baris) dan memeriksa ulang membership di DB (operasi sensitif; Step 12: R2-6, menggantikan audit "sekali per hari")
+- **Authorization:** `O`, `P`; `H`. **Setiap request** menulis satu baris audit `payroll.bulk_read` (run_id, jumlah baris) dan memeriksa ulang membership di DB (operasi sensitif; final review R2-6, menggantikan audit "sekali per hari")
 - **Query:** `?status=OK|ERROR|EXCLUDED&has_warning=true&warning=OVERTIME_OVER_LIMIT&department_id=…&limit=50&cursor`
 - **Response `200`:** list `PayrollItem` (tanpa lines) untuk `calc_version` terkini.
-- **Pagination:** cursor (`employee_no, id`). `employee_no`, `employee_name`, dan `department_id` adalah kolom **denormalisasi di `payroll_items`** yang diisi saat kalkulasi, jadi filter departemen benar untuk run historis (Step 12: R3-4). **Errors:** `404`, `400`. **Rate:** `read`.
+- **Pagination:** cursor (`employee_no, id`). `employee_no`, `employee_name`, dan `department_id` adalah kolom **denormalisasi di `payroll_items`** yang diisi saat kalkulasi, jadi filter departemen benar untuk run historis (final review R3-4). **Errors:** `404`, `400`. **Rate:** `read`.
 
 ### Y7 · GET `/payroll-runs/{id}/items/{item_id}`
 - **Response `200`:** `PayrollItem` + `lines[]` (berurutan sesuai pipeline, lengkap dengan `explanation`) + `issues[]`. Contoh line:
@@ -634,7 +634,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Response `200`:** `PayrollRun` (`FINALIZED`, `finalized_at`) + `payslips: { "pending": 98 }`.
 - **Errors:** `409 INVALID_STATE_TRANSITION` (bukan `APPROVED`), `409 RUN_STALE` (+ `employees_changed[]`; input berubah setelah approve, sehingga run harus dihitung ulang dan diajukan lagi), `404`, `422 IDEMPOTENCY_KEY_REUSED`, `409 REQUEST_IN_PROGRESS`.
 - **Idempotency:** **required**. Finalize yang di-replay → `200` yang sama. **Rate limit:** `heavy` (5/jam per tenant).
-- **Catatan:** satu transaksi (ADR-P07, Step 4 §7):
+- **Catatan:** satu transaksi (ADR-P07, desain database §7):
   ```text
   SELECT payroll_periods … FOR UPDATE → fingerprint guard
   UPDATE payroll_runs SET status='FINALIZED' WHERE status='APPROVED'   -- trigger totals check (PI-05)
@@ -686,7 +686,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Response `200`:** `Payslip` (§16): header (periode, employee, posisi), `lines[]` dengan `explanation`, total, rekening ter-mask. Dirender dari `payroll_lines`, sehingga tersedia walaupun PDF belum jadi (PF-15). **Errors:** `404` (bukan miliknya). Akses oleh pemilik tidak diaudit per akses.
 
 ### S3 · GET `/payslips`
-- **Authorization:** `O`, `P`; `H` (ter-audit). **Query:** `?run_id=…` (wajib) `&employee_id&limit&cursor`. **Response:** list ringkas tanpa lines. **Catatan:** setiap request list menulis satu baris audit `payroll.bulk_read` (run_id, jumlah baris) + recheck membership (Step 12: R2-6); detail (S4) diaudit per slip.
+- **Authorization:** `O`, `P`; `H` (ter-audit). **Query:** `?run_id=…` (wajib) `&employee_id&limit&cursor`. **Response:** list ringkas tanpa lines. **Catatan:** setiap request list menulis satu baris audit `payroll.bulk_read` (run_id, jumlah baris) + recheck membership (final review R2-6); detail (S4) diaudit per slip.
 
 ### S4 · GET `/payslips/{id}`
 - **Authorization:** `O`, `P`, `H`. Setiap akses menulis `audit_log` `payslip.viewed_by_admin` di transaksi yang sama (BR10, PI-17). **Response:** sama dengan S2. **Errors:** `404`.
@@ -707,7 +707,7 @@ Token **tanpa** `tid` yang memanggil endpoint tenant-scoped → `403 FORBIDDEN` 
 - **Pagination:** cursor (`created_at DESC`). **Errors:** `400`, `403`.
 
 ### Z2 · GET `/healthz` · GET `/readyz`
-- **Authentication:** tidak ada. Hanya diekspos ke jaringan internal/LB (Caddy tidak meneruskan dari publik, Step 9).
+- **Authentication:** tidak ada. Hanya diekspos ke jaringan internal/LB (Caddy tidak meneruskan dari publik, desain DevOps).
 - **`/healthz` → `200 {"status":"ok"}`** selama proses hidup.
 - **`/readyz` → `200`** jika DB terjangkau (`SELECT 1` dengan timeout 1 detik) dan versi migrasi = versi yang diharapkan binary; selain itu **`503`** `{"status":"unavailable","checks":{"db":"fail"}}`. Object storage **tidak** masuk readiness, karena hanya fitur P1 yang bergantung padanya.
 
@@ -766,7 +766,7 @@ Semua nilai uang berupa string decimal 2 digit. Rate berupa string decimal 6 dig
 
 **Demo A: tenant isolation**
 1. Login sebagai Dewi (PT Alpha) → `A1`, lalu `A6 switch-tenant` ke Alpha.
-2. `GET /employees/{id milik PT Beta}` → **`404 NOT_FOUND`** (RLS + scoping; Step 3 `05`).
+2. `GET /employees/{id milik PT Beta}` → **`404 NOT_FOUND`** (RLS + scoping; `06-multi-tenancy.md`).
 3. Ubah claim `tid` di JWT secara manual → **`401 UNAUTHENTICATED`** (signature tidak valid).
 4. `POST /employees` dengan `org.department_id` milik Beta → **`404 NOT_FOUND`** (composite FK `23503`).
 5. Kirim `"tenant_id": "<Beta>"` di body → **`400 VALIDATION_ERROR`** (field tidak dikenal).
@@ -791,7 +791,7 @@ Semua nilai uang berupa string decimal 2 digit. Rate berupa string decimal 6 dig
 
 ## 18. Catatan untuk katalog error
 
-Dua code yang diusulkan saat menulis file ini sudah **diadopsi** ke [`01-error-catalogue.md`](01-error-catalogue.md): `409 DUPLICATE_CODE` (+ `field`) untuk duplikat kode/slug/tanggal master data, dan `409 PAYSLIP_NOT_READY` (+ `Retry-After`) untuk PDF slip yang belum siap. Endpoint di atas sudah diperbarui untuk memakai kedua code ini.
+Dua code yang diusulkan saat menulis file ini sudah **diadopsi** ke [`15-api-error-catalogue.md`](15-api-error-catalogue.md): `409 DUPLICATE_CODE` (+ `field`) untuk duplikat kode/slug/tanggal master data, dan `409 PAYSLIP_NOT_READY` (+ `Retry-After`) untuk PDF slip yang belum siap. Endpoint di atas sudah diperbarui untuk memakai kedua code ini.
 
 ---
 
@@ -839,7 +839,7 @@ Kontrak: `api/openapi.yaml` (`TestContract_S3ResponsesMatchSpec`); otorisasi: `a
 
 | Endpoint | Desain | Implementasi S3 | Alasan |
 |---|---|---|---|
-| W7 atasan | `manager_employee_id` effective-dated di `org_assignments` | Departemen/posisi effective-dated di `org_assignments`; atasan = **kolom saat ini** `employees.manager_employee_id` (berlaku segera, ter-audit `employee.org_assigned`), siklus ditolak trigger PI-19 (`422 MANAGER_CYCLE`, advisory lock per tenant) | Amandemen Step 12 S14 |
+| W7 atasan | `manager_employee_id` effective-dated di `org_assignments` | Departemen/posisi effective-dated di `org_assignments`; atasan = **kolom saat ini** `employees.manager_employee_id` (berlaku segera, ter-audit `employee.org_assigned`), siklus ditolak trigger PI-19 (`422 MANAGER_CYCLE`, advisory lock per tenant) | Amandemen final review S14 |
 | W2 | `org` + `salary` | Diterima; keduanya mulai `hire_date` di transaksi pembuatan employee. Departemen/posisi tenant lain → `404` (Demo A langkah 4) | — |
 | W1 | Filter `department_id` | Ada; `department`/`position` = penempatan yang berlaku hari ini (UTC; zona tenant masuk bersama kalender run S4) | — |
 | W3 `current_org` | `{department, position, manager, valid_from}` | Sama; `department`/`position`/`valid_from` null bila hanya atasan yang diset | Atasan tidak effective-dated (S14) |
@@ -895,7 +895,7 @@ Kontrak: `api/openapi.yaml` (respons approval/run dicek di `TestApproval_SubmitA
 | `APPROVAL_ALREADY_DECIDED` | extension `status` | extension **`approval_status`** | `status` sudah dipakai RFC 9457 untuk HTTP status |
 | `RUN_STALE` | `employees_changed[]` | `employees_changed: [{employee_id, employee_no, reason}]` (`INPUT_CHANGED`, `NEWLY_ELIGIBLE`, `NO_LONGER_ELIGIBLE`) + `changed_count`. Kandidat > 200 → `employees_changed` kosong, tanpa verifikasi (R1-7) | UI menampilkan siapa dan kenapa |
 | R2 `PAYROLL_RUN` urutan | periode `FOR UPDATE` → fingerprint → approval → run | periode `FOR UPDATE` [2] → run `FOR UPDATE` [3] → cek role approver (DB) → **keputusan approval [4]** → cek stale → run `APPROVED`. Stale → rollback penuh (approval tetap `PENDING`) | Keputusan yang kalah balapan mendapat `APPROVAL_ALREADY_DECIDED`, bukan `INVALID_STATE_TRANSITION` |
-| R2 fingerprint | Hitung ulang fingerprint seluruh run | Hanya kandidat change log `changed_at > calc_started_at` (O12, Step 7 `22` §3.3) | O(perubahan), bukan O(karyawan) |
+| R2 fingerprint | Hitung ulang fingerprint seluruh run | Hanya kandidat change log `changed_at > calc_started_at` (O12, `22-tx-concurrency.md` §3.3) | O(perubahan), bukan O(karyawan) |
 | Y10 | Approver otomatis bila tepat satu admin lain | Sama; beberapa admin lain → `400` (`approver_user_id` wajib); approver bukan admin aktif → `404`; memilih diri sendiri → `403`; alasan self-approval saat ada admin lain → `403`; satu-satunya admin tanpa alasan → `422 SELF_APPROVAL_REASON_REQUIRED` | ADR-P09 amandemen (dihitung server) |
 | `PayrollRun` | `approval_request_id`, `stale`, `submitted_by`, `approved_by`, … | Ditambah `approval_request_id`, `submitted_by/at`, `approved_by/at`. `stale` **tidak** dikembalikan | Penentu otoritatif adalah guard fingerprint saat approve/finalize; petunjuk murah bisa ditambahkan nanti tanpa memecah client |
 | R1 | `?scope=all` untuk H | Ada (H saja; role lain `403`) | Dipakai override cuti/lembur (S6) |
@@ -913,7 +913,7 @@ Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `a
 | D1 | `201` / `200` | Sama; tap ganda tidak mengambil lock dan tidak menulis change log | Natural idempotency |
 | D3 | `summary` | `summary {present_days, incomplete_days, working_days}` hanya dengan `employee_id` + `period`; `working_days` = hari kerja mingguan − libur | — |
 | D4 | `{clock_in_at, clock_out_at, correction_reason}` | Field yang tidak dikirim mempertahankan nilai saat ini | Koreksi umum = "lupa clock out" |
-| `attendance_records.import_id` | FK ke `attendance_imports` | **Tidak ada** | PF-21 (import CSV) = P2 (Step 12 S10) |
+| `attendance_records.import_id` | FK ke `attendance_imports` | **Tidak ada** | PF-21 (import CSV) = P2 (final review S10) |
 | Hari tanpa catatan absensi | PF-08 AC4 `ABSENT` | **Tetap hadir** (default engine). `ABSENT_UNEXCUSED` belum dihasilkan di S6 | Menandai absen otomatis memotong gaji tenant yang tidak memakai clock-in. Penandaan absen eksplisit oleh HR menyusul |
 | Status harian ke engine | `PRESENT/ABSENT/LEAVE/HOLIDAY/WEEKEND` | `INCOMPLETE` (catatan tanpa clock-out), `PAID_LEAVE`/`UNPAID_LEAVE` (cuti APPROVED ≤ cut-off, menimpa absensi hari itu); libur/akhir pekan dari kalender | Tipe engine (§14) otoritatif |
 | `leave_balances` | Tidak ada jalur pembuatan | Dibuat **lazy saat approve pertama** dengan kuota tahunan penuh, `min_allowed_days = −max_negative_days`. Jenis tanpa kuota (SICK, UNPAID) tanpa saldo | Akrual PF-26 = P2 |
@@ -932,7 +932,7 @@ Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `a
 |---|---|---|---|
 | R2/R3 override HR | `H` override cuti/lembur, `is_override` | Role HR_ADMIN dibaca ulang dari DB; `is_override = true`, `decided_by` = HR; audit `approval.overridden` + `approval.approved/rejected`. `PAYROLL_RUN` → `404`; request milik HR sendiri → `403 SELF_APPROVAL_FORBIDDEN`. Inbox HR `?scope=all` | File 17 §3.3 |
 | Y11 respons | `PayrollRun` + `payslips: {pending}` | `PayrollRun` (`FINALIZED`, `finalized_by`, `finalized_at`). **Tanpa** `payslips` dan adjustment `APPLIED` | Payslip dan adjustment dibuat di S7, di transaksi finalize yang sama |
-| Y11 | Cek stale ulang | Sama dengan approve (kandidat change log, D6, > 200 → `RUN_STALE`); run tetap `APPROVED` | Step 7 `22` §3.4 |
+| Y11 | Cek stale ulang | Sama dengan approve (kandidat change log, D6, > 200 → `RUN_STALE`); run tetap `APPROVED` | `22-tx-concurrency.md` §3.4 |
 | Aksi pada run final | `409 INVALID_STATE_TRANSITION` / `RUN_FINALIZED` | calculate, cancel, exclude, submit, finalize ulang pada run `FINALIZED` → **`409 RUN_FINALIZED`** | Demo C bagian 3 ("ubah item → RUN_FINALIZED") |
 | Versi lama | Dibersihkan setelah finalize (R3-2) | Job `payroll.cleanup_versions` (batch 1.000, idempoten) di-enqueue di transaksi finalize bila `calc_version > 1` | Tidak menghapus sambil memegang lock periode |
 | Retensi `payroll_input_changes` | Hapus > 90 hari setelah finalize | **Belum** | Job cleanup bersama retensi lain (S8) |
@@ -948,7 +948,7 @@ Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `a
 | Input kalkulasi | Adjustment `PENDING_APPLY` bulan target | `loadAdjustments` (urut asal, id) masuk `engine.Input.Adjustments` → ikut snapshot dan fingerprint. Baris `ADJUSTMENT` menyimpan `adjustment_id` (`ck_payroll_lines_adjustment`) | Pembatalan setelah kalkulasi → fingerprint kembali sama = tidak stale (false positive tersaring) |
 | Y11 `APPLIED` | `WHERE status = 'PENDING_APPLY'` | Adjustment yang ada di snapshot item **OK** versi final → `APPLIED` (`applied_run_id`, `applied_at`). Item ERROR/EXCLUDED: adjustment tetap `PENDING_APPLY` (bisa dibatalkan; J3 pada target final tanpa PeriodGuard) | PI-15: tepat sekali, hanya bila benar-benar dibayar |
 | Y11 respons | `payslips: {pending}` | **Belum** di respons; status per slip lewat S3 | Menghindari perubahan skema `PayrollRun` di semua endpoint run |
-| Payslip | PENDING di finalize | Satu per item OK + job `payslip.render` per 20 (dedupe `payslip.render:{run}:{batch}`), lane worker `documents` (konkurensi 2, kill switch `PR_PAYSLIP_RENDER_ENABLED`) | Step 7 `23` §3.2 |
+| Payslip | PENDING di finalize | Satu per item OK + job `payslip.render` per 20 (dedupe `payslip.render:{run}:{batch}`), lane worker `documents` (konkurensi 2, kill switch `PR_PAYSLIP_RENDER_ENABLED`) | `23-background-jobs.md` §3.2 |
 | PDF | Library murni Go (time-box 1 jam) | `go-pdf/fpdf` v0.9.0: tanggal dokumen = `finalized_at`, catalog sort, Helvetica tanpa embed → byte identik (golden) | Lolos evaluasi; PF-22 tidak masuk cut list |
 | S1 | `?year` | Akun tanpa employee → daftar kosong (bukan 403) | Semua role boleh memanggil (👤) |
 | S3 | `payroll.bulk_read` per request | Role pembaca dibaca ulang dari DB; audit `payroll.bulk_read` (`run_id`, jumlah baris); cursor `(employee_no, id)` | R2-6 |
@@ -956,6 +956,6 @@ Kontrak: `api/openapi.yaml` (`TestContract_S6ResponsesMatchSpec`); otorisasi: `a
 | S5 | Presign 5 menit setelah authz + audit | URL dibuat **setelah** transaksi authz + audit COMMIT; `response-content-disposition: attachment`; PDF belum `RENDERED` (atau storage tidak dikonfigurasi) → `409 PAYSLIP_NOT_READY` + `Retry-After: 30` | C-40, T-PR-09 |
 | Storage | S3 standar | `platform/storage` (minio-go, SigV4, path-style). `S3_PUBLIC_ENDPOINT` = host di URL presign (dev `127.0.0.1:8333`). Tanpa `S3_ENDPOINT` → PDF tidak dirender (peringatan saat start) | ADR-012 |
 | Metrik | 24 §3.3 | `payrun_payroll_runs_total`, `..._run_duration_seconds{size_bucket}`, items/errors/chunk (dicatat **setelah** commit chunk), stale, approvals, payslips, akses slip, INV (`finalized_mutation_attempts`, `period_lock_bypass` dari P0001/P0002 di `db.MapError`, `reproducibility_failures`). Label INV tetap `table` (bukan `site`). **Belum:** `payrun_payroll_total_mismatch_runs`, `payrun_payslips_pending`, `payrun_verification_last_success_timestamp_seconds` | Gauge lintas tenant butuh job verifikasi berkala (S8) |
-| Dashboard | 2 dashboard PayRun (roadmap S7) | "PayRun — Payroll & Tenancy" + "PayRun — Platform (HTTP, DB, Jobs)", di-generate `deploy/grafana/gen_dashboards.py`, provisioning file (`allowUiUpdates: false`) | Step 12 S15 (3 dashboard V1) |
-| Alert | 24 §7 | `deploy/prometheus/rules/{platform,payrun}.yml`; `make test-alerts` (promtool, termasuk A-13 sintetis) + job CI `alerts`; Alertmanager tidak ada (Step 12 S1) | DoD O4 |
+| Dashboard | 2 dashboard PayRun (roadmap S7) | "PayRun — Payroll & Tenancy" + "PayRun — Platform (HTTP, DB, Jobs)", di-generate `deploy/grafana/gen_dashboards.py`, provisioning file (`allowUiUpdates: false`) | Final review S15 (3 dashboard V1) |
+| Alert | 24 §7 | `deploy/prometheus/rules/{platform,payrun}.yml`; `make test-alerts` (promtool, termasuk A-13 sintetis) + job CI `alerts`; Alertmanager tidak ada (final review S1) | DoD O4 |
 

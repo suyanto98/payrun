@@ -1,7 +1,7 @@
-# Step 9.3 — Environments, Migrations, Rollback, Backup & Deployment
+# Environments, Migrations, Rollback, Backup & Deployment
 
-> Bagian dari [Step 9](00-index.md). Keputusan di `00-index.md` **mengikat**: satu VM untuk kedua project, tanpa staging di V1, *recreate* dengan health gate, secret dari sops + age, backup `pg_dump` terenkripsi ke offsite, RPO 24 jam / RTO 2 jam.
-> Rujukan: ADR-013 (deployment), ADR-005 (goose, expand/contract), Step 4 §6 (role DB), Step 4 `07` §2.5 (katalog RLS), Step 6 `04` §6 (rotasi kunci), C-18, C-21, C-30, Step 8 `01` (alert/health), Step 8 `03` (perf env).
+> Bagian dari desain DevOps. Keputusan di `00-index.md` **mengikat**: satu VM untuk kedua project, tanpa staging di V1, *recreate* dengan health gate, secret dari sops + age, backup `pg_dump` terenkripsi ke offsite, RPO 24 jam / RTO 2 jam.
+> Rujukan: ADR-013 (deployment), ADR-005 (goose, expand/contract), desain database §6 (role DB), `13-db-rls-consistency-indexing.md` §2.5 (katalog RLS), `20-security-controls.md` §6 (rotasi kunci), C-18, C-21, C-30, `24-observability.md` (alert/health), `26-performance-plan.md` (perf env).
 
 ---
 
@@ -13,12 +13,12 @@
 |---|---|---|---|---|---|
 | Tujuan | Coding & debug | Membuktikan setiap PR/commit | Demo ke HR/interviewer, portfolio online | Load test & baseline angka | Pengguna nyata |
 | Pengguna | Pemilik repo | GitHub Actions | Publik (read), pemilik (demo toolbar) | Pemilik | — |
-| Data | Seed kecil (`seed --profile=dev`) | Fixture per test + seed E2E | Seed demo deterministik (`seed --profile=demo`), di-reset lewat `/demo/reset` | Seed besar (`seed --profile=perf`, Step 8 `03` §4) | Data nyata |
+| Data | Seed kecil (`seed --profile=dev`) | Fixture per test + seed E2E | Seed demo deterministik (`seed --profile=demo`), di-reset lewat `/demo/reset` | Seed besar (`seed --profile=perf`, `26-performance-plan.md` §4) | Data nyata |
 | Image | Build lokal (`make up`) | Build dari commit | `demo` build (tag `demo`) | `release` build (tanpa demo endpoint) | `release` build |
 | `DEMO_MODE` | `true` | `true` (E2E demo-verify) | `true` + `DEMO_TOKEN` | `false` | `false` |
 | Mock-provider admin | Terbuka di localhost | Terbuka di network CI | `MOCK_ADMIN_ENABLED=true` + token, **tidak** dipublish Caddy | Terbuka di network internal | Tidak ada (provider nyata) |
-| Log level | `debug` | `info` (dump log saat gagal) | `info` | `info` (sesuai Step 8 `03`) | `info` |
-| Rate limit | Longgar (×10) | Default | Default (Step 5 §7) | **Dinonaktifkan untuk tier yang diuji**, dicatat di laporan | Default, ditinjau dari data |
+| Log level | `debug` | `info` (dump log saat gagal) | `info` | `info` (sesuai `26-performance-plan.md`) | `info` |
+| Rate limit | Longgar (×10) | Default | Default (kontrak API §7) | **Dinonaktifkan untuk tier yang diuji**, dicatat di laporan | Default, ditinjau dari data |
 | Observability | Profile `obs` opsional | Tidak ada (log + artifact) | Profile `obs` aktif (Grafana via SSH tunnel / login) | Prometheus + pg_stat_statements + auto_explain | Terkelola |
 | Sumber secret | `.env.local` (nilai dummy, di-commit sebagai `.env.example`) | GitHub Actions secrets / nilai acak per run | sops+age → `.env.<service>` di VM | sops+age (file `perf`) | Secret manager |
 | Masa hidup | — | Per job | Permanen | Jam (dibuat → diuji → dihapus) | Permanen |
@@ -29,7 +29,7 @@ Staging permanen menggandakan biaya VM dan beban operasional. Untuk portfolio de
 
 | Fungsi staging | Pengganti di V1 |
 |---|---|
-| "Apakah build ini jalan end-to-end?" | E2E Playwright di atas Docker Compose lengkap di CI (Step 8 `02`) |
+| "Apakah build ini jalan end-to-end?" | E2E Playwright di atas Docker Compose lengkap di CI (`25-testing-strategy.md`) |
 | "Apakah demo masih berfungsi?" | `make demo-verify` nightly di CI |
 | "Apakah migrasi aman?" | Migrasi dari nol + migrasi dari dump demo terakhir di CI (§3.7) |
 | "Bagaimana kalau rilis rusak di server?" | Health gate + rollback otomatis ke SHA sebelumnya (§4, §6) |
@@ -42,9 +42,9 @@ Staging permanen menggandakan biaya VM dan beban operasional. Untuk portfolio de
 
 ### 1.3 Perf environment (efemeral)
 - `make perf-up PROJECT=ledgerpay` membuat VM 2 vCPU / 4 GB lewat CLI penyedia (skrip `infra/perf/create.sh`), menjalankan provisioning yang sama (§7), deploy image `release` dengan SHA tertentu, lalu seed.
-- k6 berjalan dari mesin terpisah (runner CI atau VM kecil kedua), sesuai Step 8 `03` §3.
+- k6 berjalan dari mesin terpisah (runner CI atau VM kecil kedua), sesuai `26-performance-plan.md` §3.
 - `make perf-down` menghapus VM. Hasil (laporan k6, dump `pg_stat_statements`, profil pprof) disimpan sebagai artifact.
-- Role `payrun_seed` (`BYPASSRLS`) dan `session_replication_role = replica` untuk seed **hanya ada di env ini** (Step 8 `03`). Migrasi role seed berada di `migrations_perf/` dan tidak pernah dijalankan di `demo`.
+- Role `payrun_seed` (`BYPASSRLS`) dan `session_replication_role = replica` untuk seed **hanya ada di env ini** (`26-performance-plan.md`). Migrasi role seed berada di `migrations_perf/` dan tidak pernah dijalankan di `demo`.
 
 ---
 
@@ -57,7 +57,7 @@ Staging permanen menggandakan biaya VM dan beban operasional. Untuk portfolio de
 - Konfigurasi sensitif tidak pernah dicetak. Dump konfigurasi saat startup me-redact field bertag `secret:"true"` (C-18).
 
 ### 2.2 Alur secret ke VM
-> **Amandemen Step 12 (R4-7/S2):** di V1 sumber secret adalah **GitHub environment secrets** (environment `demo`), bukan file sops. Job deploy merender `.env.<service>` dari secret tersebut lalu mengirimnya ke VM (`0600`). Alur sops + age di bawah ini menjadi **Production Enhancement** (lihat `04`).
+> **Amandemen final review (R4-7/S2):** di V1 sumber secret adalah **GitHub environment secrets** (environment `demo`), bukan file sops. Job deploy merender `.env.<service>` dari secret tersebut lalu mengirimnya ke VM (`0600`). Alur sops + age di bawah ini menjadi **Production Enhancement** (lihat `04`).
 
 ```text
 [V1]  GitHub environment secrets "demo"  ──render .env per service──┐
@@ -73,7 +73,7 @@ docker compose (env_file per service)
 
 ### 2.3 Inventaris secret
 
-| Secret | Dipakai oleh | Disimpan di | Rotasi (Step 6 `04` §6) | Pemilik |
+| Secret | Dipakai oleh | Disimpan di | Rotasi (`20-security-controls.md` §6) | Pemilik |
 |---|---|---|---|---|
 | `JWT_SIGNING_KEYS` (per `kid`) | api (kedua project) | sops → `api.env` | §6.1 overlap kid | Pemilik repo |
 | `PROVIDER_WEBHOOK_SECRET` | ledgerpay-api, mock-provider | sops | §6.2 dual secret | Pemilik repo |
@@ -130,7 +130,7 @@ deploy: docker compose run --rm ledgerpay-migrate   # image yang sama: `ledgerpa
 | M5 | **Backfill data besar bukan di migrasi.** Pakai job batch idempoten (`maintenance.backfill_<nama>`, 1.000 baris per tx) | Migrasi panjang = lock panjang + deploy macet |
 | M6 | Constraint baru di tabel besar: `ADD CONSTRAINT … NOT VALID` (cepat), lalu `VALIDATE CONSTRAINT` di migrasi terpisah (hanya `SHARE UPDATE EXCLUSIVE`) | Validasi tidak memblok tulis |
 | M7 | `ADD COLUMN … NOT NULL DEFAULT <konstanta>` boleh (cepat sejak PG 11). Default volatil atau NOT NULL tanpa default → pola expand/contract | Menghindari rewrite tabel |
-| M8 | **PayRun:** tabel tenant-scoped baru wajib di migrasi yang sama: `tenant_id NOT NULL`, PK `(tenant_id, id)`, FK composite, `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy `tenant_isolation` (`USING` + `WITH CHECK`), grant ke `payrun_app`. Test katalog CI (Step 4 `07` §2.5) gagal kalau satu saja terlewat | Tabel tanpa RLS = kebocoran lintas tenant yang diam |
+| M8 | **PayRun:** tabel tenant-scoped baru wajib di migrasi yang sama: `tenant_id NOT NULL`, PK `(tenant_id, id)`, FK composite, `ENABLE` + `FORCE ROW LEVEL SECURITY`, policy `tenant_isolation` (`USING` + `WITH CHECK`), grant ke `payrun_app`. Test katalog CI (`13-db-rls-consistency-indexing.md` §2.5) gagal kalau satu saja terlewat | Tabel tanpa RLS = kebocoran lintas tenant yang diam |
 | M9 | **LedgerPay:** tabel append-only baru wajib trigger `forbid_update_delete` + grant `SELECT, INSERT` saja | Invariant LI-04 |
 | M10 | Tidak ada `DROP` di rilis yang sama dengan berhentinya pemakaian kolom/tabel | M1 |
 
@@ -165,13 +165,13 @@ Kalau `CONCURRENTLY` gagal di tengah, index ditinggalkan dalam status `INVALID`.
 
 ### 3.6 Verifikasi setelah migrasi (otomatis di deploy)
 1. `goose status` = versi target.
-2. **PayRun:** query katalog RLS (Step 4 `07` §2.5) dijalankan terhadap DB demo; hasil harus kosong (tidak ada tabel tenant tanpa RLS/FORCE, tidak ada `SECURITY DEFINER` di luar allowlist, `payrun_app` bukan owner).
+2. **PayRun:** query katalog RLS (`13-db-rls-consistency-indexing.md` §2.5) dijalankan terhadap DB demo; hasil harus kosong (tidak ada tabel tenant tanpa RLS/FORCE, tidak ada `SECURITY DEFINER` di luar allowlist, `payrun_app` bukan owner).
 3. **LedgerPay:** semua tabel append-only punya trigger + grant yang benar (query katalog serupa).
 4. Tidak ada index `INVALID` (`pg_index.indisvalid = false`).
 Kalau gagal → deploy berhenti **sebelum** app baru dinyalakan.
 
 ### 3.7 Migrasi di CI
-- Migrasi dari nol → katalog check → integration test (Step 8 `02`).
+- Migrasi dari nol → katalog check → integration test (`25-testing-strategy.md`).
 - **Migrasi dari snapshot demo:** job mingguan me-restore backup demo terbaru ke container (§5.5), lalu menjalankan migrasi branch. Ini gladi migrasi terhadap data berbentuk nyata, pengganti staging.
 - Lint migrasi: larang `CREATE INDEX` tanpa `CONCURRENTLY` pada tabel yang ditandai besar (`journal_entries`, `jobs`, `attendance_records`, `payroll_lines`, `audit_log`), larang `DROP` tanpa label `contract` di nama file, dan wajibkan `SET lock_timeout`.
 
@@ -182,7 +182,7 @@ Kalau gagal → deploy berhenti **sebelum** app baru dinyalakan.
 | Gagal di `NO TRANSACTION` (index concurrently) | Index `INVALID` tertinggal | Runbook §8.2 |
 | Berhasil, tetapi app baru gagal health gate | Skema baru + app lama | Rollback app (§4). Aman karena M1 |
 
-> **Aturan readiness (penting):** `readyz` harus memeriksa `versi_db >= versi_minimum_binary`, **bukan** `versi_db == versi_binary`. Dengan `==`, app lama menjadi *not ready* begitu migrasi baru ter-apply. Akibatnya jendela deploy berubah menjadi downtime, dan rollback app tidak pernah bisa *ready*. Step 8 `01` §2 perlu diselaraskan dengan aturan ini.
+> **Aturan readiness (penting):** `readyz` harus memeriksa `versi_db >= versi_minimum_binary`, **bukan** `versi_db == versi_binary`. Dengan `==`, app lama menjadi *not ready* begitu migrasi baru ter-apply. Akibatnya jendela deploy berubah menjadi downtime, dan rollback app tidak pernah bisa *ready*. `24-observability.md` §2 perlu diselaraskan dengan aturan ini.
 
 ---
 
@@ -378,7 +378,7 @@ CI (main) → image :<sha> di GHCR → job deploy (SSH sebagai `deploy`):
 Lihat §5.4. Umumkan jendela data yang hilang (RPO).
 
 ### 8.6 Rotasi secret
-Ikuti Step 6 `04` §6 per jenis secret. Perubahan nilai = PR ke `infra/secrets/*.sops` → deploy. Pastikan urutan overlap (kid / dual secret) diikuti agar tidak memutus sesi atau webhook.
+Ikuti `20-security-controls.md` §6 per jenis secret. Perubahan nilai = PR ke `infra/secrets/*.sops` → deploy. Pastikan urutan overlap (kid / dual secret) diikuti agar tidak memutus sesi atau webhook.
 
 ### 8.7 VM hilang total
 | Langkah | Perkiraan waktu |
@@ -405,7 +405,7 @@ Ikuti Step 6 `04` §6 per jenis secret. Perubahan nilai = PR ke `infra/secrets/*
 | DB korup / terhapus | Layanan mati | Restore backup (§5.4) | ≤ 24 jam | ≤ 2 jam |
 | VM hilang | Semua mati | Rebuild + restore (§8.7) | ≤ 24 jam | ≤ 2 jam |
 | Akun penyedia VM dikunci | Semua mati | VM di penyedia lain + restore dari offsite (bucket di penyedia **berbeda** dari VM) | ≤ 24 jam | Beberapa jam |
-| Kredensial VM bocor | Risiko data | Rotasi semua secret (Step 6 §6), rebuild VM, audit. Backup lama aman karena kredensial offsite write-only | — | Jam |
+| Kredensial VM bocor | Risiko data | Rotasi semua secret (threat model §6), rebuild VM, audit. Backup lama aman karena kredensial offsite write-only | — | Jam |
 | Backup offsite hilang/rusak | Tidak ada jalur restore | Terdeteksi oleh drill mingguan; buat backup baru segera | — | — |
 
 ---
@@ -419,11 +419,11 @@ Ikuti Step 6 `04` §6 per jenis secret. Perubahan nilai = PR ke `infra/secrets/*
 | Smoke pasca-deploy | Read-only | Lewat edge (TLS, `--resolve`): SPA berisi `<div id="app">`, `GET /api/v1/me` → `401`, `files.<domain>/payrun-private/` → `404`. Gagal → site Caddy lama dipulihkan + worker/api/web rilis sebelumnya | Tanpa menulis data di demo publik |
 | Presigned GET | `files.<domain>` lewat Caddy | Site `files.<domain>` hanya meneruskan `GET/HEAD` path object payslip yang membawa `X-Amz-Signature`; selainnya `404`. Host diteruskan apa adanya (tanda tangan SigV4 mengikat host) | C-40, T-PR-09 |
 | SeaweedFS prod | — | `-ip=payrun-storage` (container di dua network: IP `edge` tidak terjangkau `storage-init`), `-master.volumeSizeLimitMB=128 -volume.max=20` (5 slot habis oleh collection default → PUT payslip `500`); identitas S3 dibuat `init-env.sh` (secret acak, Read/Write bucket saja) | Ditemukan saat uji deploy lokal |
-| Email demo | SMTP | Mailpit di stack prod (UI `127.0.0.1:8026`, SSH tunnel) | `SMTP_ADDR` wajib; Step 12 R2-8 |
+| Email demo | SMTP | Mailpit di stack prod (UI `127.0.0.1:8026`, SSH tunnel) | `SMTP_ADDR` wajib; final review R2-8 |
 | Backup | `pg_dump` per DB, dua recipient age | `deploy/backup/` (role `payrun_backup`, schema `payrun`, `trap` hapus `.partial`), cron host 02:15 UTC (setelah LedgerPay). Dump dengan role ber-RLS (`payrun_owner`) **gagal** (diverifikasi), bukan kosong | §5.2 |
 | Restore drill | migrate + verify | `scripts/restore-drill.sh`: Postgres sekali pakai → restore → `migrate up` → tenants/employees/payroll_items/audit_log > 0 → `verify-run` setiap run FINALIZED. Mingguan di `nightly.yml` (aktif bila `BACKUP_REMOTE` di-set); lokal `make backup-dev restore-drill` | DoD S8 |
 | Pushgateway / Prometheus prod | Metrik backup + scrape PayRun | **Belum** untuk PayRun: Prometheus LedgerPay belum men-scrape `payrun-api`/`payrun-worker` (network berbeda) | Integrasi obs lintas stack menyusul (S9/S10) |
 | Demo faults | `POST/DELETE /demo/faults`, `POST /demo/reset`, `POST /demo/payroll-runs/{id}/fast-track` | Hanya `POST/DELETE /demo/faults` (tenant pemanggil saja, OWNER, `X-Demo-Token`, tier heavy). Titik: `payroll.calc_chunk.before_commit`, `payslip.render.after_put`. `JOB_LEASE_TTL` (demo `10s`), `PAYROLL_CHUNK_SIZE=10` | `fast-track` di tenant dengan beberapa admin berarti menyetujui atas nama approver lain (melanggar SoD); `reset` butuh seed demo (S10) |
-| Import CSV (PF-21) | S8 | **Tidak dikerjakan** | Amandemen Step 12: P2 |
+| Import CSV (PF-21) | S8 | **Tidak dikerjakan** | Amandemen final review P2 |
 | Deploy ke VM publik | Dari `main` | Skrip + workflow (`main.yml`, `rollback.yml`, `nightly.yml`) siap; deploy aktif bila `DEPLOY_ENABLED=true`. Diuji lokal penuh: deploy, deploy kedua (previous), rilis rusak → rollback otomatis, lock bersama, backup cron → drill | VM, domain, dan secret belum ada |
 

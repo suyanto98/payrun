@@ -21,7 +21,7 @@ import (
 	"payrun/internal/platform/testhook"
 )
 
-// Submit (Y10) dan keputusan approval PAYROLL_RUN (R2/R3, ADR-P07 + ADR-P09, Step 7 `22` §3.3).
+// Submit (Y10) dan keputusan approval PAYROLL_RUN (R2/R3, ADR-P07 + ADR-P09, `22-tx-concurrency.md` §3.3).
 //
 //	submit:  run FOR UPDATE [3] → CALCULATED, tanpa item ERROR → approver dihitung server → approval [4]
 //	         → run PENDING_APPROVAL. Fingerprint TIDAK dicek di sini (otoritatif saat approve/finalize).
@@ -30,7 +30,7 @@ import (
 //	         → verifikasi fingerprint + eligibility (D6) → APPROVED, atau 409 RUN_STALE (rollback penuh).
 //	reject:  run FOR UPDATE [3] → decide [4] → kembali CALCULATED.
 
-// maxStaleCandidates (Step 12 R1-7): di atas ini recalculate lebih murah daripada memverifikasi ribuan
+// maxStaleCandidates (final review R1-7): di atas ini recalculate lebih murah daripada memverifikasi ribuan
 // fingerprint sambil memegang lock periode.
 const maxStaleCandidates = 200
 

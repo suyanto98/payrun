@@ -32,7 +32,7 @@ type Worker struct {
 type WorkerConfig struct {
 	ID                 string
 	Lease              time.Duration
-	PayrollConcurrency int  // default 4 (Step 12: test 4 worker paralel)
+	PayrollConcurrency int  // default 4 (final review: test 4 worker paralel)
 	ChunkSize          int  // default 50 (PAYROLL_CHUNK_SIZE, O5)
 	DisablePayrollCalc bool // kill switch PR_PAYROLL_CALC_ENABLED=false
 	// DisablePayslipRender: kill switch PR_PAYSLIP_RENDER_ENABLED=false (job tetap queued).

@@ -8,7 +8,7 @@ Tiga jenis objek membutuhkan persetujuan: **cuti**, **lembur**, dan **payroll ru
 - approver yang benar (atasan langsung untuk cuti/lembur; payroll approver untuk run), tidak bisa menyetujui request miliknya sendiri (BR7);
 - approve dan reject yang terjadi bersamaan tidak boleh sama-sama berhasil;
 - efek bisnis (contoh: saldo cuti berkurang) terjadi **tepat ketika** request disetujui, tidak lebih awal dan tidak dobel;
-- jejak lengkap untuk sengketa (Step 1, pain point Arif).
+- jejak lengkap untuk sengketa (strategi produk, pain point Arif).
 
 ## Options
 
@@ -97,15 +97,15 @@ Jika efek gagal (contoh: saldo cuti tidak cukup karena cuti lain sudah disetujui
 - **"Atasan berubah setelah request dibuat?"** → Approver di-snapshot saat submit; reassign eksplisit dan ter-audit.
 - **"Kenapa tidak Camunda/Temporal?"** → Alurnya satu langkah. Engine workflow menambah infrastruktur, konsep, dan titik kegagalan tanpa masalah nyata yang diselesaikan.
 
-## Amandemen (Step 5, 2026-10-01)
+## Amandemen (kontrak API, 2026-10-01)
 
 | Topik | Keputusan |
 |---|---|
-| Endpoint | Approval run tidak punya endpoint sendiri. Semua lewat `/approvals/{id}/approve\|reject` (satu mesin). Dispatch `PAYROLL_RUN` menjalankan fingerprint guard + `payroll_periods FOR UPDATE` (Step 3 O3) |
+| Endpoint | Approval run tidak punya endpoint sendiri. Semua lewat `/approvals/{id}/approve\|reject` (satu mesin). Dispatch `PAYROLL_RUN` menjalankan fingerprint guard + `payroll_periods FOR UPDATE` (desain domain O3) |
 | Kapan alasan self-approval diisi | Saat **submit** run (bukan saat approve), karena `ck_approval_requests_not_self` mewajibkan reason terisi ketika baris approval dibuat dengan approver = requester |
-| Undangan | Accept wajib dilakukan oleh user login yang email-nya sama dengan `invited_email`. Secret undangan ada di fragment URL (`#…`) agar tidak bocor lewat Referer/log (Step 6 T-PR) |
+| Undangan | Accept wajib dilakukan oleh user login yang email-nya sama dengan `invited_email`. Secret undangan ada di fragment URL (`#…`) agar tidak bocor lewat Referer/log (threat model T-PR) |
 | Fallback approver cuti/lembur | Atasan langsung → `HR_ADMIN` → `OWNER` (kalau `HR_ADMIN` satu-satunya adalah requester itu sendiri) |
-| Validasi pengecualian satu admin | **Dihitung server** saat submit (jumlah membership aktif dengan role `OWNER`/`PAYROLL_ADMIN`), tidak pernah dari klaim client (Step 6 T-PR) |
+| Validasi pengecualian satu admin | **Dihitung server** saat submit (jumlah membership aktif dengan role `OWNER`/`PAYROLL_ADMIN`), tidak pernah dari klaim client (threat model T-PR) |
 | Override HR | Hanya untuk cuti/lembur. **Tidak** berlaku untuk `PAYROLL_RUN` |
 
 ## Related

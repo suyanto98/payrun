@@ -1,4 +1,4 @@
-// Package metrics: satu tempat untuk semua metrik Prometheus (katalog docs/design (Step 8 `01`) §3).
+// Package metrics: satu tempat untuk semua metrik Prometheus (katalog docs/design (`24-observability.md`) §3).
 //
 // Aturan:
 //   - event → counter (_total); keadaan hasil verifikasi/query periodik → gauge;
@@ -75,7 +75,7 @@ var (
 )
 
 // ---------------------------------------------------------------- PayRun (payrun_)
-// Metrik domain ditambahkan per sprint bersama fiturnya (Step 8 `01` §3), contoh
+// Metrik domain ditambahkan per sprint bersama fiturnya (`24-observability.md` §3), contoh
 // payrun_payroll_runs_total (S4).
 var (
 	// INVARIANT (C-46): baris tenant lain lolos ke decode repository. Normalnya selalu 0; > 0 berarti
@@ -94,7 +94,7 @@ var (
 	// atau jumlah item ≠ eligible. Per proses worker; alert memakai max() lintas proses.
 	PayrollTotalMismatchRuns = gauge("payrun_payroll_total_mismatch_runs", "Runs whose latest verification found totals ≠ Σ items (must stay 0).")
 
-	// Run payroll (S4–S7, Step 8 `01` §3).
+	// Run payroll (S4–S7, `24-observability.md` §3).
 	PayrollRuns         = counter("payrun_payroll_runs_total", "Payroll run transitions.", "outcome")
 	PayrollRunDuration  = histogram("payrun_payroll_run_duration_seconds", "calc_started_at → CALCULATED.", runBuckets, "size_bucket")
 	ItemsCalculated     = counter("payrun_payroll_items_calculated_total", "Payroll items written by calc chunks.", "status")

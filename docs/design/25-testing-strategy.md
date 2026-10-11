@@ -1,13 +1,13 @@
-# Step 8.2 — Testing Strategy
+# Testing Strategy
 
-> Bagian dari [Step 8](00-index.md). Prinsip yang mengikat ada di `00-index.md` §5: Postgres sungguhan via testcontainers, **tanpa mock database**, dan traceability lebih penting dari coverage.
-> Sumber nama test: Step 3 (`02`, `03`, `06`, `07`, `08`), Step 5 `05`, Step 6 `04` §4, Step 7 `01` §7, `02` §7, `03`. Dokumen ini **menyatukan** semuanya menjadi satu katalog dan satu matriks traceability.
+> Bagian dari desain observability & testing. Prinsip yang mengikat ada di `00-index.md` §5: Postgres sungguhan via testcontainers, **tanpa mock database**, dan traceability lebih penting dari coverage.
+> Sumber nama test: desain domain (`02`, `03`, `06`, `07`, `08`), `17-api-authorization-matrix.md`, `20-security-controls.md` §4, desain transaksi & concurrency §7, `02` §7, `03`. Dokumen ini **menyatukan** semuanya menjadi satu katalog dan satu matriks traceability.
 
 ---
 
 ## 0. Konvensi penamaan test (menyelesaikan beda gaya antar step)
 
-Step 3 memakai nama fungsi Go (`TestTransfer_IdempotentReplay`), sedangkan Step 6/7 memakai ID `snake_case` (`refresh_reuse_revokes_family`). Keduanya dipertahankan dengan aturan berikut:
+Desain domain memakai nama fungsi Go (`TestTransfer_IdempotentReplay`), sedangkan threat model, desain transaksi & concurrency memakai ID `snake_case` (`refresh_reuse_revokes_family`). Keduanya dipertahankan dengan aturan berikut:
 
 | Bentuk | Arti | Contoh |
 |---|---|---|
@@ -15,7 +15,7 @@ Step 3 memakai nama fungsi Go (`TestTransfer_IdempotentReplay`), sedangkan Step 
 | `snake_case` | **Subtest** (`t.Run`) di dalam suite per kategori | `TestSecurity/refresh_reuse_revokes_family`, `TestConcurrency/leave_parallel_approve_respects_balance` |
 | `golden/<kasus>` | Kasus golden payroll engine | `TestEngineGolden/tono_march_2026` |
 
-Kalau Step 3 dan Step 7 memberi nama berbeda untuk test yang sama, **nama Step 7 menjadi kanonik**. Step 3 ditulis lebih dulu, dan Step 7 merinci tekniknya. Alias dicatat di kolom "Alias" pada §4 agar dokumen lama tetap bisa ditelusuri.
+Kalau desain domain dan desain transaksi & concurrency memberi nama berbeda untuk test yang sama, **nama desain transaksi & concurrency menjadi kanonik**. Desain domain ditulis lebih dulu, dan desain transaksi & concurrency merinci tekniknya. Alias dicatat di kolom "Alias" pada §4 agar dokumen lama tetap bisa ditelusuri.
 
 ---
 
@@ -63,9 +63,9 @@ Bentuknya sengaja **lebih tebal di tengah** daripada piramida klasik. Correctnes
 | Playwright (TypeScript) | E2E browser | Berjalan terhadap `docker compose` profile `e2e` |
 | k6 | Load test | Lihat file `03` |
 | `go test -race` | Semua unit + integration | Selalu aktif di CI |
-| Build tag `testhooks` | Titik interleaving (`testhook.Pause`) dan advisory-lock hook lintas proses (Step 7 `01` §7.1) | Kode hook menjadi **no-op** di build produksi; test `TestBuild_NoTesthooksInRelease` memeriksa binary rilis |
+| Build tag `testhooks` | Titik interleaving (`testhook.Pause`) dan advisory-lock hook lintas proses (desain transaksi & concurrency §7.1) | Kode hook menjadi **no-op** di build produksi; test `TestBuild_NoTesthooksInRelease` memeriksa binary rilis |
 | `go.uber.org/goleak` | Deteksi goroutine bocor (worker loop, HTTP client) | Di `TestMain` setiap package yang menjalankan goroutine |
-| ~~Toxiproxy (container)~~ **Dihapus (Step 12: S11).** FS-03/PFS-04 memakai hook `testhooks` yang menutup koneksi DB tepat setelah COMMIT terkirim / di tengah chunk | Memutus koneksi DB di titik tertentu (FS-03, PFS-04) | Semula opsional, hanya di suite chaos. Alasan: dua skenario "commit outcome unknown" tidak bisa disimulasikan dengan cara lain secara jujur |
+| ~~Toxiproxy (container)~~ **Dihapus (final review S11).** FS-03/PFS-04 memakai hook `testhooks` yang menutup koneksi DB tepat setelah COMMIT terkirim / di tengah chunk | Memutus koneksi DB di titik tertentu (FS-03, PFS-04) | Semula opsional, hanya di suite chaos. Alasan: dua skenario "commit outcome unknown" tidak bisa disimulasikan dengan cara lain secara jujur |
 
 ### 2.1 Isolasi database: template DB per test
 
@@ -110,7 +110,7 @@ setiap test (t.Parallel() aman)
 **Tidak boleh di sini:** memanggil provider sungguhan (selalu mock-provider), `time.Sleep` untuk menunggu job. Gunakan helper `jobs.DrainUntilIdle(ctx)` atau clock palsu.
 
 ### 3.3 Contract
-**Masuk:** setiap endpoint di Step 5. Request contoh dan response nyata divalidasi terhadap `openapi.yaml`. Uang harus string. Error harus `application/problem+json` dengan `code` dari katalog. Kontrak mock-provider (Step 5 `03`) diuji dua arah: LedgerPay client vs mock server.
+**Masuk:** setiap endpoint di kontrak API. Request contoh dan response nyata divalidasi terhadap `openapi.yaml`. Uang harus string. Error harus `application/problem+json` dengan `code` dari katalog. Kontrak mock-provider (kontrak API) diuji dua arah: LedgerPay client vs mock server.
 **Tidak boleh di sini:** logika bisnis. Contract test hanya memeriksa bentuk.
 
 ### 3.4 Migration & catalogue
@@ -126,14 +126,14 @@ setiap test (t.Parallel() aman)
   - semua view memakai `security_invoker = true`.
 
 ### 3.5 Concurrency
-**Masuk:** test yang membuktikan race di Step 7 benar-benar dijaga. Teknik (Step 7 `01` §7.1): barrier goroutine, `testhook.Pause` di titik bernama, advisory-lock hook untuk worker di proses lain, pembanding naif (hanya di test code), dan **invariant checker** yang dijalankan setelah setiap test (Σ debit = Σ kredit, `balance = Σ entries`, tidak ada saldo negatif, jumlah journal per source sesuai; PayRun: Σ item = total, satu run aktif per period).
+**Masuk:** test yang membuktikan race di desain transaksi & concurrency benar-benar dijaga. Teknik (desain transaksi & concurrency §7.1): barrier goroutine, `testhook.Pause` di titik bernama, advisory-lock hook untuk worker di proses lain, pembanding naif (hanya di test code), dan **invariant checker** yang dijalankan setelah setiap test (Σ debit = Σ kredit, `balance = Σ entries`, tidak ada saldo negatif, jumlah journal per source sesuai; PayRun: Σ item = total, satu run aktif per period).
 **Tidak boleh di sini:** "jalankan 1.000 kali dan berharap race muncul" tanpa hook. Race yang tidak deterministik tidak membuktikan apa-apa ketika test-nya hijau.
 
 ### 3.6 Failure / chaos
-**Masuk:** kill worker di titik tertentu (`demo_faults` / `faults.Check` → `os.Exit(137)` di subprocess), skenario mock-provider (`timeout_after_process`, `error_5xx`, `webhook_duplicate:n`, `webhook_delay`, `webhook_out_of_order`, `settlement_mismatch`), dan pemutusan koneksi DB via hook `testhooks` (FS-03, PFS-04; Toxiproxy dihapus di Step 12). Setelah recovery: invariant checker + jumlah efek eksternal (mock bank mencatat tepat 1 transfer).
+**Masuk:** kill worker di titik tertentu (`demo_faults` / `faults.Check` → `os.Exit(137)` di subprocess), skenario mock-provider (`timeout_after_process`, `error_5xx`, `webhook_duplicate:n`, `webhook_delay`, `webhook_out_of_order`, `settlement_mismatch`), dan pemutusan koneksi DB via hook `testhooks` (FS-03, PFS-04; Toxiproxy dihapus di final review). Setelah recovery: invariant checker + jumlah efek eksternal (mock bank mencatat tepat 1 transfer).
 
 ### 3.7 Security
-**Masuk:** seluruh katalog Step 6 `04` §4: authn, refresh reuse, CSRF/CORS, BOLA, authz matrix, cross-tenant, RLS bypass, pool leakage, SSRF egress, webhook signature/replay, idempotency abuse, upload, CSV injection, PII, redaction, audit append-only, security headers, error leakage.
+**Masuk:** seluruh katalog `20-security-controls.md` §4: authn, refresh reuse, CSRF/CORS, BOLA, authz matrix, cross-tenant, RLS bypass, pool leakage, SSRF egress, webhook signature/replay, idempotency abuse, upload, CSV injection, PII, redaction, audit append-only, security headers, error leakage.
 
 ### 3.8 E2E
 **Masuk:** hanya *critical user journey* yang membuktikan semua lapisan tersambung (browser → Caddy → api → DB → worker → mock-provider).
@@ -160,7 +160,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 ### 4.2 LedgerPay — integration & concurrency
 
-| Test (kanonik) | Alias Step 3 | Membuktikan | Trace | CI |
+| Test (kanonik) | Alias desain domain | Membuktikan | Trace | CI |
 |---|---|---|---|---|
 | `TestTransfer_IdempotentReplay` | — | Replay identik, payload beda → 422, key per client | LI-05, FS-01 | I |
 | `TestTransfer_RejectedResultIsReplayed` | — | 422 domain disimpan dan di-replay | LI-05, FS-01 | I |
@@ -195,11 +195,11 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | `TestMerchantWebhook_RetryBackoffThenDead` / `TestMerchantWebhook_StableEventID` | — | Retry 7 attempt sesuai jadwal lalu dead; event id stabil | FS-09 | I |
 | `TestJobRunner_LeaseExpiry_Reclaims` | — | Lease habis → job diambil ulang | FS-08, ADR-006 | I |
 | `TestJobRunner_FencedCompletion_ZombieRollsBack` | — | `CompleteInTx` 0 baris → tx bisnis rollback | ADR-006 | I |
-| `TestJobRunner_PermanentError_DeadImmediately` | — | `jobs.Permanent` → dead tanpa menghabiskan attempt | Step 7 `03` | I |
-| `TestScheduler_DedupeKey_NoDoubleSchedule` | — | Dua replika worker → satu job per bucket waktu | Step 7 `03` | I |
+| `TestJobRunner_PermanentError_DeadImmediately` | — | `jobs.Permanent` → dead tanpa menghabiskan attempt | `23-background-jobs.md` | I |
+| `TestScheduler_DedupeKey_NoDoubleSchedule` | — | Dua replika worker → satu job per bucket waktu | `23-background-jobs.md` | I |
 | `TestRecon_ClassifiesAllCategories` / `TestRecon_Rerun_Idempotent` | — | Klasifikasi 5 kategori; recon ulang tidak menduplikasi; `PROVIDER_SETTLEMENT` tidak dobel | LI-06, LI-12 | I |
-| `TestAccountsLock_TopupInsertNotBlockedByTransfer` | — | `FOR NO KEY UPDATE`: INSERT entry tidak terblok (< 100 ms) | Step 7 §4 | I |
-| `TestPool_Exhaustion_Returns503` | — | Pool habis → `503 SERVICE_UNAVAILABLE` | Step 7 §6 | I |
+| `TestAccountsLock_TopupInsertNotBlockedByTransfer` | — | `FOR NO KEY UPDATE`: INSERT entry tidak terblok (< 100 ms) | Desain transaksi & concurrency §4 | I |
+| `TestPool_Exhaustion_Returns503` | — | Pool habis → `503 SERVICE_UNAVAILABLE` | Desain transaksi & concurrency §6 | I |
 | `TestTrace_RequestToJournalToAudit` | — | Dari `request_id` bisa ditelusuri journal → entries → audit | LI-14 | I |
 | `TestBOLA/<resource>` | — | User/merchant lain → 404 untuk wallet, transfer, top-up, payout, intent, refund | LI-15, T-LP | I |
 
@@ -208,7 +208,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | Test | Membuktikan | Trace | CI |
 |---|---|---|---|
 | `TestTransfer_ConnectionDropBeforeCommit` | Koneksi putus sebelum COMMIT → tidak ada efek, retry aman | FS-03 | X |
-| `TestTransfer_CommitOutcomeUnknown` | Hook `testhooks` (Step 12: pengganti Toxiproxy) memutus koneksi tepat setelah COMMIT → client 503 → retry key sama → replay, 1 journal | FS-03 | X |
+| `TestTransfer_CommitOutcomeUnknown` | Hook `testhooks` (final review: pengganti Toxiproxy) memutus koneksi tepat setelah COMMIT → client 503 → retry key sama → replay, 1 journal | FS-03 | X |
 | `TestConfirm_CrashAfterCommit` | API panic setelah commit sebelum response → retry → replay | FS-04 | X |
 | `TestPayoutSubmit_CrashAfterBankAccepted_NoDoubleSend` | Alias `TestPayout_WorkerKilledAfterBankAccepted`. Mock bank mencatat tepat 1 transfer | LI-10, FS-08, **Demo C** | X |
 | `TestPayoutSubmit_CrashBeforeBankCall_ResubmitAfterSafeWindow` | Jalur `NOT_FOUND` + safe window, key sama | LI-10 | X |
@@ -232,7 +232,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | `TestAuthzMatrix` (relasi manager, SELF, SoD) | Policy relasional | PI-11, PI-17 | U |
 | `csv_export_escapes_formula`, `pii_roundtrip`, `pii_aad_swap_fails`, `log_redaction_pii_types` | Encoder CSV, enkripsi PII, redaction | T-PR | U |
 
-**Kelompok golden (30 kasus, Step 3 `06` §17):**
+**Kelompok golden (30 kasus, `07-payroll-engine.md` §17):**
 
 | Kelompok | Kasus | Trace |
 |---|---|---|
@@ -248,10 +248,10 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 ### 4.5 PayRun — integration & concurrency
 
-| Test (kanonik) | Alias Step 3 | Membuktikan | Trace | CI |
+| Test (kanonik) | Alias desain domain | Membuktikan | Trace | CI |
 |---|---|---|---|---|
 | `TestCrossTenant/<endpoint>` | — | Semua role Tenant Beta → 404 di setiap endpoint Alpha | PI-01, PFS-09, **Demo A** | I |
-| `TestAuthzMatrix` (table-driven dari Step 5 `05`) | — | Endpoint × role sesuai matriks; endpoint tanpa baris → fail | PI-11, PI-17, T-PR | I |
+| `TestAuthzMatrix` (table-driven dari `17-api-authorization-matrix.md`) | — | Endpoint × role sesuai matriks; endpoint tanpa baris → fail | PI-11, PI-17, T-PR | I |
 | `rls_bypass_query_test` | — | Query mentah tanpa filter tenant di `WithTenantTx(Alpha)` → hanya data Alpha | PI-01 | I |
 | `rls_no_context_returns_zero_rows` | — | Tanpa tenant context → 0 baris (*fail closed*) | PI-01 | I |
 | `pool_leakage_after_commit` | `pool_leakage_test` | Koneksi bekas tenant A tidak mewarisi tenant | PI-01 | I |
@@ -295,7 +295,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | Test | Membuktikan | Trace | CI |
 |---|---|---|---|
 | `crash_resume_identical_result` | Alias `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates`. Kill di chunk ke-4, bandingkan dengan run tanpa crash → identik | PI-06, PFS-01, **Demo B** | X |
-| `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates` | Proses worker mati tepat sebelum COMMIT txWrite (hook `testhooks`, Step 12: pengganti Toxiproxy): koneksi putus di tengah chunk, rollback, worker lain melanjutkan | PFS-04 | X |
+| `TestPayrollRun_WorkerKilledMidChunk_ResumesWithoutDuplicates` | Proses worker mati tepat sebelum COMMIT txWrite (hook `testhooks`, final review: pengganti Toxiproxy): koneksi putus di tengah chunk, rollback, worker lain melanjutkan | PFS-04 | X |
 | `TestFinalize_RetryAfterUnknownCommit_Idempotent` | Hasil commit finalize tidak diketahui → retry → replay / state sudah final | PFS-04 | X |
 | `TestPayslipRender_CrashMidBatch_ResumesIdempotently` | Object key deterministik; tidak ada PDF dobel | PFS-10 | X |
 | `TestPayslipPDF_DeterministicBytes` | Input sama → byte PDF sama (golden) | PFS-10, PI-12 | U |
@@ -314,28 +314,28 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 | CSRF / CORS | `csrf_refresh_without_header_rejected`, `csrf_refresh_bad_origin_rejected`, `cors_preflight_foreign_origin_denied` | I |
 | Input | `mass_assignment_unknown_field_rejected`, `body_limit_413`, `json_depth_limit_400`, `sqli_filter_payloads_rejected` | I |
 | Audit | `audit_log_update_rejected`, `audit_log_delete_rejected`, `audit_written_in_same_tx` | I |
-| Error | `error_unmapped_returns_generic_500`, `error_no_pg_message_leak`, `error_not_found_uniform`, `TestDBErrorMapping_AllCatalogueConstraints` (setiap constraint di katalog Step 5 `01` §4 menghasilkan code yang benar) | I |
+| Error | `error_unmapped_returns_generic_500`, `error_no_pg_message_leak`, `error_not_found_uniform`, `TestDBErrorMapping_AllCatalogueConstraints` (setiap constraint di katalog `15-api-error-catalogue.md` §4 menghasilkan code yang benar) | I |
 | Headers | `headers_csp_present`, `headers_hsts_present`, `headers_nosniff_present`, `headers_no_store_api` | E (compose) |
 | Logging | `log_redaction_auth_body`, `log_redaction_headers` | U |
 | Build | `TestBuild_NoTesthooksInRelease`, `TestBuild_DemoEndpointsAbsentWithoutDemoMode` | I |
 | Migration | `TestMigrations_UpFromZero`, `TestMigrations_LatestDownUp`, `rls_catalogue_test` (PayRun), `TestCatalogue_AppendOnlyGrants`, `TestCatalogue_StatusColumnsHaveCheck`, `TestCatalogue_TenantFKsComposite` (PayRun), `TestCatalogue_NoSecurityDefinerOutsideAllowlist` (PayRun) | M |
 
-### 4.9 Tambahan dari Step 12 (final review) dan kontrol yang ditambahkan setelah Step 8
+### 4.9 Tambahan dari final review (final review) dan kontrol yang ditambahkan setelah desain observability & testing
 
 | Test | Membuktikan | Telusur ke | Project | Layer |
 |---|---|---|---|---|
-| `TestInbox_SlowProcessingNotReclaimed` | Event yang sedang diproses (lease aktif) tidak diklaim ulang; `attempts` tidak naik selama verify-by-fetch lambat | Step 12 C1 (R1-1), ADR-L08 | LedgerPay | I |
-| `TestRLS_SelfPoliciesInactiveInTenantMode` | Di `WithTenantTx`, policy self (`memberships`, `tenants`, `users`) tidak membuka baris tenant lain milik user multi-tenant | Step 12 C2 (R2-1), PI-01 | PayRun | I |
-| `TestCatalog_NoRawCurrentSettingInPolicies` | Tidak ada `current_setting(` mentah di `pg_policies`; semua lewat helper `current_tenant()` / `current_user_id()` | Step 12 C3 (R2-2) | PayRun | M |
-| `TestCatalog_EveryFKHasIndex` | Setiap FK punya index yang diawali kolom FK-nya (`pg_constraint` × `pg_index`) | Step 12 C4 (R3-1) | Keduanya | M |
-| `TestPayrollRun_ZeroEligibleCompletes` | Run tanpa karyawan eligible langsung `CALCULATED` (total 0, warning `NO_ELIGIBLE_EMPLOYEES`) | Step 12 R1-3, PF-13 | PayRun | I |
+| `TestInbox_SlowProcessingNotReclaimed` | Event yang sedang diproses (lease aktif) tidak diklaim ulang; `attempts` tidak naik selama verify-by-fetch lambat | Final review C1 (R1-1), ADR-L08 | LedgerPay | I |
+| `TestRLS_SelfPoliciesInactiveInTenantMode` | Di `WithTenantTx`, policy self (`memberships`, `tenants`, `users`) tidak membuka baris tenant lain milik user multi-tenant | Final review C2 (R2-1), PI-01 | PayRun | I |
+| `TestCatalog_NoRawCurrentSettingInPolicies` | Tidak ada `current_setting(` mentah di `pg_policies`; semua lewat helper `current_tenant()` / `current_user_id()` | Final review C3 (R2-2) | PayRun | M |
+| `TestCatalog_EveryFKHasIndex` | Setiap FK punya index yang diawali kolom FK-nya (`pg_constraint` × `pg_index`) | Final review C4 (R3-1) | Keduanya | M |
+| `TestPayrollRun_ZeroEligibleCompletes` | Run tanpa karyawan eligible langsung `CALCULATED` (total 0, warning `NO_ELIGIBLE_EMPLOYEES`) | Final review R1-3, PF-13 | PayRun | I |
 | `password_hash_concurrency_bounded` | Paling banyak ±4 hash argon2id bersamaan; antrean > 2 dtk → `503` | C-45 | Keduanya | I |
 | `tenant_guard_detects_foreign_row` | Decode repository menolak baris dengan `tenant_id` ≠ context → 500 + metrik INVARIANT | C-46 | PayRun | I |
-| `restore_drill_row_counts_positive` | Restore drill (`payrun_backup` BYPASSRLS) menghasilkan jumlah baris tabel tenant > 0; dump kosong = gagal | C-21, Step 9 `03` | Keduanya | Nightly/mingguan (infra) |
-| `TestAuth_LockedLoginIndistinguishable` | Login akun terkunci dan email tidak terdaftar menghasilkan respons identik (`401 INVALID_CREDENTIALS` + `Retry-After`) | Step 12 R2-5 | Keduanya | I |
-| `TestAudit_BulkSalaryReadAudited` | Request list slip/item gaji milik orang lain menulis satu baris audit `payroll.bulk_read` (+ recheck membership) | Step 12 R2-6, PI-17 | PayRun | I |
+| `restore_drill_row_counts_positive` | Restore drill (`payrun_backup` BYPASSRLS) menghasilkan jumlah baris tabel tenant > 0; dump kosong = gagal | C-21, `29-deploy-migrations-backup.md` | Keduanya | Nightly/mingguan (infra) |
+| `TestAuth_LockedLoginIndistinguishable` | Login akun terkunci dan email tidak terdaftar menghasilkan respons identik (`401 INVALID_CREDENTIALS` + `Retry-After`) | Final review R2-5 | Keduanya | I |
+| `TestAudit_BulkSalaryReadAudited` | Request list slip/item gaji milik orang lain menulis satu baris audit `payroll.bulk_read` (+ recheck membership) | Final review R2-6, PI-17 | PayRun | I |
 
-**Alias nama test demo PayRun (Step 11 `02`) → nama kanonik katalog:**
+**Alias nama test demo PayRun (`33-demo-script.md`) → nama kanonik katalog:**
 
 | Dipakai di demo script | Nama kanonik |
 |---|---|
@@ -350,7 +350,7 @@ Kolom **CI**: `U` unit · `I` integration · `C` contract · `M` migration · `X
 
 ## 5. Traceability matrix
 
-Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-03…PI-08, PI-10…PI-14, PI-16 per Sprint 6, dijaga `TestTraceability_PayRunInvariantsReferenceExistingTests`); baris lain masih **planned**. Matriks ini wajib diperbarui di PR yang menambah atau mengubah invariant/skenario. Test `TestTraceability_DocsReferenceExistingTests` (nightly; **Step 12: S17, mulai M4**) mem-parse dokumen ini dan memastikan setiap nama test benar-benar ada di kode.
+Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-03…PI-08, PI-10…PI-14, PI-16 per Sprint 6, dijaga `TestTraceability_PayRunInvariantsReferenceExistingTests`); baris lain masih **planned**. Matriks ini wajib diperbarui di PR yang menambah atau mengubah invariant/skenario. Test `TestTraceability_DocsReferenceExistingTests` (nightly; **Final review S17, mulai M4**) mem-parse dokumen ini dan memastikan setiap nama test benar-benar ada di kode.
 
 ### 5.1 LedgerPay invariants
 
@@ -421,7 +421,7 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | PFS-09 Tenant access violation | `TestCrossTenant/<endpoint>`, `TestJob_TenantRunMismatch_NoOpAndAlert`, `TestCatalogue_TenantFKsComposite` |
 | PFS-10 Partial processing | `TestPayslipRender_CrashMidBatch_ResumesIdempotently`, `TestPayslipPDF_DeterministicBytes` |
 
-### 5.4 Threat MVP (Step 6) per kategori
+### 5.4 Threat MVP (threat model) per kategori
 
 | Kategori threat | Test |
 |---|---|
@@ -443,9 +443,9 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 | T-PR PII / payslip URL | `pii_*`, `TestPayslipAccess_Matrix`, `payslip_presigned_url_ttl` |
 | T-PR upload / CSV injection | `upload_validation_*`, `csv_export_escapes_formula` |
 | T-PR job tenant confusion | `TestJob_TenantRunMismatch_NoOpAndAlert`, `jobs_enforce_tenant_trigger` |
-| Step 12 Critical C1–C4 | `TestInbox_SlowProcessingNotReclaimed`, `TestRLS_SelfPoliciesInactiveInTenantMode`, `TestCatalog_NoRawCurrentSettingInPolicies`, `TestCatalog_EveryFKHasIndex` |
+| Final review Critical C1–C4 | `TestInbox_SlowProcessingNotReclaimed`, `TestRLS_SelfPoliciesInactiveInTenantMode`, `TestCatalog_NoRawCurrentSettingInPolicies`, `TestCatalog_EveryFKHasIndex` |
 | C-45 / C-46 / C-21 | `password_hash_concurrency_bounded`, `tenant_guard_detects_foreign_row`, `restore_drill_row_counts_positive` |
-| Step 12 R1-3 / R2-5 / R2-6 | `TestPayrollRun_ZeroEligibleCompletes`, `TestAuth_LockedLoginIndistinguishable`, `TestAudit_BulkSalaryReadAudited` |
+| Final review R1-3 / R2-5 / R2-6 | `TestPayrollRun_ZeroEligibleCompletes`, `TestAuth_LockedLoginIndistinguishable`, `TestAudit_BulkSalaryReadAudited` |
 
 ---
 
@@ -455,7 +455,7 @@ Status: baris bertanda ✅ menyebut test yang **sudah ada** di kode (PayRun PI-0
 |---|---|
 | Builder | `fixture.NewUser(t, db, opts...)`, `fixture.FundedWallet(t, db, amount)`, `fixture.Merchant(t, db)`. PayRun: `fixture.Tenant(t, db, "alpha")` menghasilkan tenant + satu user per role (`OWNER`, `HR_ADMIN`, `PAYROLL_ADMIN`, `MANAGER` dengan 3 bawahan, `EMPLOYEE`) + kalender kerja + komponen default; `fixture.Tenant(t, db, "beta")` untuk test lintas tenant |
 | Nilai default | Builder mengisi field wajib dengan nilai valid; test hanya menimpa yang relevan dengan skenarionya |
-| Waktu | Interface `Clock` (Step 2 skeleton) → `clock.Fake` di test. Waktu DB (`now()`, `clock_timestamp()`) **tidak** di-fake; test yang bergantung waktu DB memakai jarak relatif, bukan tanggal absolut |
+| Waktu | Interface `Clock` (desain fitur & arsitektur skeleton) → `clock.Fake` di test. Waktu DB (`now()`, `clock_timestamp()`) **tidak** di-fake; test yang bergantung waktu DB memakai jarak relatif, bukan tanggal absolut |
 | ID | Interface `idgen` → generator deterministik di unit test (golden stabil); UUIDv7 asli di integration |
 | Random | Seed property test dicatat di output (`rapid` otomatis). Data acak di integration memakai `rand.New(rand.NewPCG(seed, …))` dengan seed dari `-seed` atau waktu, dan dicetak saat gagal |
 | Mock-provider | **Integration:** paket `mockprovider` dijalankan **in-process** sebagai `httptest.Server` dengan kode server yang **sama** dengan service mock-provider (satu package Go, dua cara menjalankan). Lebih cepat dan bisa dikendalikan per test. **E2E/chaos:** container mock-provider sungguhan |
@@ -483,7 +483,7 @@ PR ──► lint (golangci-lint+gosec, ESLint, workflow lint)           ─┐
    chaos suite (testhooks putus koneksi, kill worker)
 
 nightly: property 1 juta iterasi · chaos penuh · demo-verify · load smoke (k6, file 03) · ZAP baseline (P2)
-         · TestTraceability_DocsReferenceExistingTests (Step 12: S17, ditunda ke M4)
+         · TestTraceability_DocsReferenceExistingTests (final review S17, ditunda ke M4)
 ```
 
 | Aturan | Keputusan |

@@ -62,7 +62,7 @@ export const runStatusPill: Record<string, string> = {
   DRAFT: '', CALCULATING: 'warn', CALCULATED: 'ok', PENDING_APPROVAL: 'warn', APPROVED: 'ok', FINALIZED: 'ok', FAILED: 'bad', CANCELLED: 'bad',
 }
 
-/** Aksi yang tersedia untuk status run (Step 3 `08`: state machine ADR-P05). */
+/** Aksi yang tersedia untuk status run (`09-failure-scenarios.md`: state machine ADR-P05). */
 export function runActions(status: string): { calculate: boolean; submit: boolean; cancel: boolean } {
   return {
     calculate: status === 'DRAFT' || status === 'CALCULATED' || status === 'FAILED',

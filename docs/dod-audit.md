@@ -16,7 +16,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 |---|---|---|---|
 | PF-01…PF-14, PF-17, PF-18, PF-20 | P0 | ✅ | Test per modul (katalog `docs/design/25-testing-strategy.md` §4), Demo A–C (`make demo-verify`, `make demo-live`) |
 | PF-15, PF-16, PF-19, PF-22, PF-24, PF-29 | P1: slip web, audit akses slip, adjustment, slip PDF, metrik/dashboard tenant, rate limit | ✅ | `TestPayslipAccess_Matrix`, `TestPayslipPDF_DeterministicBytes`, `TestAdjustment_AppliedOnce`, dashboard *Payroll & Tenancy*, tier rate limit di `backend/internal/platform/ratelimit` |
-| PF-21, PF-23, PF-25…PF-28 | P2 | ✅ didaftar | README "Deliberately not built" (PF-21/PF-23 diturunkan di Step 12) |
+| PF-21, PF-23, PF-25…PF-28 | P2 | ✅ didaftar | README "Deliberately not built" (PF-21/PF-23 diturunkan di final review) |
 | PF-30…PF-33 | P3 | ✅ didaftar | README |
 
 ## §1 per item
@@ -34,7 +34,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | V3 | Uang selalu string | ✅ | `TestOpenAPI_MoneyFieldsAreStrings` (statis) + respons divalidasi terhadap spec oleh `TestContract_*` |
 | A2 | Authz matrix 100% endpoint, endpoint tanpa baris gagal CI | ✅ | `TestAuthzMatrix`, `TestAuthzMatrix_CoversEveryRoute` |
 | A3 | Suite lintas tenant + RLS bypass + pool leakage | ✅ | `TestCrossTenant`, `TestRLS_UnfilteredQuerySeesOnlyActiveTenant`, `TestRLS_PoolLeakageAfterCommit`, `TestWithTenantTx_RetryKeepsTenant` |
-| S1 | Kontrol MVP Step 6 terimplementasi + test | ⚠️ | Kontrol PayRun dipetakan ke test di `25-testing-strategy.md` §5.4; tidak diaudit ulang satu per satu di sprint ini |
+| S1 | Kontrol MVP threat model terimplementasi + test | ⚠️ | Kontrol PayRun dipetakan ke test di `25-testing-strategy.md` §5.4; tidak diaudit ulang satu per satu di sprint ini |
 | S2 | Scan CI bersih (govulncheck, trivy) | ⏳ | Job ada di `pr.yml`/`main.yml`; belum pernah berjalan di GitHub. Lokal: `make security` |
 | S3 | gitleaks seluruh history bersih | ✅ | `gitleaks git --log-opts=--all` → no leaks (2026-10-10, setelah allowlist sempit untuk kunci dev) |
 | S4 | Security header di semua respons | ✅ | `TestSecurityHeaders_OnEveryAPIResponse` (200/401/404/400). Header SPA (HSTS dll.) dipasang Caddy di `deploy/prod` |
@@ -44,7 +44,7 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | D3 | Backup harian + restore drill 7 hari terakhir | ⏳ | `deploy/backup`, `scripts/restore-drill.sh` (cek tabel tenant > 0 + verify-run run final); jadwal butuh VM |
 | D4 | Seed demo deterministik | ✅ | `make seed-demo` (seed tetap 42, gate invariant setelah seed) |
 | F2 | PFS-01…PFS-10 hijau | ✅ | Matriks §5.3; dua test baru S10: `TestCalcChunk_PanicExhaustsAttempts_RunFailed` (PFS-05), `TestJob_TenantRunMismatch_NoOpAndAlert` (PFS-09) |
-| F3 | Chaos suite di nightly | ⚠️ | Pengganti Toxiproxy (Step 12): hook `testhooks` + proses worker yang dimatikan, berjalan di job integration CI, bukan nightly terpisah |
+| F3 | Chaos suite di nightly | ⚠️ | Pengganti Toxiproxy (final review): hook `testhooks` + proses worker yang dimatikan, berjalan di job integration CI, bukan nightly terpisah |
 | F4 | Race test dengan `-race` | ✅ | `make test-integration` (`-race`), job CI integration |
 | T1 | Traceability 100% | ✅ | `TestTraceability_DocsReferenceExistingTests` (README, docs, ADR-P*, laporan perf, katalog §4.4–4.6, §5.2, §5.3) |
 | T2 | Karantina flaky kosong | ✅ | Tidak ada test yang di-skip/karantina |
@@ -63,8 +63,8 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | OP6 | Kill switch | ✅ | `TestPayrollWorker_KillSwitchKeepsJobsQueued`; `PR_PAYSLIP_RENDER_ENABLED` |
 | PF1 | Laporan baseline dengan spesifikasi environment | ✅ (laptop) | `perf/results/2026-10-10-fed1df1/REPORT.md`; angka VM ⏳ |
 | PF2 | Keputusan E-2 dicatat | ✅ | REPORT §PR-4 + amandemen ADR-P07 |
-| PF3 | CI perf smoke nightly | ⏳ | Ditunda setelah M7 (Step 12 S19) |
-| DC1 | README struktur Step 11 | ✅ | README |
+| PF3 | CI perf smoke nightly | ⏳ | Ditunda setelah M7 (final review S19) |
+| DC1 | README struktur demo script | ✅ | README |
 | DC2 | ADR mutakhir + amandemen | ✅ | Amandemen ADR-P07 (E-2), ADR-012 (SeaweedFS) |
 | DC3 | Diagram arsitektur | ✅ | `docs/architecture.md` (container, tenant context, state run, modul) |
 | DC4 | API docs statis | ✅ | `make api-docs` → `build/api.html` (Redocly) |

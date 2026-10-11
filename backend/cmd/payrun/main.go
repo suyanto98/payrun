@@ -186,7 +186,7 @@ func runWorker() error {
 	}
 	defer func() { _ = shutdownTracing(context.Background()) }()
 	metrics.SetBuildInfo("worker", cfg.Version)
-	// Pool worker 10 (Step 7 `01` §6); lock_timeout 5 dtk: chunk menunggu lock run lebih lama dari API.
+	// Pool worker 10 (desain transaksi & concurrency §6); lock_timeout 5 dtk: chunk menunggu lock run lebih lama dari API.
 	pool, err := db.NewPool(ctx, cfg.DatabaseURL, db.Options{
 		MaxConns: 10, StatementTimeout: cfg.DBStatementTimeout, LockTimeout: 5 * time.Second, IdleInTxTimeout: cfg.DBIdleInTxTimeout,
 	})

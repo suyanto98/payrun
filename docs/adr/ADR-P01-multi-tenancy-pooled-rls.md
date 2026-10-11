@@ -4,7 +4,7 @@
 
 ## Context / Problem
 
-PayRun melayani banyak perusahaan dari satu codebase dan satu deployment. Kebocoran data gaji antar tenant adalah satu-satunya kegagalan yang bisa mematikan bisnis SaaS (Step 1, R2). Isolasi tidak boleh bergantung pada "developer selalu ingat menulis `WHERE tenant_id = ?`".
+PayRun melayani banyak perusahaan dari satu codebase dan satu deployment. Kebocoran data gaji antar tenant adalah satu-satunya kegagalan yang bisa mematikan bisnis SaaS (strategi produk, R2). Isolasi tidak boleh bergantung pada "developer selalu ingat menulis `WHERE tenant_id = ?`".
 
 Pengalaman nyata dari pekerjaan sehari-hari: pernah mengoperasikan **schema-per-tenant** dengan biaya yang terasa langsung:
 - migrasi harus diiterasi ke N schema (lambat, bisa gagal di tengah sehingga sebagian schema tertinggal versi);
@@ -38,7 +38,7 @@ CREATE POLICY tenant_isolation ON employees
   USING      (tenant_id = (SELECT payrun.current_tenant()))
   WITH CHECK (tenant_id = (SELECT payrun.current_tenant()));
 ```
-> Helper `payrun.current_tenant()` = `nullif(current_setting('app.tenant_id', true), '')::uuid` (STABLE). Cast mentah gagal untuk `''`, yaitu nilai yang muncul setelah GUC pernah disetel di session yang sama, dan helper ini mencegahnya (Step 12: C3).
+> Helper `payrun.current_tenant()` = `nullif(current_setting('app.tenant_id', true), '')::uuid` (STABLE). Cast mentah gagal untuk `''`, yaitu nilai yang muncul setelah GUC pernah disetel di session yang sama, dan helper ini mencegahnya (final review C3).
 
 - `current_setting(..., true)` mengembalikan `NULL` jika belum diset, sehingga `tenant_id = NULL` → tidak ada baris (**fail closed**).
 - `WITH CHECK` mencegah INSERT/UPDATE yang menulis baris ke tenant lain.
@@ -56,12 +56,12 @@ CREATE POLICY tenant_isolation ON employees
 CREATE TABLE departments (
   id uuid NOT NULL, tenant_id uuid NOT NULL REFERENCES tenants(id),
   name text NOT NULL,
-  PRIMARY KEY (tenant_id, id)   -- konvensi final Step 4: PK composite, bukan id + UNIQUE
+  PRIMARY KEY (tenant_id, id)   -- konvensi final desain database: PK composite, bukan id + UNIQUE
 );
 CREATE TABLE employees (
   id uuid NOT NULL, tenant_id uuid NOT NULL,
   department_id uuid,
-  PRIMARY KEY (tenant_id, id)   -- konvensi final Step 4: PK composite, bukan id + UNIQUE,
+  PRIMARY KEY (tenant_id, id)   -- konvensi final desain database: PK composite, bukan id + UNIQUE,
   FOREIGN KEY (tenant_id, department_id) REFERENCES departments (tenant_id, id)
 );
 ```
@@ -100,4 +100,4 @@ Employee tenant A tidak mungkin menunjuk department tenant B, karena FK menyerta
 
 ## Related
 
-ADR-P02 (tenant context), ADR-004 (PostgreSQL), ADR-010 (authorization), ADR-012 (object storage key prefix), Step 1 `02-payrun.md` §9 C1–C2, C10; `03-cross-project.md` §4.
+ADR-P02 (tenant context), ADR-004 (PostgreSQL), ADR-010 (authorization), ADR-012 (object storage key prefix), `02-product-strategy.md` §9 C1–C2, C10; `03-cross-project.md` §4.

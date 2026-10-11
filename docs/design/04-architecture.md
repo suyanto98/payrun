@@ -1,7 +1,7 @@
-# Step 2.4 — PayRun: System Architecture V1 → V2 → V3
+# PayRun: System Architecture V1 → V2 → V3
 
 > Prinsip sama dengan LedgerPay: mulai paling sederhana, lalu berubah hanya karena *pemicu terukur*.
-> Keputusan rinci: lihat [ADR register](00-index.md#adr-register).
+> Keputusan rinci: lihat ADR register.
 
 ---
 

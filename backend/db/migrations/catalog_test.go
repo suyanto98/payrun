@@ -158,7 +158,7 @@ func TestCatalog_ViewsAreSecurityInvoker(t *testing.T) {
 	}
 }
 
-// (e) Step 12 C3: policy tidak boleh memakai current_setting( mentah (”::uuid → error acak per koneksi).
+// (e) final review C3: policy tidak boleh memakai current_setting( mentah (”::uuid → error acak per koneksi).
 const qRawCurrentSetting = `
 	SELECT tablename || '.' || policyname FROM pg_policies
 	WHERE schemaname = 'payrun'

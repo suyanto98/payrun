@@ -106,7 +106,7 @@ Lembur Tono Maret kurang 2 jam (ditemukan April)
 
 Implementasi (S5) tidak menghitung ulang fingerprint seluruh run seperti bagian *Approve guard* di atas. Approve hanya
 memverifikasi **kandidat dari change log** (`payroll_input_changes` sejak `calc_started_at`, O12), maksimal 200
-(Step 12 R1-7); di atas itu langsung `RUN_STALE` tanpa verifikasi. Poin *Trade-offs* ketiga ("load seluruh input run")
+(final review R1-7); di atas itu langsung `RUN_STALE` tanpa verifikasi. Poin *Trade-offs* ketiga ("load seluruh input run")
 tidak berlaku lagi.
 
 E-2 / PR-4 (tenant 10.000, laptop, `perf/results/2026-10-10-fed1df1/REPORT.md`): approve p95 31 ms (10 perubahan),
@@ -117,4 +117,4 @@ dinaikkan, atau p95 approve di VM target > 500 ms.
 
 ## Related
 
-ADR-P03 (pure engine), ADR-P05 (calc_version), ADR-P06 (normalisasi decimal), ADR-P09 (approval), Step 1 `02-payrun.md` W4–W5, Demo C.
+ADR-P03 (pure engine), ADR-P05 (calc_version), ADR-P06 (normalisasi decimal), ADR-P09 (approval), `02-product-strategy.md` W4–W5, Demo C.

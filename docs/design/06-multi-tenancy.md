@@ -1,7 +1,7 @@
-# Step 3.5 — PayRun: Multi-Tenancy Analysis & Threat Scenario
+# PayRun: Multi-Tenancy Analysis & Threat Scenario
 
-> Keputusan dasar: [ADR-P01](../step-02-features-and-architecture/adr/ADR-P01-multi-tenancy-pooled-rls.md) (pooled + RLS), [ADR-P02](../step-02-features-and-architecture/adr/ADR-P02-tenant-context.md) (tenant context), [ADR-010](../step-02-features-and-architecture/adr/ADR-010-authorization.md), [ADR-012](../step-02-features-and-architecture/adr/ADR-012-object-storage.md), [ADR-P08](../step-02-features-and-architecture/adr/ADR-P08-pii-encryption.md).
-> Invariant terkait: PI-01, PI-02, PI-16, PI-17 ([`07-payrun-invariants.md`](07-payrun-invariants.md)).
+> Keputusan dasar: [ADR-P01](../adr/ADR-P01-multi-tenancy-pooled-rls.md) (pooled + RLS), [ADR-P02](../adr/ADR-P02-tenant-context.md) (tenant context), [ADR-010](../adr/ADR-010-authorization.md), [ADR-012](../adr/ADR-012-object-storage.md), [ADR-P08](../adr/ADR-P08-pii-encryption.md).
+> Invariant terkait: PI-01, PI-02, PI-16, PI-17 ([`08-invariants.md`](08-invariants.md)).
 
 ---
 
@@ -66,9 +66,9 @@ CREATE POLICY tenant_isolation ON <t>
   WITH CHECK (tenant_id = (SELECT payrun.current_tenant()));
 ```
 - **Migration test:** query katalog memastikan *setiap* tabel yang punya kolom `tenant_id` memiliki `relrowsecurity = true`, `relforcerowsecurity = true`, dan policy `tenant_isolation`. Tabel baru tanpa RLS membuat CI gagal.
-- **Mode eksklusif (Step 12: C2/C3):** `WithTenantTx` hanya menyetel `app.tenant_id`, `WithPlatformTx` hanya `app.user_id`. Policy self hanya aktif saat tidak ada tenant context. Semua policy memakai helper `current_tenant()`/`current_user_id()` dengan `nullif(…,'')` (lihat ADR-P02 amandemen).
-- **Deteksi defensif (Step 8, C-46):** helper decode repository membandingkan `row.tenant_id` dengan tenant di context. Kalau berbeda (yang seharusnya mustahil karena RLS), request digagalkan dan metrik INVARIANT `payrun_tenant_isolation_violations_total` naik. Dengan begitu, kegagalan RLS yang tak terduga terdeteksi, bukan diam-diam.
-- Fungsi `SECURITY DEFINER` **dilarang** di skema aplikasi (dicek oleh migration test), karena fungsi itu berjalan dengan hak owner dan bisa melewati RLS. **Satu pengecualian ber-allowlist:** `payrun.auth_lookup_user(email)` untuk login (sebelum identitas user diketahui, policy `users_self` belum bisa dipakai). Fungsi ini hanya mengembalikan `id, password_hash, status` untuk satu email, punya `SET search_path` eksplisit, dan menjadi satu-satunya entri di allowlist test katalog (Step 4 `01-shared-tables.md`, `07-payrun-rls-consistency-and-indexing.md`).
+- **Mode eksklusif (final review C2/C3):** `WithTenantTx` hanya menyetel `app.tenant_id`, `WithPlatformTx` hanya `app.user_id`. Policy self hanya aktif saat tidak ada tenant context. Semua policy memakai helper `current_tenant()`/`current_user_id()` dengan `nullif(…,'')` (lihat ADR-P02 amandemen).
+- **Deteksi defensif (desain observability & testing, C-46):** helper decode repository membandingkan `row.tenant_id` dengan tenant di context. Kalau berbeda (yang seharusnya mustahil karena RLS), request digagalkan dan metrik INVARIANT `payrun_tenant_isolation_violations_total` naik. Dengan begitu, kegagalan RLS yang tak terduga terdeteksi, bukan diam-diam.
+- Fungsi `SECURITY DEFINER` **dilarang** di skema aplikasi (dicek oleh migration test), karena fungsi itu berjalan dengan hak owner dan bisa melewati RLS. **Satu pengecualian ber-allowlist:** `payrun.auth_lookup_user(email)` untuk login (sebelum identitas user diketahui, policy `users_self` belum bisa dipakai). Fungsi ini hanya mengembalikan `id, password_hash, status` untuk satu email, punya `SET search_path` eksplisit, dan menjadi satu-satunya entri di allowlist test katalog (`10-db-shared-tables.md`, `13-db-rls-consistency-indexing.md`).
 
 ### 2.7 Cross-tenant access prevention
 Ringkasan jalur serangan dan pertahanannya ada di §4 (threat scenario). Prinsipnya: setiap jalur harus melewati **minimal dua lapisan independen**.
@@ -125,7 +125,7 @@ V1 tidak memakai cache (ADR-008). Aturan untuk saat cache ditambahkan:
 
 ---
 
-## 3. Isolation test suite (ringkas; detail di Step 8)
+## 3. Isolation test suite (ringkas; detail di desain observability & testing)
 
 | Test | Membuktikan |
 |---|---|

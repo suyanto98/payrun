@@ -1,6 +1,6 @@
-# Step 5.5 — PayRun Authorization Matrix
+# PayRun Authorization Matrix
 
-> Sumber endpoint: [`04-payrun-api.md`](04-payrun-api.md) (ID A1…Z2). Dasar keputusan: ADR-010 (RBAC + policy berbasis relasi di service layer), ADR-P01/P02 (RLS + `tid`), ADR-P09 (approval), [`00-index.md`](00-index.md) §5 (404 vs 403).
+> Sumber endpoint: [`16-api-endpoints.md`](16-api-endpoints.md) (ID A1…Z2). Dasar keputusan: ADR-010 (RBAC + policy berbasis relasi di service layer), ADR-P01/P02 (RLS + `tid`), ADR-P09 (approval), `00-index.md` §5 (404 vs 403).
 > Matriks ini adalah **input langsung untuk authorization matrix test** (PF-04 AC3). Mengubah matriks = mengubah test, dan sebaliknya.
 
 ---
@@ -215,7 +215,7 @@ Untuk **setiap** endpoint tenant-scoped yang menerima ID: semua aktor Beta meman
 ### 4.4 Aturan CI
 1. **Endpoint tanpa baris matriks = test gagal.** Test membaca daftar rute dari router chi (`chi.Walk`) dan membandingkannya dengan `authz_matrix.yaml`. Rute baru yang belum didaftarkan menggagalkan build.
 2. **Baris matriks tanpa rute = test gagal** (matriks basi).
-3. Test berjalan di setiap PR (Step 10 CI), bersama tenant isolation test (RLS bypass, pool leakage; Step 3 `05`).
+3. Test berjalan di setiap PR (roadmap CI), bersama tenant isolation test (RLS bypass, pool leakage; `06-multi-tenancy.md`).
 
 ### 4.5 Yang **tidak** dicakup matriks (dan di mana dicakup)
 | Aspek | Dicakup oleh |
@@ -223,7 +223,7 @@ Untuk **setiap** endpoint tenant-scoped yang menerima ID: semua aktor Beta meman
 | Kebocoran lewat RLS saat query lupa filter | RLS bypass test (PF-04 AC4) |
 | Kebocoran setting tenant via connection pool | Pool leakage test (PF-04 AC5) |
 | Job background lintas tenant | Test job dengan `tenant_id` palsu di payload (PFS-09) |
-| Presigned URL ditebak / kedaluwarsa | Test S5 (TTL, signature) + Step 6 |
+| Presigned URL ditebak / kedaluwarsa | Test S5 (TTL, signature) + threat model |
 | Manipulasi `tid` di JWT | Test middleware auth (signature) |
 
 ---

@@ -1,4 +1,4 @@
-# Step 1.2 — PayRun: Workforce & Payroll Platform (Multi-Tenant SaaS)
+# PayRun: Workforce & Payroll Platform (Multi-Tenant SaaS)
 
 > *"A multi-tenant workforce and payroll platform where multiple companies can securely manage employees, attendance, approvals, and payroll while keeping tenant data isolated."*
 
@@ -93,7 +93,7 @@ Ternyata lembur Tono kurang 2 jam di Maret → TIDAK mengedit run Maret
 ```
 **Tantangan:** finalized = immutable; koreksi tetap bisa ditelusuri.
 
-### Payroll engine (ringkas; spesifikasi di Step 3)
+### Payroll engine (ringkas; spesifikasi di desain domain)
 ```text
 Gross = Gaji pokok (prorata) + Tunjangan tetap + Tunjangan tidak tetap + Lembur + Adjustment(+)
 Potongan = Absen tanpa keterangan + Cuti tidak dibayar + BPJS karyawan + PPh21 + Adjustment(−)
@@ -105,7 +105,7 @@ Net = Gross − Potongan
 
 ---
 
-## 5. Core Business Rules (awal; diformalkan menjadi invariant di Step 3)
+## 5. Core Business Rules (awal; diformalkan menjadi invariant di desain domain)
 
 | # | Rule |
 |---|---|
@@ -225,7 +225,7 @@ Bonus: klik "Run payroll" dua kali / dua admin bersamaan → tepat satu run (uni
 
 ## 9. Production Engineering Challenges
 
-| # | Challenge | Kenapa sulit | Arah solusi (detail di Step 3/6/7) |
+| # | Challenge | Kenapa sulit | Arah solusi (detail di desain domain, threat model, desain transaksi & concurrency) |
 |---|---|---|---|
 | C1 | **Propagasi tenant context** ke semua tempat | HTTP, background job, cache key, log, file storage path; satu tempat lupa berarti bocor | Tenant context sebagai nilai wajib di setiap boundary; job payload membawa tenant_id; helper `WithTenantTx` satu-satunya cara akses DB |
 | C2 | **RLS + connection pool** | `SET` di level session bocor ke request berikutnya yang memakai koneksi yang sama | `SET LOCAL` di dalam transaksi; role aplikasi tanpa `BYPASSRLS`; test khusus untuk kebocoran via pool |
@@ -251,8 +251,8 @@ Bonus: klik "Run payroll" dua kali / dua admin bersamaan → tepat satu run (uni
 | Face recognition, GPS/geofencing absensi, integrasi mesin fingerprint | Hardware/ML, bukan inti engineering backend. Import CSV mewakili integrasi mesin absensi |
 | Recruitment, performance review, training, KPI | Modul HRIS lain, tidak menyentuh payroll |
 | Multi-country / multi-currency | Kompleksitas regulasi tanpa sinyal tambahan |
-| SSO/SAML/SCIM | Relevan untuk enterprise, tetapi implementasinya besar. Disebut sebagai V3 di Step 2 |
-| Database/schema per tenant | Sengaja dipilih pooled + RLS (lihat ADR Step 2); schema-per-tenant dibahas sebagai alternatif |
+| SSO/SAML/SCIM | Relevan untuk enterprise, tetapi implementasinya besar. Disebut sebagai V3 di desain fitur & arsitektur |
+| Database/schema per tenant | Sengaja dipilih pooled + RLS (lihat ADR desain fitur & arsitektur); schema-per-tenant dibahas sebagai alternatif |
 | Microservices (employee service, payroll service, …) | Payroll butuh konsistensi lintas entitas dalam satu transaksi; tidak ada alasan scaling independen |
 | Mobile app native | Web responsif cukup untuk clock in/out demo |
 | Billing SaaS (langganan, invoice ke tenant) | Domain lain; bisa disebut sebagai future work |
@@ -261,7 +261,7 @@ Bonus: klik "Run payroll" dua kali / dua admin bersamaan → tepat satu run (uni
 
 ## 11. Initial Architecture Direction
 
-> Ini **arah**, belum keputusan final. ADR lengkap dan versi V1→V3 dikerjakan di Step 2.
+> Ini **arah**, belum keputusan final. ADR lengkap dan versi V1→V3 dikerjakan di desain fitur & arsitektur.
 
 ```text
                   ┌────────────────────────────────────────────────┐
@@ -288,7 +288,7 @@ Bonus: klik "Run payroll" dua kali / dua admin bersamaan → tepat satu run (uni
 | Gaya arsitektur | **Modular monolith**, binary `api` / `worker` / `migrate` | Konsistensi lintas entitas; skeleton yang sama dengan LedgerPay |
 | Multi-tenancy | **Pooled tables + `tenant_id` + Postgres RLS** | Satu migrasi untuk semua tenant, operasional sederhana, isolasi ditegakkan DB. Sengaja **berbeda** dari pendekatan schema-per-company di pekerjaan kantor, sehingga ada perbandingan trade-off dari pengalaman nyata |
 | Database | **PostgreSQL** | RLS, exclusion constraint, `NUMERIC`, `SKIP LOCKED` |
-| Job queue | **Postgres-backed queue** (hand-rolled dari skeleton LedgerPay *atau* River; diputuskan di ADR Step 2) | Transaksional dengan perubahan state run; tanpa broker tambahan |
+| Job queue | **Postgres-backed queue** (hand-rolled dari skeleton LedgerPay *atau* River; diputuskan di ADR desain fitur & arsitektur) | Transaksional dengan perubahan state run; tanpa broker tambahan |
 | Object storage | MinIO (lokal) / S3-compatible (deploy); hanya saat payslip PDF masuk | Jangan simpan blob di DB; signed URL untuk akses |
 | Cache | **Tidak ada di V1** | Belum ada bottleneck terbukti. Kalau ditambah, wajib tenant-aware key |
 | Auth | JWT access + refresh rotasi; token memuat `user_id`, tenant aktif divalidasi terhadap membership di DB | User multi-tenant; mencegah token tampering |

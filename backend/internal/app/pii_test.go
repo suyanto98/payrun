@@ -198,7 +198,7 @@ func TestInvitation_ReinviteRevokedMemberReactivatesRow(t *testing.T) {
 	}
 }
 
-// TestPayrollItems_RolesReadFromDB (Step 12 R2-6): Y6/Y7 membaca role pemanggil dari DB. PAYROLL_ADMIN
+// TestPayrollItems_RolesReadFromDB (final review R2-6): Y6/Y7 membaca role pemanggil dari DB. PAYROLL_ADMIN
 // yang sudah diturunkan tetapi tokennya masih membawa role itu → 404, tanpa audit bulk_read.
 func TestPayrollItems_RolesReadFromDB(t *testing.T) {
 	e := newEnvTiers(t, relaxedTiers())

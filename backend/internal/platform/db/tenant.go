@@ -16,7 +16,7 @@ import (
 var ErrNoTenantContext = errors.New("db: no tenant in context")
 
 // WithTenantTx menjalankan fn di transaksi dengan app.tenant_id = tenant aktif request (dari claim
-// `tid`, lewat tenantctx). Satu-satunya jalur modul bisnis ke data tenant. Mode eksklusif (Step 12 C2):
+// `tid`, lewat tenantctx). Satu-satunya jalur modul bisnis ke data tenant. Mode eksklusif (final review C2):
 // HANYA app.tenant_id yang disetel, sehingga policy "self" (users_self, memberships_self_read) mati.
 func WithTenantTx(ctx context.Context, b Beginner, fn func(tx pgx.Tx) error) error {
 	tid, ok := tenantctx.From(ctx)
@@ -42,7 +42,7 @@ func WithTenantTxFor(ctx context.Context, b Beginner, tenantID uuid.UUID, fn fun
 }
 
 // WithTenantTxForOptions sama dengan WithTenantTxFor dengan isolation/akses pilihan. Dipakai txRead
-// chunk payroll (REPEATABLE READ READ ONLY, Step 7 `22` §3.2): satu snapshot konsisten untuk semua
+// chunk payroll (REPEATABLE READ READ ONLY, `22-tx-concurrency.md` §3.2): satu snapshot konsisten untuk semua
 // input chunk. set_config adalah statement pertama dan tidak membaca tabel, jadi snapshot RR baru
 // diambil pada query data pertama (`22` §2).
 func WithTenantTxForOptions(ctx context.Context, b Beginner, tenantID uuid.UUID, opts pgx.TxOptions, fn func(tx pgx.Tx) error) error {

@@ -1,8 +1,8 @@
-# Step 11.2 — PayRun: Demo Script (10 menit teknis + 3 menit HR)
+# PayRun: Demo Script (10 menit teknis + 3 menit HR)
 
-> Bagian dari [Step 11](00-index.md). Struktur waktu dan aturan kejujuran klaim di `00-index.md` **mengikat**.
+> Bagian dari demo script. Struktur waktu dan aturan kejujuran klaim di `00-index.md` **mengikat**.
 > Pola yang harus terasa sepanjang demo: **Problem → Solution → Engineering Challenge → Technical Solution → Evidence**.
-> Sumber angka dan perilaku: Step 1 `02-payrun.md` §8 (Demo A–C), Step 3 `06-payrun-payroll-engine.md` §15 (contoh Tono), Step 3 `08` (PFS-01/03/06), Step 5 `04-payrun-api.md` §17, Step 7 `03` (demo faults), Step 8 `01` §9.
+> Sumber angka dan perilaku: `02-product-strategy.md` §8 (Demo A–C), `07-payroll-engine.md` §15 (contoh Tono), `09-failure-scenarios.md` (PFS-01/03/06), `16-api-endpoints.md` §17, `23-background-jobs.md` (demo faults), `24-observability.md` §9.
 
 ---
 
@@ -18,7 +18,7 @@
 
 ## 1. Persiapan (15 menit sebelum demo)
 
-> **Token demo (Step 12: R2-4):** `DEMO_TOKEN` hanya ada di environment terminal presenter (`export DEMO_TOKEN=…` dari password manager) dan ditempel manual ke demo toolbar saat dibutuhkan. Token disimpan di memori tab saja, **tidak pernah** di bundle SPA, `localStorage`, atau README. Endpoint demo yang tersisa hanya `faults`, `reset` (dan `fast-track` di PayRun); skenario provider diatur lewat admin mock via SSH tunnel.
+> **Token demo (final review R2-4):** `DEMO_TOKEN` hanya ada di environment terminal presenter (`export DEMO_TOKEN=…` dari password manager) dan ditempel manual ke demo toolbar saat dibutuhkan. Token disimpan di memori tab saja, **tidak pernah** di bundle SPA, `localStorage`, atau README. Endpoint demo yang tersisa hanya `faults`, `reset` (dan `fast-track` di PayRun); skenario provider diatur lewat admin mock via SSH tunnel.
 
 ### 1.1 Data & environment
 | Item | Nilai / perintah | Cek |
@@ -27,10 +27,10 @@
 | Chunk size demo | `PAYROLL_CHUNK_SIZE=10` di env worker demo (O5) | `GET /payroll-runs/{id}` nanti menampilkan `chunks_total: 10` |
 | Lease demo | Lease job 10 dtk (mode demo) | Resume terlihat dalam ±10–15 dtk, bukan 30 dtk |
 | Restart policy worker | `restart: unless-stopped` | Worker hidup lagi otomatis setelah `os.Exit(137)` |
-| Data Tono (Step 3 §15) | Gaji Rp6.000.000 → **Rp6.600.000 berlaku 15 Maret 2026**; lembur 6 jam (23 Mar 4j, 26 Mar 2j, status `PENDING` agar bisa di-approve saat demo); cuti tidak dibayar 25 Mar | Kenaikan gaji sengaja **belum** diinput, supaya diinput live |
+| Data Tono (desain domain §15) | Gaji Rp6.000.000 → **Rp6.600.000 berlaku 15 Maret 2026**; lembur 6 jam (23 Mar 4j, 26 Mar 2j, status `PENDING` agar bisa di-approve saat demo); cuti tidak dibayar 25 Mar | Kenaikan gaji sengaja **belum** diinput, supaya diinput live |
 | Periode | Maret 2026 belum punya run | `GET /payroll-runs?period=2026-03` kosong |
 | Fault | Tidak ada fault aktif: `DELETE /api/v1/demo/faults` | — |
-| Verifikasi menyeluruh | `make demo-verify PROJECT=payrun` hijau (Demo A–C headless, Step 8 `02`) | Jalankan **pagi hari demo**, bukan 1 menit sebelumnya |
+| Verifikasi menyeluruh | `make demo-verify PROJECT=payrun` hijau (Demo A–C headless, `25-testing-strategy.md`) | Jalankan **pagi hari demo**, bukan 1 menit sebelumnya |
 
 ### 1.2 Layar
 | Jendela | Isi |
@@ -39,11 +39,11 @@
 | Browser profile 2 | **Arif, Manager PT Alpha** (inbox approval) |
 | Browser profile 3 | **Tono, Employee PT Alpha** (halaman slip gaji) |
 | Browser profile 4 | **HR PT Beta** (hanya untuk menyalin satu `employee_id` Beta ke clipboard) |
-| Grafana | Dashboard **"PayRun — Payroll Runs"** dan **"PayRun — Tenancy & Security"** (Step 8 `01` §6), rentang waktu 15 menit |
+| Grafana | Dashboard **"PayRun — Payroll Runs"** dan **"PayRun — Tenancy & Security"** (`24-observability.md` §6), rentang waktu 15 menit |
 | Jaeger | Service `payrun-worker`, siap dicari berdasarkan `run_id` |
 | Terminal 1 | Siap: `curl` Demo A (§3.1), test isolation (§3.2) |
 | Terminal 2 | `docker compose logs -f payrun-worker \| jq -c 'select(.job_kind!=null)'` |
-| Slide 1 lembar | Diagram arsitektur (Step 2 `04` §2.2) yang disederhanakan |
+| Slide 1 lembar | Diagram arsitektur (`04-architecture.md` §2.2) yang disederhanakan |
 
 ---
 
@@ -77,7 +77,7 @@
 | 2:45 | "Arif, manager Tono, menyetujui lembur. Approver di-*snapshot* saat request dibuat, dan dia tidak bisa menyetujui request miliknya sendiri." | Profile 2 → Inbox → approve lembur 23 & 26 Maret | Status `APPROVED`, tercatat di audit |
 | 3:10 | "Kembali ke Dewi. Jalankan payroll Maret." | Profile 1 → Payroll → "Buat run Maret 2026" → "Hitung" | Run `CALCULATING`, progress bar `chunks 0/10 … 10/10` (±5–10 dtk), lalu `CALCULATED` |
 | 3:40 | "Halaman review: total, jumlah karyawan, dan **warning**, misalnya lembur di atas batas. Warning tidak memblok, tapi error memblok submit." | Tunjuk ringkasan run | Total run, `counts.ok = 100`, jumlah warning |
-| 4:00 | "Buka item Tono. Setiap baris punya penjelasan, jadi karyawan tahu potongan datang dari mana." | Klik Tono | Baris (angka dari Step 3 §15): gaji pokok seg-1 **3.000.000** (10/20 hari kerja), seg-2 **3.300.000**, tunjangan jabatan **500.000**, transport **380.000** (19 hari hadir), lembur **419.653** ("6 jam = 11 jam berbobot × Rp38.150,29"), potongan cuti tidak dibayar **330.000**, BPJS 136.000 + 68.000 + 68.000, PPh21 **109.044** |
+| 4:00 | "Buka item Tono. Setiap baris punya penjelasan, jadi karyawan tahu potongan datang dari mana." | Klik Tono | Baris (angka dari desain domain §15): gaji pokok seg-1 **3.000.000** (10/20 hari kerja), seg-2 **3.300.000**, tunjangan jabatan **500.000**, transport **380.000** (19 hari hadir), lembur **419.653** ("6 jam = 11 jam berbobot × Rp38.150,29"), potongan cuti tidak dibayar **330.000**, BPJS 136.000 + 68.000 + 68.000, PPh21 **109.044** |
 | 4:30 | "Gross 7.599.653, potongan 711.044, **net 6.888.609**. Net selalu sama persis dengan Σ baris, karena pembulatan dilakukan per komponen, bukan di total." | Tunjuk total item | Net **Rp6.888.609** |
 | 4:50 | "Kenaikan gaji di tengah bulan menjadi **dua baris** gaji pokok, bukan satu angka rata-rata yang tidak bisa dijelaskan. Catatan: tarif pajak/BPJS di sini **contoh yang disederhanakan**, bukan tarif resmi." | — | — |
 
@@ -112,7 +112,7 @@
 | 8:40 | "Terakhir, setelah final: angka tidak bisa diubah diam-diam." *(Demo C versi singkat; run sudah disubmit, di-approve, dan difinalize sebelumnya lewat tombol "Fast-track demo")* | Edit absensi Tono 25 Maret | **`409 PERIOD_LOCKED`**. Koreksi dilakukan lewat **adjustment** yang muncul di slip April sebagai "Koreksi lembur periode Maret 2026" |
 | | *EN:* "Crash mid-batch, resume from the last committed chunk, no duplicate items, and finalized payroll is immutable." | | |
 
-> **Pilihan Demo C:** `PERIOD_LOCKED` dipilih karena paling cepat dipahami. Kalau interviewer tertarik pada concurrency, ganti dengan **`RUN_STALE`**: ubah absensi *setelah* calculate tetapi *sebelum* approve → approve ditolak `409 RUN_STALE {employees_changed:[Tono]}` (PFS-03, Step 7 O12). Jangan tampilkan keduanya di 10 menit.
+> **Pilihan Demo C:** `PERIOD_LOCKED` dipilih karena paling cepat dipahami. Kalau interviewer tertarik pada concurrency, ganti dengan **`RUN_STALE`**: ubah absensi *setelah* calculate tetapi *sebelum* approve → approve ditolak `409 RUN_STALE {employees_changed:[Tono]}` (PFS-03, desain transaksi & concurrency O12). Jangan tampilkan keduanya di 10 menit.
 
 ### 9:00–10:00 — Observability & discussion hooks
 
@@ -190,7 +190,7 @@ curl -s -X POST -H "Authorization: Bearer $T_DEWI" -H "Idempotency-Key: adj-1" \
   -d '{"employee_id":"'$TONO'","origin_period":"2026-03","target_period":"2026-04","component_code":"OVERTIME_CORRECTION","amount":"76300.58","reason":"lembur kurang 2 jam"}' $API/adjustments -o /dev/null -w "%{http_code}\n"   # 201
 payrun verify-run --run $RUN_MARET     # recompute dari snapshot → "identical: 100/100 items"
 ```
-> Nominal adjustment mengikuti contoh di kontrak API (Step 5 `04` §17) dan hanya ilustrasi.
+> Nominal adjustment mengikuti contoh di kontrak API (`16-api-endpoints.md` §17) dan hanya ilustrasi.
 
 ---
 
@@ -212,13 +212,13 @@ Hindari istilah RLS, chunk, idempotent, dan fingerprint. Kalau ditanya "pakai te
 
 | Pertanyaan | Jawaban singkat (≤ 30 detik) | Rujukan |
 |---|---|---|
-| "Kenapa tidak schema per tenant?" | "Saya pernah mengoperasikan schema per perusahaan. Isolasinya kuat, tapi migrasi harus dijalankan ke banyak schema dan laporan lintas tenant jadi rumit. Untuk UMKM yang jumlahnya banyak dan kecil-kecil, pooled + RLS lebih murah dioperasikan. Untuk tenant sangat besar, jalur V3-nya hybrid: tenant besar mendapat DB sendiri lewat tenant catalog." | ADR-P01, Step 2 `04` §4 |
-| "Apakah pajaknya sudah sesuai aturan PPh21/BPJS?" | "Belum, dan saya tidak mengklaimnya. Tarifnya disimpan sebagai ruleset ber-versi yang disederhanakan dan bisa dikonfigurasi. Engine-nya didesain supaya aturan resmi bisa dimasukkan sebagai data tanpa mengubah kode." | ADR-P03, Step 3 `06` §10 |
-| "Bagaimana kalau RLS salah konfigurasi, misalnya lupa `FORCE`?" | "Ada test katalog di CI: setiap tabel ber-`tenant_id` wajib RLS + FORCE, role aplikasi bukan owner dan tanpa BYPASSRLS, dan `SECURITY DEFINER` hanya satu yang di-allowlist. Di runtime ada pemeriksaan defensif: kalau baris dari tenant lain sampai ke aplikasi, request digagalkan dan metrik invariant naik." | Step 4 `07`, Step 6 C-36, C-46 |
+| "Kenapa tidak schema per tenant?" | "Saya pernah mengoperasikan schema per perusahaan. Isolasinya kuat, tapi migrasi harus dijalankan ke banyak schema dan laporan lintas tenant jadi rumit. Untuk UMKM yang jumlahnya banyak dan kecil-kecil, pooled + RLS lebih murah dioperasikan. Untuk tenant sangat besar, jalur V3-nya hybrid: tenant besar mendapat DB sendiri lewat tenant catalog." | ADR-P01, `04-architecture.md` §4 |
+| "Apakah pajaknya sudah sesuai aturan PPh21/BPJS?" | "Belum, dan saya tidak mengklaimnya. Tarifnya disimpan sebagai ruleset ber-versi yang disederhanakan dan bisa dikonfigurasi. Engine-nya didesain supaya aturan resmi bisa dimasukkan sebagai data tanpa mengubah kode." | ADR-P03, `07-payroll-engine.md` §10 |
+| "Bagaimana kalau RLS salah konfigurasi, misalnya lupa `FORCE`?" | "Ada test katalog di CI: setiap tabel ber-`tenant_id` wajib RLS + FORCE, role aplikasi bukan owner dan tanpa BYPASSRLS, dan `SECURITY DEFINER` hanya satu yang di-allowlist. Di runtime ada pemeriksaan defensif: kalau baris dari tenant lain sampai ke aplikasi, request digagalkan dan metrik invariant naik." | `13-db-rls-consistency-indexing.md`, threat model C-36, C-46 |
 | "Kenapa 404, bukan 403?" | "403 membocorkan bahwa resource itu ada. Untuk data tenant lain, pemanggil tidak boleh tahu keberadaannya." | ADR-010 |
-| "Kalau HR mengubah absensi saat run sedang dihitung?" | "Diizinkan, tapi approve akan menolak dengan RUN_STALE dan menampilkan karyawan yang berubah. Approve mengunci baris periode, dan penulis input mengambil share lock, sehingga tidak ada celah race." | ADR-P07, Step 7 O3/O12 |
-| "Satu tenant besar memperlambat yang lain?" | "Di V1 ya, itu batas yang saya akui. Mitigasinya: chunking, rate limit `heavy` per tenant, dan batas konkurensi job per tenant (P2)." | Step 2 `04` §2.6, Step 7 `03` |
-| "Worker zombie menulis setelah run final?" | "Ditolak tiga lapis: fencing saat menyelesaikan job, guard `calc_version`, dan trigger yang mengunci baris run dengan `FOR SHARE` sehingga terserialisasi dengan finalize." | ADR-006, Step 4 `06` PI-04 |
+| "Kalau HR mengubah absensi saat run sedang dihitung?" | "Diizinkan, tapi approve akan menolak dengan RUN_STALE dan menampilkan karyawan yang berubah. Approve mengunci baris periode, dan penulis input mengambil share lock, sehingga tidak ada celah race." | ADR-P07, desain transaksi & concurrency O3/O12 |
+| "Satu tenant besar memperlambat yang lain?" | "Di V1 ya, itu batas yang saya akui. Mitigasinya: chunking, rate limit `heavy` per tenant, dan batas konkurensi job per tenant (P2)." | `04-architecture.md` §2.6, `23-background-jobs.md` |
+| "Worker zombie menulis setelah run final?" | "Ditolak tiga lapis: fencing saat menyelesaikan job, guard `calc_version`, dan trigger yang mengunci baris run dengan `FOR SHARE` sehingga terserialisasi dengan finalize." | ADR-006, `12-db-schema.md` PI-04 |
 
 ---
 
@@ -249,5 +249,5 @@ Hindari istilah RLS, chunk, idempotent, dan fingerprint. Kalau ditanya "pakai te
 | Latihan versi HR | 2× | ≤ 3:00, tanpa istilah teknis |
 | `make demo-verify PROJECT=payrun` | Nightly (CI) + pagi hari demo | Hijau |
 | Rekam video cadangan | Setelah PayRun Sprint 8 (toolbar tersedia); rekam ulang setiap ada perubahan UI besar | 1080p, ≤ 10 menit, layar terbagi (app kiri, Grafana/terminal kanan), tanpa data sensitif atau token terlihat |
-| Checklist kesiapan demo | Sebelum setiap interview | Step 10 `04-definition-of-done.md` §6 |
+| Checklist kesiapan demo | Sebelum setiap interview | `31-definition-of-done.md` §6 |
 | Rotasi `DEMO_TOKEN` | Setelah demo yang dibagikan layarnya ke pihak luar | Token lama tidak berlaku |

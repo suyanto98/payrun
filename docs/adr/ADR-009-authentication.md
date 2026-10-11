@@ -28,7 +28,7 @@ Ancamannya meliputi pencurian token (XSS), CSRF, brute force password, token rep
 | Password | **argon2id**, parameter awal: memory 64 MiB, iterations 3, parallelism 2, salt 16 byte (dituning agar ±100–250 ms di server target) |
 | Access token | JWT **15 menit**, **HS256** dengan header `kid` untuk rotasi kunci; claim `sub`, `exp`, `iat`, `jti`, `roles` (+ `tid` di PayRun, ADR-P02) |
 | Penyimpanan access token | **Memori SPA** (variabel Pinia), **bukan** localStorage |
-| Refresh token | Opaque random 256-bit, disimpan **ter-hash (SHA-256)** di DB dengan `family_id`, `expires_at` (7 hari, sliding), `family_expires_at` (batas absolut 30 hari sejak login), `replaced_by` (grace 10 detik untuk refresh paralel dari dua tab), `revoked_at` (Step 4 `01-shared-tables.md`) |
+| Refresh token | Opaque random 256-bit, disimpan **ter-hash (SHA-256)** di DB dengan `family_id`, `expires_at` (7 hari, sliding), `family_expires_at` (batas absolut 30 hari sejak login), `replaced_by` (grace 10 detik untuk refresh paralel dari dua tab), `revoked_at` (`10-db-shared-tables.md`) |
 | Pengiriman refresh token | Cookie `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth` (dibutuhkan oleh refresh **dan** logout) |
 | CSRF di endpoint refresh | `SameSite=Strict` + wajib header kustom (`X-Requested-With: fetch`, nilai yang sama di kedua project) + validasi `Origin`. Endpoint lain memakai `Authorization: Bearer`, sehingga tidak rentan CSRF |
 | Rotasi + reuse detection | Setiap refresh: token lama ditandai `used`, token baru diterbitkan di family yang sama. Kalau token yang **sudah dipakai** dipresentasikan lagi, berarti ada pencurian → **revoke seluruh family** + audit log + paksa login ulang |

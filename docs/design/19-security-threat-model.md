@@ -1,8 +1,8 @@
-# Step 6.3 — PayRun Threat Model
+# PayRun Threat Model
 
-> Bagian dari [Step 6](00-index.md). Format, skema ID (`T-PR-xx`), dan skala risiko mengikuti `00-index.md`.
-> Threat generik (brute force login, JWT, XSS, CSRF, SQL injection, secrets, supply chain) ada di [`01-shared-threats.md`](01-shared-threats.md) sebagai `T-SH-xx` dan tidak diulang di sini. Kontrol `C-xx` dikatalogkan di [`04-security-controls-and-testing.md`](04-security-controls-and-testing.md).
-> Walkthrough serangan "Company A → Employee Company B" (10 varian A1–A10) sudah ada di Step 3 [`05-payrun-multi-tenancy.md`](../step-03-domain-design/05-payrun-multi-tenancy.md) §4. File ini merangkumnya sebagai satu threat (T-PR-01) dan menambahkan hal yang belum dicakup di sana.
+> Bagian dari threat model. Format, skema ID (`T-PR-xx`), dan skala risiko mengikuti `00-index.md`.
+> Threat generik (brute force login, JWT, XSS, CSRF, SQL injection, secrets, supply chain) ada di [`18-security-shared-threats.md`](18-security-shared-threats.md) sebagai `T-SH-xx` dan tidak diulang di sini. Kontrol `C-xx` dikatalogkan di [`20-security-controls.md`](20-security-controls.md).
+> Walkthrough serangan "Company A → Employee Company B" (10 varian A1–A10) sudah ada di desain domain [`06-multi-tenancy.md`](06-multi-tenancy.md) §4. File ini merangkumnya sebagai satu threat (T-PR-01) dan menambahkan hal yang belum dicakup di sana.
 
 ---
 
@@ -81,8 +81,8 @@ Aset          : Semua data tenant (gaji, PII, payroll)
 Threat        : User/proses tenant A membaca atau mengubah data tenant B.
 Attack scenario: HR PT Alpha mencoba GET /employees/{id milik Beta}, memalsukan tid, menyelipkan tenant_id di
                  body, memakai ID Beta di resource bertingkat, memanipulasi filter list, atau memanfaatkan bug
-                 developer yang lupa WHERE tenant_id. Detail 10 varian: Step 3 05 §4 (A1–A10).
-Mitigation    : Berlapis (Step 3 05 layer diagram): tenant hanya dari claim tid ber-signature (Step 5 04 §0) →
+                 developer yang lupa WHERE tenant_id. Detail 10 varian: `06-multi-tenancy.md` §4 (A1–A10).
+Mitigation    : Berlapis (`06-multi-tenancy.md` layer diagram): tenant hanya dari claim tid ber-signature (`16-api-endpoints.md` §0) →
                  body tenant_id ditolak 400 → policy service + scope query → RLS USING/WITH CHECK + FORCE
                  (ADR-P01) → composite FK (tenant_id, x_id) (PI-02) → audit. Resource tenant lain = 404 identik
                  dengan resource tidak ada. C-RLS, C-AUTHZ, C-TENANT-CTX.
@@ -90,7 +90,7 @@ Detection     : Metrik tenant_isolation_violation_total (defensive check di serv
                  lonjakan 404 per user (enumerasi) di log terstruktur.
 Test          : Isolation test suite PF-04 (cross-tenant untuk setiap endpoint), RLS bypass test (query tanpa
                  filter), pool leakage test, authorization matrix kolom lintas tenant.
-Status        : MVP. Residual: lihat Step 3 05 §5 (kredensial owner bocor, BYPASSRLS, SECURITY DEFINER,
+Status        : MVP. Residual: lihat `06-multi-tenancy.md` §5 (kredensial owner bocor, BYPASSRLS, SECURITY DEFINER,
                  bug jalur lintas tenant yang sah) → masing-masing dimitigasi di T-PR-14 dan T-PR-15.
 ```
 
@@ -107,7 +107,7 @@ Mitigation    : (a) Signature HS256 + kid (ADR-009); tid hanya diterbitkan oleh 
                  cek membership ACTIVE (ADR-P02). (b) Access token 15 menit; operasi sensitif (finalize,
                  lihat PII/slip orang lain, ubah gaji, ubah role) memeriksa ulang membership di DB (ADR-P02).
                  (c) Refresh memeriksa ulang membership; tenant dicabut → 200 dengan active_tenant: null
-                 (Step 5 04), bukan token ber-tid.
+                 (`16-api-endpoints.md`), bukan token ber-tid.
 Detection     : Audit membership.revoked + session.switch_tenant; log 401 signature invalid (pemalsuan).
 Test          : Token dengan tid diubah → 401; membership dicabut → operasi sensitif 403/404 seketika,
                  refresh tidak lagi memberi tid.
@@ -129,9 +129,9 @@ Mitigation    : Aturan pemberian role (siapa boleh memberi apa):
                    OWNER        → boleh memberi/mencabut semua role.
                    HR_ADMIN     → hanya MANAGER/EMPLOYEE, dan hanya pada member tanpa role admin.
                    lainnya      → tidak bisa mengubah role.
-                 (Step 5 05 §2.1 ᴿ). Approve hanya oleh approver_id snapshot: UPDATE … WHERE approver_id = $actor
+                 (`17-api-authorization-matrix.md` §2.1 ᴿ). Approve hanya oleh approver_id snapshot: UPDATE … WHERE approver_id = $actor
                  → 0 baris = 404 (ADR-P09). LAST_OWNER dijaga trigger deferred PI-16. SoD: PAYROLL_ADMIN tidak
-                 punya hak tulis gaji (Step 5 05 §3.1). Perubahan role berlaku di token berikutnya, dan operasi
+                 punya hak tulis gaji (`17-api-authorization-matrix.md` §3.1). Perubahan role berlaku di token berikutnya, dan operasi
                  sensitif memeriksa ulang (T-PR-02).
 Detection     : Audit membership.roles_changed (before/after), membership.sod_conflict;
                  403 berulang pada /members/* per user.
@@ -149,10 +149,10 @@ Threat        : Orang yang tidak diundang menjadi anggota tenant.
 Attack scenario: (a) Brute force token. (b) Memakai ulang link yang sudah dipakai. (c) Link diteruskan (sengaja
                  atau tidak) ke orang lain, yang lalu menerimanya. (d) Link bocor di log/riwayat browser/referer.
                  (e) Mengganti bagian tenant_id di token ke tenant lain.
-Mitigation    : Format <tenant_id>.<secret 32 byte base64url> (Step 4 06 §2.3); hanya SHA-256(secret) yang
+Mitigation    : Format <tenant_id>.<secret 32 byte base64url> (`12-db-schema.md` §2.3); hanya SHA-256(secret) yang
                  disimpan; sekali pakai (UPDATE … WHERE status='INVITED', ck_invitations_single_use);
                  berlaku 7 hari. **Accept mewajibkan user login dengan email = invited_email** (keputusan
-                 Step 6) sehingga link yang diteruskan tidak berguna bagi pemegang email lain. Semua kegagalan →
+                 threat model) sehingga link yang diteruskan tidak berguna bagi pemegang email lain. Semua kegagalan →
                  satu code 410 INVITATION_INVALID (tidak membedakan "salah token" vs "email tidak cocok").
                  Secret diletakkan di fragment URL (#…) agar tidak terkirim ke server lain lewat Referer atau
                  tercatat di access log. Lookup token dilakukan di bawah RLS tenant dari token, jadi mengganti
@@ -175,7 +175,7 @@ Attack scenario: (a) PAYROLL_ADMIN submit run lalu approve sendiri. (b) Admin be
 Mitigation    : CHECK ck_approval_requests_not_self (approver ≠ requester kecuali self_approved +
                  PAYROLL_RUN + reason). Pengecualian satu admin hanya diizinkan jika memang hanya ada satu
                  membership admin aktif (dicek server saat submit, bukan pengakuan client), alasan wajib,
-                 audit + metrik approval_self_approved_total (ADR-P09, Step 5 05 §3.1). Kombinasi
+                 audit + metrik approval_self_approved_total (ADR-P09, `17-api-authorization-matrix.md` §3.1). Kombinasi
                  HR_ADMIN + PAYROLL_ADMIN diizinkan tetapi diaudit (membership.sod_conflict) dan
                  ditampilkan sebagai peringatan (amandemen ADR-010).
 Detection     : Metrik approval_self_approved_total per tenant; audit sod_conflict; diff vs bulan lalu
@@ -197,7 +197,7 @@ Attack scenario: (a) POST /payroll-runs/{id}/finalize saat run masih CALCULATED.
 Mitigation    : Transisi state dengan guard UPDATE … WHERE status = 'APPROVED' (ADR-P05) → 409
                  INVALID_STATE_TRANSITION. Fingerprint guard saat approve → 409 RUN_STALE + employees_changed
                  (ADR-P07). Race: approve mengunci payroll_periods FOR UPDATE, penulis input lewat PeriodGuard
-                 mengambil FOR SHARE (Step 5 O3).
+                 mengambil FOR SHARE (kontrak API O3).
 Detection     : Audit payroll_run.* transitions; log 409 RUN_STALE.
 Test          : Finalize dari CALCULATED → 409; ubah absensi setelah kalkulasi → approve 409 RUN_STALE;
                  concurrency test approve vs edit absensi.
@@ -232,7 +232,7 @@ Threat        : Mengubah absensi/cuti/gaji yang berlaku di periode FINALIZED seh
 Attack scenario: PATCH /attendance/{id Maret} setelah Maret final; POST salary-changes dengan valid_from di
                  Februari; impor CSV berisi tanggal Maret.
 Mitigation    : PeriodGuard di semua modul input → 409 PERIOD_LOCKED; trigger DB sebagai backstop yang
-                 memeriksa rentang yang nilainya berubah (PI-14, Step 4 06). Trigger PI-04 + FOR SHARE
+                 memeriksa rentang yang nilainya berubah (PI-14, `12-db-schema.md`). Trigger PI-04 + FOR SHARE
                  menolak perubahan item/line/snapshot run final. Koreksi hanya lewat adjustment (PF-19).
 Detection     : Log 409 PERIOD_LOCKED per user; audit adjustment.created.
 Test          : Setiap endpoint input dengan tanggal di periode final → 409; UPDATE langsung via SQL role app →
@@ -251,8 +251,8 @@ Attack scenario: (a) Employee mengganti {id} di GET /me/payslips/{id} atau /pays
                  tenants/{tenant}/payslips/{run}/{employee}.pdf. (e) Bucket salah dikonfigurasi menjadi
                  publik/listable. (f) Penyerang yang punya credential storage menimpa PDF.
 Mitigation    : Endpoint self memakai predikat employee_id = $self (id request hanya kunci pencarian di dalam
-                 scope); non-pemilik → 404; HR/PAYROLL akses ter-audit per slip (PI-17); list slip/item yang memuat nominal gaji orang lain menulis satu audit `payroll.bulk_read` per request + recheck membership (Step 12: R2-6). Manager tidak punya
-                 hak lihat gaji (Step 5 05 §3.4). Presigned GET TTL 5 menit, dibuat setelah otorisasi + audit,
+                 scope); non-pemilik → 404; HR/PAYROLL akses ter-audit per slip (PI-17); list slip/item yang memuat nominal gaji orang lain menulis satu audit `payroll.bulk_read` per request + recheck membership (final review R2-6). Manager tidak punya
+                 hak lihat gaji (`17-api-authorization-matrix.md` §3.4). Presigned GET TTL 5 menit, dibuat setelah otorisasi + audit,
                  tidak pernah di-log atau di-cache; Content-Disposition: attachment. Object key bisa ditebak,
                  tetapi tanpa signature valid tetap ditolak; bucket private, tanpa listing, block public access
                  (ADR-012). Credential storage hanya di server, hak minimum (put/get pada prefix aplikasi).
@@ -277,7 +277,7 @@ Mitigation    : Default API = masked (****1234); PII penuh hanya lewat W6 untuk 
                  khusus 30/jam per user, dan audit employee.pii_viewed ditulis di transaksi yang sama (audit
                  gagal → 503, bukan PII tanpa jejak). Enkripsi aplikasi AES-256-GCM dengan AAD =
                  tenant_id:table.column sehingga ciphertext yang dipindah gagal didekripsi (ADR-P08). Blind
-                 index HMAC dengan key terpisah. Redaction di logger (allowlist field, Step 6 01) dan audit diff
+                 index HMAC dengan key terpisah. Redaction di logger (allowlist field, `18-security-shared-threats.md`) dan audit diff
                  tanpa nilai PII mentah (PF-16). NIK_TAKEN hanya di dalam tenant sendiri dan tidak menyebut
                  pemiliknya.
 Detection     : Audit pii_viewed + metrik per user; test log redaction di CI; alert rate limit W6.
@@ -336,9 +336,9 @@ Attack scenario: (a) Request tenant A meng-enqueue job dengan tenant_id = B. (b)
                  Beta ke payload job Alpha. (c) Worker membaca tenant dari payload JSON, bukan dari kolom.
 Mitigation    : Tabel jobs tidak di bawah RLS (worker mengklaim lintas tenant), tetapi trigger
                  jobs_enforce_tenant menolak INSERT dengan tenant_id ≠ app.tenant_id transaksi, dan job
-                 bertenant di luar tenant transaction (Step 4 01). Handler hanya memakai kolom jobs.tenant_id
+                 bertenant di luar tenant transaction (`10-db-shared-tables.md`). Handler hanya memakai kolom jobs.tenant_id
                  untuk WithTenantTxFor; tenant di payload diabaikan. Semua data dibaca di bawah RLS, sehingga
-                 run_id Beta di job Alpha = 0 baris → job gagal aman (Step 3 PFS-09). Fencing CompleteInTx
+                 run_id Beta di job Alpha = 0 baris → job gagal aman (desain domain PFS-09). Fencing CompleteInTx
                  (ADR-006).
 Detection     : Log job gagal "resource not found in tenant"; metrik job_dead_total.
 Test          : Enqueue job tenant B dari transaksi tenant A → ditolak trigger; job dengan run_id tenant lain
@@ -355,7 +355,7 @@ Attack scenario: (a) Migrasi baru membuat tabel ber-tenant_id tanpa ENABLE/FORCE
                  (b) App terhubung sebagai payrun_owner (owner tabel melewati RLS tanpa FORCE). (c) Role app
                  diberi BYPASSRLS. (d) View baru dibuat tanpa security_invoker. (e) Fungsi SECURITY DEFINER
                  baru ditambahkan.
-Mitigation    : Test katalog di CI (Step 4 07 §2): setiap tabel ber-tenant_id wajib relrowsecurity +
+Mitigation    : Test katalog di CI (`13-db-rls-consistency-indexing.md` §2): setiap tabel ber-tenant_id wajib relrowsecurity +
                  relforcerowsecurity + policy; tidak ada SECURITY DEFINER di luar allowlist
                  (auth_lookup_user); view wajib security_invoker. Readiness check saat startup: api/worker
                  menolak start jika role koneksi adalah owner atau punya BYPASSRLS. Kredensial owner hanya di
@@ -414,7 +414,7 @@ Mitigation    : Rate limit tier heavy per tenant (calculate 10/jam, import 10/ja
                  job (ADR-P05); statement_timeout; cursor pagination dengan limit maksimum 100 dan rentang
                  ≤ 366 hari. P2: batas konkurensi job per tenant di worker (PF-27).
 Detection     : Metrik job_queue_depth + umur job tertua; durasi run per tenant tier.
-Test          : Load test dua tenant (besar + kecil): run tenant kecil tetap selesai dalam batas waktu (Step 9).
+Test          : Load test dua tenant (besar + kecil): run tenant kecil tetap selesai dalam batas waktu (desain DevOps).
 Status        : MVP (rate limit, chunking). Residual Medium sampai fairness per tenant (P2) dibangun.
 ```
 
@@ -427,7 +427,7 @@ Attack scenario: (a) Cek ketersediaan slug saat signup untuk menebak nama perusa
                  EMPLOYEE_NO_TAKEN / NIK_TAKEN untuk menebak data. (c) Membandingkan waktu respons 404 untuk
                  ID tenant lain vs ID acak. (d) Timing blind index.
 Mitigation    : NIK_TAKEN/EMPLOYEE_NO_TAKEN hanya dievaluasi di dalam tenant sendiri (RLS + unique per tenant)
-                 dan tanpa menyebut pemilik. Jalur 404 identik (Step 3 05 §5). Blind index dibandingkan oleh DB
+                 dan tanpa menyebut pemilik. Jalur 404 identik (`06-multi-tenancy.md` §5). Blind index dibandingkan oleh DB
                  lewat unique index, bukan oleh kode aplikasi.
 Detection     : Lonjakan 409/404 per user.
 Test          : Respons 404 ID tenant lain == ID acak (status, body).
@@ -443,7 +443,7 @@ Aset          : Audit log
 Threat        : Pelaku menyangkal aksi, menghapus jejak, atau membaca audit tenant lain.
 Attack scenario: HR menghapus/mengubah baris audit setelah mengubah gaji; HR tenant A mem-filter audit_log
                  untuk melihat aktivitas tenant B.
-Mitigation    : audit_log append-only (trigger forbid_update_delete + grant SELECT/INSERT, Step 4 01);
+Mitigation    : audit_log append-only (trigger forbid_update_delete + grant SELECT/INSERT, `10-db-shared-tables.md`);
                  ditulis di transaksi yang sama dengan perubahan; RLS tenant pada audit_log; GET /audit-log
                  hanya untuk O/H. Aksi dicatat dengan request_id + IP + user agent.
 Detection     : Error 42501 (percobaan UPDATE/DELETE) di log → alert.
@@ -460,7 +460,7 @@ Threat        : Data pribadi disimpan lebih lama dari yang diizinkan, atau pengh
                  historis.
 Attack scenario: Mantan karyawan meminta datanya dihapus (hak subjek data UU PDP); tenant berhenti dan meminta
                  seluruh datanya dihapus.
-Mitigation    : Tidak ada DELETE baris payroll/employee (Step 4 §5). Penghapusan = anonimisasi kolom PII
+Mitigation    : Tidak ada DELETE baris payroll/employee (desain database §5). Penghapusan = anonimisasi kolom PII
                  (enc → NULL, nama → "Karyawan #<no>"), sementara angka payroll tetap untuk kewajiban
                  penyimpanan pajak/akuntansi. Offboarding tenant: export data, lalu penghapusan terjadwal.
                  V2: crypto-shredding (hapus DEK tenant di KMS).

@@ -19,14 +19,14 @@ Redis sering dimasukkan ke stack secara default (cache, session, rate limit, ide
 
 **Redis tidak dipakai di V1.**
 
-- Idempotency: Postgres, di transaksi yang sama ([ADR-L02](ADR-L02-idempotency.md)). Ini **tidak akan pernah** dipindah ke Redis saja.
+- Idempotency: Postgres, di transaksi yang sama (ADR-L02). Ini **tidak akan pernah** dipindah ke Redis saja.
 - Rate limiting V1: middleware in-memory per instance (token bucket) untuk login/OTP-like endpoints. Cukup karena V1 hanya punya satu instance API.
 - Lock: row lock Postgres.
 - Session: tidak ada server session (JWT + refresh token di Postgres, [ADR-009](ADR-009-authentication.md)).
 
 ## Reason
 
-Tidak ada masalah V1 yang membutuhkan Redis. Menambahkannya hanya membuat project terlihat lebih kompleks, dan itu dilarang oleh prinsip Step 1.
+Tidak ada masalah V1 yang membutuhkan Redis. Menambahkannya hanya membuat project terlihat lebih kompleks, dan itu dilarang oleh prinsip strategi produk.
 
 ## Trade-offs
 
@@ -48,4 +48,4 @@ Tidak ada masalah V1 yang membutuhkan Redis. Menambahkannya hanya membuat projec
 
 ## Related
 
-- [ADR-008](ADR-008-caching.md) · [ADR-L02](ADR-L02-idempotency.md) · [ADR-L03](ADR-L03-concurrency-pessimistic-locking.md)
+- [ADR-008](ADR-008-caching.md) · ADR-L02 · ADR-L03

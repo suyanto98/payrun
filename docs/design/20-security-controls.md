@@ -1,6 +1,6 @@
-# Step 6.4 — Security Controls, Testing & Operations
+# Security Controls, Testing & Operations
 
-> Bagian dari [Step 6](00-index.md). Katalog kontrol ini direferensikan oleh threat di `01-shared-threats.md` (T-SH), `02-ledgerpay-threat-model.md` (T-LP), dan `03-payrun-threat-model.md` (T-PR).
+> Bagian dari threat model. Katalog kontrol ini direferensikan oleh threat di `18-security-shared-threats.md` (T-SH), `02-ledgerpay-threat-model.md` (T-LP), dan `19-security-threat-model.md` (T-PR).
 > Setiap kontrol harus menunjuk **tempat implementasinya** dan **test yang membuktikannya**. Kontrol tanpa test dianggap belum ada.
 
 ---
@@ -14,7 +14,7 @@ Tipe: **P** = preventive · **D** = detective · **C** = corrective.
 |---|---|---|---|---|---|
 | C-01 | Middleware auth per grup rute (user JWT / merchant API key / webhook signature / OPS) | P | `platform/httpx` router groups, `platform/auth` | T-SH-03, T-SH-14, T-LP (API key) | `route_group_auth_scheme_enforced` |
 | C-02 | Password hashing argon2id + kebijakan password (min 10, daftar umum offline) | P | `platform/auth/password` | T-SH-02 | `password_hash_params`, `password_policy_rejects_common` |
-| C-03 | Lockout bertahap + error generik + timing equalization; akun terkunci menjawab `401 INVALID_CREDENTIALS` + `Retry-After` (bukan `ACCOUNT_LOCKED`, Step 12 R2-5); limiter IP+email juga berlaku untuk email yang tidak ada | P | `identity` service, `users.locked_until` | T-SH-01 | `authn_bruteforce_lockout`, `authn_unknown_email_timing` |
+| C-03 | Lockout bertahap + error generik + timing equalization; akun terkunci menjawab `401 INVALID_CREDENTIALS` + `Retry-After` (bukan `ACCOUNT_LOCKED`, final review R2-5); limiter IP+email juga berlaku untuk email yang tidak ada | P | `identity` service, `users.locked_until` | T-SH-01 | `authn_bruteforce_lockout`, `authn_unknown_email_timing` |
 | C-04 | Verifikasi JWT ketat (alg pinned HS256, kid, exp/nbf/iss/aud, skew 30s) | P | `platform/auth/jwt` | T-SH-03, T-SH-04 | `jwt_rejects_*` |
 | C-05 | Refresh token opaque ter-hash, rotasi, reuse detection, grace 10s, batas family 30 hari | P/D | `identity`, `refresh_tokens` | T-SH-05, T-SH-06 | `refresh_*` |
 | C-06 | Policy authorization di service layer + query scoping ke principal | P | `modules/*/service.go`, ADR-010 | T-SH-13, T-SH-14, T-LP, T-PR | `authz_matrix`, `bola_*` |
@@ -30,7 +30,7 @@ Tipe: **P** = preventive · **D** = detective · **C** = corrective.
 | C-12 | Query parameterized (sqlc), tanpa SQL dinamis berbasis string | P | `db/queries`, gosec G201/G202 | T-SH-10 | gosec CI, `sqli_filter_payloads_rejected` |
 | C-13 | DTO eksplisit + decoder strict (`DisallowUnknownFields`) | P | `platform/httpx/decode`, oapi-codegen | T-SH-11 | `mass_assignment_unknown_field_rejected` |
 | C-14 | Batas body (64 KB / CSV 5 MB), kedalaman JSON, media type | P | `platform/httpx`, Caddy | T-SH-12 | `body_limit_413`, `json_depth_limit_400`, `content_type_415` |
-| C-15 | Least privilege DB: `<proj>_app` bukan owner, append-only = SELECT/INSERT | P | Migrasi role/grant (Step 4 §6) | T-SH-10, T-SH-20, T-PR (RLS) | `db_grants_catalogue_test` |
+| C-15 | Least privilege DB: `<proj>_app` bukan owner, append-only = SELECT/INSERT | P | Migrasi role/grant (desain database §6) | T-SH-10, T-SH-20, T-PR (RLS) | `db_grants_catalogue_test` |
 | C-16 | 404 untuk resource di luar scope; tidak ada code spesifik yang membocorkan jenis resource | P | Error mapping, service | T-SH-13, T-SH-21 | `bola_*`, `error_not_found_uniform` |
 | C-17 | Perubahan role hanya lewat endpoint khusus + policy "hanya OWNER memberi OWNER" + audit | P/D | `iam`/`identity` | T-SH-14, T-PR (eskalasi) | `cannot_self_promote_owner`, `role_change_audited` |
 | C-25 | Pemetaan error ke katalog RFC 9457; unmapped → 500 generik | P | `platform/httpx/problem`, `platform/db/errors` | T-SH-21 | `error_unmapped_returns_generic_500`, `error_no_pg_message_leak` |
@@ -42,7 +42,7 @@ Tipe: **P** = preventive · **D** = detective · **C** = corrective.
 | C-18 | Secret di env 0600, redaction config, kunci per environment ber-versi (kid/v1) | P | `platform/config`, VM | T-SH-16 | `config_dump_redacts_secrets` |
 | C-19 | gitleaks (CI + pre-commit) | D | CI | T-SH-16 | Job `gitleaks` |
 | C-20 | TLS (Caddy, Let's Encrypt), HSTS, network internal compose, DB tidak dipublish | P | Caddyfile, `docker-compose.yml` | T-SH-17 | `headers_hsts_present`, `compose_no_db_port_published` |
-| C-21 | Enkripsi disk penyedia + backup terenkripsi (age, public key di VM; dua recipient: key operator offline + key drill di GitHub env `restore-drill`, pengecualian yang diterima karena data demo sintetis, Step 9 `03`) | P | Skrip backup (Step 9) | T-SH-18 | `backup_artifact_is_encrypted` (restore drill) |
+| C-21 | Enkripsi disk penyedia + backup terenkripsi (age, public key di VM; dua recipient: key operator offline + key drill di GitHub env `restore-drill`, pengecualian yang diterima karena data demo sintetis, `29-deploy-migrations-backup.md`) | P | Skrip backup (desain DevOps) | T-SH-18 | `backup_artifact_is_encrypted` (restore drill) |
 | C-22 | Enkripsi PII level aplikasi (AES-256-GCM, AAD, keyring) + blind index | P | PayRun `employee`, ADR-P08 | T-SH-18, T-PR (PII) | `pii_roundtrip`, `pii_aad_swap_fails`, `pii_masked_by_default` |
 | C-23 | Logging berbasis allowlist + redaction header/tipe sensitif | P | `platform/observability` | T-SH-19 | `log_redaction_*` |
 | C-24 | Audit log append-only (trigger + grant), ditulis dalam transaksi bisnis | P/D | `audit_log` | T-SH-20, T-LP (insider), T-PR | `audit_log_update_rejected`, `audit_written_in_same_tx` |
@@ -53,8 +53,8 @@ Tipe: **P** = preventive · **D** = detective · **C** = corrective.
 | C-26 | Scanning dependency (govulncheck, osv-scanner/npm audit) + trivy image | D | CI (§3) | T-SH-22 | Job CI |
 | C-27 | Pin base image by digest + Actions by commit SHA + Dependabot | P | Dockerfile, workflow | T-SH-22 | Lint workflow (`pinned_actions_check`) |
 | C-28 | Hardening container (distroless, non-root, read-only, no-new-privileges, cap_drop ALL, limit) | P | Dockerfile, compose | T-SH-23 | `compose_hardening_check` |
-| C-29 | Timeout server/DB, pool tetap, batas list/rentang, tier `heavy` | P | `cmd/*`, ADR-011, Step 5 §6–7 | T-SH-24 | `server_timeouts_configured`, load test |
-| C-30 | Hardening host (SSH key-only, ufw 22/80/443, fail2ban, unattended-upgrades, Grafana tidak dipublish) | P | Provisioning (Step 9) | T-SH-25 | Skrip cek host |
+| C-29 | Timeout server/DB, pool tetap, batas list/rentang, tier `heavy` | P | `cmd/*`, ADR-011, kontrak API §6–7 | T-SH-24 | `server_timeouts_configured`, load test |
+| C-30 | Hardening host (SSH key-only, ufw 22/80/443, fail2ban, unattended-upgrades, Grafana tidak dipublish) | P | Provisioning (desain DevOps) | T-SH-25 | Skrip cek host |
 
 ### 1.5 Kontrol domain (dirinci di file 02/03)
 | ID | Kontrol | Tipe | Implementasi | Threat | Test |
@@ -114,7 +114,7 @@ Test: `headers_*_present` (integration test terhadap Caddy + api di compose) mem
 
 ---
 
-## 4. Security test catalogue (input untuk Step 8)
+## 4. Security test catalogue (input untuk desain observability & testing)
 
 | Kategori | Test | Project | Tipe |
 |---|---|---|---|
@@ -123,7 +123,7 @@ Test: `headers_*_present` (integration test terhadap Caddy + api di compose) mem
 | Refresh | `refresh_rotation_issues_new_token`, `refresh_reuse_revokes_family`, `refresh_parallel_within_grace_ok`, `refresh_reuse_after_grace_revokes`, `refresh_family_absolute_expiry`, `logout_revokes_family` | Keduanya | Integration |
 | CSRF / CORS | `csrf_refresh_without_header_rejected`, `csrf_refresh_bad_origin_rejected`, `cors_preflight_foreign_origin_denied` | Keduanya | Integration |
 | BOLA | `bola_<resource>` untuk wallet, transfer, top-up, payout, payment intent (merchant ↔ merchant), refund | LedgerPay | Integration |
-| Authz matrix | `authz_matrix` (Step 5 file 05; endpoint tanpa baris matriks = fail) | PayRun | Integration (table-driven) |
+| Authz matrix | `authz_matrix` (kontrak API file 05; endpoint tanpa baris matriks = fail) | PayRun | Integration (table-driven) |
 | SSRF / egress | `webhook_egress_blocks_private_ip`, `webhook_egress_blocks_metadata_ip`, `webhook_egress_no_redirect`, `webhook_egress_dns_rebinding_pinned_ip` | LedgerPay | Integration |
 | Ops | `ops_route_rejects_user_role`, `ops_resolution_requires_evidence`, `ops_action_audited` | LedgerPay | Integration |
 | Cross-tenant | `cross_tenant_<endpoint>` (semua role dari Beta → 404), `cross_tenant_fk_rejected` | PayRun | Integration |
@@ -249,7 +249,7 @@ Siklus: **Detect → Contain → Eradicate → Recover → Postmortem** (blamele
 | Dasar pemrosesan yang sah (contoh: pelaksanaan kontrak kerja, kewajiban hukum) | Tenant (pemberi kerja) adalah pengendali data; PayRun bertindak sebagai **prosesor**. Ini dicatat di ToS/DPA (di luar cakupan portfolio) |
 | Minimisasi data | Hanya field yang dibutuhkan payroll; tidak ada data biometrik/foto di V1 |
 | Keamanan pemrosesan | RLS, enkripsi PII (C-22), audit akses (C-24), least privilege (C-15) |
-| Hak subjek data (akses, koreksi, penghapusan) | Export data per employee; penghapusan = **anonimisasi** kolom PII (Step 4 §5), karena data payroll historis tetap wajib disimpan untuk kewajiban lain |
+| Hak subjek data (akses, koreksi, penghapusan) | Export data per employee; penghapusan = **anonimisasi** kolom PII (desain database §5), karena data payroll historis tetap wajib disimpan untuk kewajiban lain |
 | Notifikasi kegagalan pelindungan data dalam batas waktu tertentu | Playbook 7.2 mencakup penentuan cakupan dari audit log. **Batas waktu notifikasi harus diverifikasi dari teks UU** |
 | Retensi | Kebijakan retensi per tenant (V2); PDF slip dan audit mengikuti kebutuhan hukum ketenagakerjaan/pajak |
 

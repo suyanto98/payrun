@@ -1,7 +1,7 @@
-# Step 1.0 — Portfolio Strategy Overview
+# Portfolio Strategy Overview
 
-> Bagian dari: Step 1 — Product & System Strategy
-> Baca dulu file ini, lalu [`01-ledgerpay.md`](01-ledgerpay.md), [`02-payrun.md`](02-payrun.md), dan [`03-cross-project.md`](03-cross-project.md).
+> Bagian dari: strategi produk — Product & System Strategy
+> Baca dulu file ini, lalu `01-ledgerpay.md`, [`02-product-strategy.md`](02-product-strategy.md), dan `03-cross-project.md`.
 
 ---
 
@@ -51,12 +51,12 @@ Kedua project dipilih karena masing-masing **memaksa** pertanyaan-pertanyaan di 
 
 ## 3. Asumsi kerja
 
-Asumsi berikut dipakai di seluruh dokumen. Kalau ada yang salah, koreksi dulu sebelum Step 2.
+Asumsi berikut dipakai di seluruh dokumen. Kalau ada yang salah, koreksi dulu sebelum desain fitur & arsitektur.
 
 | # | Asumsi | Dampak kalau salah |
 |---|---|---|
 | A1 | Waktu tersedia ≥ 14 jam/minggu (dikonfirmasi 2026-10-01) | Estimasi roadmap di `03-cross-project.md` berubah |
-| A2 | Backend Go: bahasa yang dipakai sehari-hari, jadi produktif dan bisa dipertahankan di interview | Kalau target lowongan Java/Node, stack perlu ditinjau ulang di ADR Step 2 |
+| A2 | Backend Go: bahasa yang dipakai sehari-hari, jadi produktif dan bisa dipertahankan di interview | Kalau target lowongan Java/Node, stack perlu ditinjau ulang di ADR desain fitur & arsitektur |
 | A3 | Frontend Vue 3 (sudah familiar), dengan UI **minimal tetapi rapi** | UI hanya alat demo. Nilai utamanya ada di backend dan sistemnya |
 | A4 | Domain Indonesia (IDR, aturan e-money, PPh21/BPJS versi **disederhanakan**) | Angka regulasi wajib diverifikasi dan ditandai "simplified" di README |
 | A5 | Dikerjakan solo, tetapi dengan proses tim: ADR, PR, CI, conventional commit | — |

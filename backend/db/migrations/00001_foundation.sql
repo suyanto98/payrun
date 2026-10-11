@@ -21,7 +21,7 @@ END $$;
 -- +goose StatementEnd
 
 -- ---------------------------------------------------------------- tenant context helpers
--- Semua policy RLS memakai helper ini, tidak pernah current_setting(...)::uuid mentah (Step 12 C3):
+-- Semua policy RLS memakai helper ini, tidak pernah current_setting(...)::uuid mentah (final review C3):
 -- setelah GUC kustom pernah disetel di suatu koneksi (termasuk set_config(..., true) yang transaksinya
 -- sudah selesai), current_setting('app.tenant_id', true) mengembalikan '' (string kosong), BUKAN NULL.
 -- Cast ''::uuid gagal (22P02), sehingga request gagal acak tergantung koneksi pool mana yang didapat.
@@ -32,7 +32,7 @@ END $$;
 CREATE FUNCTION current_tenant() RETURNS uuid LANGUAGE sql STABLE PARALLEL SAFE AS
   $$ SELECT nullif(current_setting('app.tenant_id', true), '')::uuid $$;
 
--- Identitas user di mode platform (login, daftar tenant, switch tenant). Mode eksklusif (Step 12 C2):
+-- Identitas user di mode platform (login, daftar tenant, switch tenant). Mode eksklusif (final review C2):
 -- satu transaksi tidak pernah memiliki app.tenant_id dan app.user_id aktif bersamaan (Sprint 1).
 CREATE FUNCTION current_user_id() RETURNS uuid LANGUAGE sql STABLE PARALLEL SAFE AS
   $$ SELECT nullif(current_setting('app.user_id', true), '')::uuid $$;

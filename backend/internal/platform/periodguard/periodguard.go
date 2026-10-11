@@ -1,4 +1,4 @@
-// Package periodguard: kontrak PeriodGuard (ADR-P07, PI-13/PI-14, Step 7 `22` D1/D3/O12) untuk setiap
+// Package periodguard: kontrak PeriodGuard (ADR-P07, PI-13/PI-14, `22-tx-concurrency.md` D1/D3/O12) untuk setiap
 // penulis input payroll. Implementasinya ada di modul payroll (pemilik payroll_periods dan
 // payroll_input_changes) dan dipasang composition root; modul penulis (employee, compensation,
 // tenancy) hanya mengenal interface ini (ADR-001).

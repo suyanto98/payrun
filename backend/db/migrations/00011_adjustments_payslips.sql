@@ -1,5 +1,5 @@
 -- Sprint 7: adjustment (PF-19, PI-15) dan payslip (PF-15, PF-22, PI-17). Skema mengikuti
--- docs/design/12-db-schema.md §7.6–7.7 dengan amandemen Step 12:
+-- docs/design/12-db-schema.md §7.6–7.7 dengan amandemen final review:
 --   - target adjustment disimpan sebagai (target_year, target_month), bukan FK periode (R1-4): periode
 --     target boleh belum dibuat saat adjustment dicatat.
 --   - ix_payslips_item (C4).

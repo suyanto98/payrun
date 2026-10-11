@@ -1,4 +1,4 @@
--- Sprint 4: payroll run (PF-13). Desain: docs/design/12-db-schema.md §7.1–7.5, Step 7 `22` §3.2.
+-- Sprint 4: payroll run (PF-13). Desain: docs/design/12-db-schema.md §7.1–7.5, `22-tx-concurrency.md` §3.2.
 -- Invariant di DB (jaring terakhir di bawah guard aplikasi):
 --   PI-03 satu run aktif per periode            → uq_payroll_runs_active_per_period
 --   PI-04 run final/batal immutable             → payroll_runs_terminal_immutable,
@@ -205,7 +205,7 @@ CREATE TABLE payroll_item_snapshots (
 -- ---------------------------------------------------------------- PI-04 (FOR SHARE) + PI-05
 -- FOR SHARE pada baris run: INSERT/UPDATE/DELETE hasil terserialisasi dengan transaksi finalize
 -- (yang meng-UPDATE baris run yang sama). Tanpa lock, chunk zombie bisa lolos saat finalize belum commit.
--- Pengecualian (Step 12 R3-2): DELETE baris versi lama oleh job cleanup.
+-- Pengecualian (final review R3-2): DELETE baris versi lama oleh job cleanup.
 -- +goose StatementBegin
 CREATE FUNCTION forbid_change_on_finalized_run() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE t uuid := COALESCE(NEW.tenant_id, OLD.tenant_id);

@@ -21,7 +21,7 @@ import (
 	"payrun/internal/platform/testhook"
 )
 
-// Finalize (Y11, PF-14, ADR-P07, Step 7 `22` §3.4) di transaksi idempotency:
+// Finalize (Y11, PF-14, ADR-P07, `22-tx-concurrency.md` §3.4) di transaksi idempotency:
 //
 //	periode FOR UPDATE [2] → run FOR UPDATE [3] (APPROVED) → role pemanggil dari DB → cek stale ULANG
 //	(input bisa berubah di antara approve dan finalize, §4.c) → run FINALIZED (trigger total PI-05) →

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Date adalah tanggal lokal tenant tanpa jam (Step 3 `06` §4: semua "tanggal" di engine adalah tanggal
+// Date adalah tanggal lokal tenant tanpa jam (`07-payroll-engine.md` §4: semua "tanggal" di engine adalah tanggal
 // lokal; konversi timestamp → tanggal dilakukan InputProvider). Disimpan sebagai tengah malam UTC
 // supaya aritmetika hari tidak terpengaruh DST/zona.
 type Date struct{ t time.Time }
