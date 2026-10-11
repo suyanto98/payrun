@@ -168,6 +168,10 @@ func New(t testing.TB, opts ...Option) TestDB {
 		t.Fatalf("dbtest: parse dsn: %v", err)
 	}
 	cfg.ConnConfig.RuntimeParams["lock_timeout"] = "2000"
+	// Ukuran pool seperti produksi (DB_MAX_CONNS=20). Default pgxpool = max(4, jumlah CPU): di runner CI
+	// 2 core, request yang antre di row lock memegang semua koneksi, pemegang lock tidak dapat koneksi
+	// lagi, dan yang antre baru lepas setelah lock_timeout (409 yang tidak akan terjadi di produksi).
+	cfg.MaxConns = 20
 	for _, o := range opts {
 		o(cfg)
 	}
