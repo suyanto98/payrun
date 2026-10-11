@@ -4,7 +4,8 @@ import { useAuth } from './auth'
 
 // Sandbox pengunjung demo publik (hanya image demo). Build release: GET /demo = 404 → semua UI demo tersembunyi.
 export type DemoPersona = { key: 'payroll' | 'owner' | 'employee'; name: string; title: string }
-export type Sandbox = { expires_at: string; company: string; persona: DemoPersona['key'] | ''; personas: DemoPersona[] }
+export type TourLinks = { last_month_run: string | null; current_run: string | null; raise_employee: string | null }
+export type Sandbox = { expires_at: string; company: string; persona: DemoPersona['key'] | ''; personas: DemoPersona[]; links?: TourLinks }
 
 const cookieHeaders = { 'X-Requested-With': 'fetch' }
 
@@ -13,20 +14,33 @@ export type TourKey = 'final' | 'verify' | 'crash' | 'submit' | 'approve' | 'rai
 export type TourStep = { key: TourKey; persona: DemoPersona['key']; to: string; title: string; hint: string; why: string }
 export const tour: TourStep[] = [
   { key: 'final', persona: 'payroll', to: '/payroll', title: 'Buka payroll bulan lalu yang sudah final',
-    hint: 'Klik periode berstatus Final.', why: 'Gaji yang sudah dibayar terkunci dan tercatat lengkap: siapa menghitung, siapa menyetujui, kapan.' },
+    hint: 'Klik langkah ini: payroll bulan lalu langsung terbuka.', why: 'Gaji yang sudah dibayar terkunci dan tercatat lengkap: siapa menghitung, siapa menyetujui, kapan.' },
   { key: 'verify', persona: 'payroll', to: '/payroll', title: 'Cek ulang semua slip',
-    hint: 'Tombol "Cek ulang semua slip" di halaman payroll final.', why: 'Saat audit atau ada karyawan protes, HR bisa membuktikan setiap slip dihitung benar, bahkan berbulan-bulan kemudian.' },
+    hint: 'Tekan tombol yang disorot: semua slip dihitung ulang.', why: 'Saat audit atau ada karyawan protes, HR bisa membuktikan setiap slip dihitung benar, bahkan berbulan-bulan kemudian.' },
   { key: 'crash', persona: 'payroll', to: '/payroll', title: 'Buat payroll bulan ini dengan "Pasang gangguan"',
-    hint: 'Buat payroll → Pasang gangguan → Hitung.', why: 'Server bisa mati kapan saja. Di sini tidak ada karyawan yang dibayar dua kali atau terlewat.' },
+    hint: 'Tekan "Buat payroll", lalu "Pasang gangguan" dan "Hitung" (keduanya akan disorot).', why: 'Server bisa mati kapan saja. Di sini tidak ada karyawan yang dibayar dua kali atau terlewat.' },
   { key: 'submit', persona: 'payroll', to: '/payroll', title: 'Minta persetujuan Pak Hendra',
-    hint: 'Tombol "Minta persetujuan" setelah gaji dihitung.', why: 'Orang yang menghitung gaji tidak bisa sekaligus menyetujuinya: mencegah salah hitung dan kecurangan.' },
+    hint: 'Tekan "Minta persetujuan" yang disorot.', why: 'Orang yang menghitung gaji tidak bisa sekaligus menyetujuinya: mencegah salah hitung dan kecurangan.' },
   { key: 'approve', persona: 'owner', to: '/approvals', title: 'Setujui payroll atau cuti',
-    hint: 'Menu Persetujuan: cuti Rizky dan payroll dari Dina.', why: 'Semua keputusan ada di satu kotak, dengan nama penyetuju tercatat.' },
+    hint: 'Tekan "Setujui" yang disorot (cuti Rizky atau payroll dari Dina).', why: 'Semua keputusan ada di satu kotak, dengan nama penyetuju tercatat.' },
   { key: 'raise', persona: 'owner', to: '/employees', title: 'Coba ubah gaji Bayu mulai bulan lalu',
-    hint: 'Karyawan → Bayu Saputra → Ubah gaji. Coba tanggal bulan lalu, lalu bulan ini.', why: 'Gaji yang sudah final tidak bisa diubah diam-diam. Perubahan berlaku ke depan dan riwayatnya tersimpan.' },
+    hint: 'Form ubah gaji Bayu langsung terbuka. Coba tanggal bulan lalu, lalu bulan ini.', why: 'Gaji yang sudah final tidak bisa diubah diam-diam. Perubahan berlaku ke depan dan riwayatnya tersimpan.' },
   { key: 'payslip', persona: 'employee', to: '/payslips', title: 'Buka slip gaji sendiri',
-    hint: 'Lihat rincian BPJS dan potongan, lalu unduh PDF.', why: 'Karyawan melihat sendiri rincian gajinya, jadi pertanyaan "kok gaji saya segini?" ke HR berkurang.' },
+    hint: 'Buka slip yang disorot, lihat rincian BPJS, lalu unduh PDF.', why: 'Karyawan melihat sendiri rincian gajinya, jadi pertanyaan "kok gaji saya segini?" ke HR berkurang.' },
 ]
+
+/** Tautan tur yang mendarat tepat di tempat aksinya (#penanda = elemen yang disorot, lihat spotlight.ts). */
+export function tourLink(key: TourKey, l?: TourLinks): string {
+  switch (key) {
+    case 'final': return l?.last_month_run ? `/payroll/${l.last_month_run}#final` : '/payroll'
+    case 'verify': return l?.last_month_run ? `/payroll/${l.last_month_run}#verify` : '/payroll'
+    case 'crash': return l?.current_run ? `/payroll/${l.current_run}#crash` : '/payroll#create'
+    case 'submit': return l?.current_run ? `/payroll/${l.current_run}#submit` : '/payroll#create'
+    case 'approve': return '/approvals#approve'
+    case 'raise': return l?.raise_employee ? `/employees/${l.raise_employee}?raise=1#raise` : '/employees'
+    case 'payslip': return '/payslips#payslip'
+  }
+}
 
 /** Halaman pertama setelah berganti peran: tempat persona itu punya sesuatu untuk dilakukan. */
 export const personaLanding: Record<DemoPersona['key'], string> = { payroll: '/payroll', owner: '/approvals', employee: '/payslips' }

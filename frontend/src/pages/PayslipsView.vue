@@ -68,8 +68,8 @@ onMounted(() => load())
       <div class="card card-flush list">
         <ul class="slip-list">
           <li v-if="!loading && slips.length === 0" class="empty">Belum ada slip di tahun ini.</li>
-          <li v-for="s in slips" :key="s.id">
-            <button type="button" class="slip-row" :class="{ active: selected?.id === s.id }" :aria-current="selected?.id === s.id" @click="open(s.id)">
+          <li v-for="(s, i) in slips" :key="s.id">
+            <button type="button" class="slip-row" :data-spot="i === 0 ? 'payslip' : undefined" :class="{ active: selected?.id === s.id }" :aria-current="selected?.id === s.id" @click="open(s.id)">
               <span>
                 <strong>{{ formatPeriod(s.period) }}</strong>
                 <span class="muted">Final {{ formatDate(s.finalized_at) }}</span>

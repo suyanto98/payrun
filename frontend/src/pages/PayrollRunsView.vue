@@ -6,6 +6,7 @@ import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import { canRunPayroll, formatMoney, formatPeriod, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
+import { useDemo } from '../stores/demo'
 import type { Page, PayrollRun, PayrollRunListItem } from '../types'
 
 // Y3 daftar run (termasuk CANCELLED untuk riwayat) + Y2 buat run (OWNER/PAYROLL_ADMIN).
@@ -46,7 +47,7 @@ async function create() {
   createError.value = ''
   try {
     const run = await api<PayrollRun>('/payroll-runs', { method: 'POST', body: { period: period.value }, idempotencyKey: createKey })
-    router.push(`/payroll/${run.id}`)
+    router.push(`/payroll/${run.id}${useDemo().sandbox ? '#crash' : ''}`) // demo: sorot "Pasang gangguan"
   } catch (e) {
     if (e instanceof ApiError && e.code === 'ACTIVE_RUN_EXISTS' && typeof e.extra.existing_resource_id === 'string') {
       router.push(`/payroll/${e.extra.existing_resource_id}`) // admin lain sudah membuatnya: buka run itu
@@ -75,7 +76,7 @@ onMounted(() => load())
         <label for="period">Periode</label>
         <input id="period" v-model="period" class="input sm" type="month" required />
       </div>
-      <button type="submit" class="btn sm" :disabled="creating"><AppIcon name="plus" />Buat payroll</button>
+      <button type="submit" class="btn sm" :disabled="creating" data-spot="create"><AppIcon name="plus" />Buat payroll</button>
       <p v-if="createError" class="alert error" role="alert">{{ createError }}</p>
     </form>
 

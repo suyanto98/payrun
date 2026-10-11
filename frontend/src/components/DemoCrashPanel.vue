@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from './AppIcon.vue'
 import { useDemo } from '../stores/demo'
+import { spotlight } from '../spotlight'
 import type { PayrollRun } from '../types'
 
 // Mode demo: "server mati di tengah hitung gaji" sebagai tombol. Gangguan dipasang untuk perhitungan
@@ -35,6 +36,7 @@ async function arm() {
   try {
     await api('/demo/crash-test', { method: 'POST' })
     await load()
+    spotlight('calculate') // langkah berikutnya: Hitung
   } catch (e) {
     error.value = e instanceof ApiError && e.code === 'RATE_LIMITED' ? 'Dibatasi 3 kali per menit. Tunggu sebentar.' : 'Gangguan gagal dipasang. Coba lagi.'
   } finally {
@@ -46,7 +48,11 @@ const crashed = computed(() => tl.value?.chunks.some((c) => c.simulated) ?? fals
 const finished = computed(() => props.run.status !== 'CALCULATING' && props.run.calc_version > 0)
 const okCount = computed(() => props.run.counts.ok ?? 0)
 // Tur demo: kesimpulan tampil = langkah "simulasi gangguan" selesai.
-watch(() => finished.value && crashed.value, (v) => v && demo.mark('crash'), { immediate: true })
+watch(() => finished.value && crashed.value, (v, was) => {
+  if (!v) return
+  demo.mark('crash')
+  if (was === false) spotlight('submit') // baru saja selesai: langkah berikutnya, minta persetujuan
+}, { immediate: true })
 const chunkLabel = (c: Chunk) => {
   if (c.status === 'succeeded') return c.simulated ? `Bagian ${c.no}: mati di tengah → diulang → selesai` : `Bagian ${c.no}: selesai`
   if (c.status === 'running') return `Bagian ${c.no}: menghitung…`
@@ -56,7 +62,8 @@ const chunkLabel = (c: Chunk) => {
 </script>
 
 <template>
-  <section v-if="demo.sandbox" class="card stack crash-panel" aria-labelledby="crash-title" data-test="crash-panel">
+  <!-- Hanya saat bisa dipakai, sedang menghitung, atau baru saja dipakai: di payroll final panel ini cuma gangguan. -->
+  <section v-if="demo.sandbox && (canCalculate || run.status === 'CALCULATING' || crashed)" class="card stack crash-panel" aria-labelledby="crash-title" data-test="crash-panel" :data-spot="canCalculate && !tl?.crash_armed ? undefined : 'crash'">
     <div class="crash-head">
       <span class="crash-icon"><AppIcon name="shield" :size="20" :stroke="2" /></span>
       <div>
@@ -65,7 +72,7 @@ const chunkLabel = (c: Chunk) => {
       </div>
     </div>
     <div v-if="canCalculate" class="row-wrap end">
-      <button v-if="!tl?.crash_armed" type="button" class="btn sm ghost" data-test="arm-crash" :disabled="busy" @click="arm">
+      <button v-if="!tl?.crash_armed" type="button" class="btn sm ghost" data-test="arm-crash" data-spot="crash" :disabled="busy" @click="arm">
         <AppIcon name="x" />{{ busy ? 'Memasang…' : 'Pasang gangguan' }}
       </button>
       <p v-else class="pill warn" data-test="crash-armed">Gangguan terpasang: satu bagian akan mati di tengah. Sekarang klik Hitung.</p>

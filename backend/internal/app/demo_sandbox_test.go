@@ -123,6 +123,10 @@ func TestDemoSandbox_OneClickCompanyWithPersonas(t *testing.T) {
 		t.Fatalf("verify run: %d %v", r.StatusCode, v)
 	}
 	_, sb := e.do(t, http.MethodGet, "/api/v1/demo/sandbox", s.token, nil)
+	links, _ := sb["links"].(map[string]any)
+	if links["last_month_run"] != runID || links["raise_employee"] == nil || links["current_run"] != nil {
+		t.Fatalf("tour links: %v", links)
+	}
 	if sb["persona"] != "payroll" || len(sb["personas"].([]any)) != 3 {
 		t.Fatalf("sandbox info: %v", sb)
 	}

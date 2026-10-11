@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './components/AppIcon.vue'
+import { spotlight } from './spotlight'
 import DemoBar from './components/DemoBar.vue'
 import { canEditEmployees, canListEmployees, canReadPayroll, rolesText } from './access'
 import { useAuth } from './stores/auth'
@@ -35,6 +36,15 @@ watch(
   },
   { immediate: true },
 )
+
+// Tur demo: tautan dengan #penanda → sorot elemen [data-spot] di halaman tujuan (juga saat hanya hash yang berubah).
+watch(() => route.fullPath, async () => {
+  await nextTick()
+  if (route.hash.length > 1) spotlight(decodeURIComponent(route.hash.slice(1)))
+}, { immediate: true })
+// Info sandbox (contoh: payroll bulan ini yang baru dibuat) dimuat ulang saat pindah halaman, supaya tautan tur
+// selalu menunjuk ke tempat yang benar.
+watch(() => route.path, () => { if (demo.sandbox) demo.load().catch(() => undefined) })
 </script>
 
 <template>

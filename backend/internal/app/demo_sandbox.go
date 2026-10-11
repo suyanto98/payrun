@@ -232,8 +232,51 @@ func (s *sandboxer) getSandbox(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
+	links, err := s.tourLinks(r.Context(), sb)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"expires_at": sb.expiresAt, "company": demoCompanyName,
-		"persona": sb.personaOf(p.UserID), "personas": demoPersonas})
+		"persona": sb.personaOf(p.UserID), "personas": demoPersonas, "links": links})
+}
+
+// tourLinks: ID untuk tautan tur yang langsung mendarat di tempat aksinya (payroll bulan lalu, payroll bulan ini
+// yang masih aktif kalau sudah dibuat, profil Bayu). Dibaca di transaksi tenant sandbox: RLS tetap berlaku.
+func (s *sandboxer) tourLinks(ctx context.Context, sb sandboxRow) (map[string]*uuid.UUID, error) {
+	jkt, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return nil, err
+	}
+	now := s.d.Clock.Now().In(jkt)
+	prev := now.AddDate(0, -1, 0)
+	var last, current, bayu *uuid.UUID
+	err = db.WithTenantTxFor(ctx, s.d.Pool, sb.tenantID, func(tx pgx.Tx) error {
+		run := func(year, month int, active bool) (*uuid.UUID, error) {
+			var id uuid.UUID
+			err := tx.QueryRow(ctx, `SELECT r.id FROM payroll_runs r JOIN payroll_periods p ON p.id = r.period_id
+				WHERE p.year = $1 AND p.month = $2 AND (NOT $3 OR r.status <> 'CANCELLED')
+				ORDER BY r.created_at DESC LIMIT 1`, year, month, active).Scan(&id)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, nil
+			}
+			return &id, err
+		}
+		if last, err = run(prev.Year(), int(prev.Month()), true); err != nil {
+			return err
+		}
+		if current, err = run(now.Year(), int(now.Month()), true); err != nil {
+			return err
+		}
+		var id uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT id FROM employees WHERE employee_no = 'KN-003'`).Scan(&id); err == nil {
+			bayu = &id
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return nil
+	})
+	return map[string]*uuid.UUID{"last_month_run": last, "current_run": current, "raise_employee": bayu}, err
 }
 
 // create membangun sandbox. Baris demo_sandboxes ditulis di transaksi PERTAMA (bersama user dan tenant):

@@ -92,7 +92,7 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
     <p v-if="notice" class="note" role="status"><AppIcon name="info" />{{ notice }}</p>
 
     <div v-if="!loading && items.length === 0" class="card empty">Tidak ada yang menunggu persetujuanmu.</div>
-    <div v-for="a in items" :key="a.id" class="card approval">
+    <div v-for="(a, i) in items" :key="a.id" class="card approval">
       <div class="approval-head">
         <div>
           <strong>{{ a.subject.summary }}</strong>
@@ -114,7 +114,7 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
 
       <div v-if="a.status === 'PENDING'" class="btn-group">
         <RouterLink v-if="a.subject_type === 'PAYROLL_RUN'" :to="`/payroll/${a.subject_id}`" class="btn sm ghost">Lihat payroll</RouterLink>
-        <button type="button" class="btn sm" :disabled="busy" @click="decide(a, true)"><AppIcon name="check" />Setujui</button>
+        <button type="button" class="btn sm" :disabled="busy" :data-spot="i === 0 ? 'approve' : undefined" @click="decide(a, true)"><AppIcon name="check" />Setujui</button>
         <button type="button" class="btn sm ghost" :disabled="busy" @click="rejecting = rejecting === a.id ? null : a.id"><AppIcon name="x" />Tolak</button>
       </div>
       <form v-if="rejecting === a.id" class="reject" @submit.prevent="decide(a, false)">

@@ -25,6 +25,8 @@ async function load(id: string) {
     emp.value = await api<Employee>(`/employees/${id}`)
     // W8: OWNER/HR/Payroll dan karyawan ybs; manager mendapat 404 (tidak melihat gaji bawahan) → disembunyikan.
     salary.value = await api<SalaryHistory>(`/employees/${id}/salary-history`).catch(() => null)
+    // Tautan tur "?raise=1": form Ubah gaji langsung terbuka (yang berhak saja; server tetap memeriksa role).
+    if (route.query.raise === '1' && salary.value && canEditEmployees(auth.roles)) openRaise()
   } catch (e) {
     // 404 juga untuk karyawan perusahaan lain atau di luar scope (tidak dibedakan, file 17 §1.3).
     if (e instanceof ApiError && e.status === 404) notFound.value = true
@@ -115,7 +117,7 @@ async function submitRaise() {
         <form v-if="raise.open" class="form raise-form" data-test="raise-form" @submit.prevent="submitRaise">
           <div class="field">
             <label for="raise-amount">Gaji pokok baru (Rp)</label>
-            <input id="raise-amount" v-model="raise.rupiah" class="input" inputmode="numeric" placeholder="8.500.000" required />
+            <input id="raise-amount" v-model="raise.rupiah" class="input" inputmode="numeric" placeholder="8.500.000" required data-spot="raise" />
           </div>
           <div class="field">
             <label for="raise-from">Berlaku mulai</label>

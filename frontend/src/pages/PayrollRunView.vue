@@ -233,10 +233,10 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
         </p>
       </div>
       <div v-if="run && canRun" class="btn-group">
-        <button v-if="actions.calculate" type="button" class="btn sm" :disabled="busy" @click="calculate">
+        <button v-if="actions.calculate" type="button" class="btn sm" :disabled="busy" data-spot="calculate" @click="calculate">
           <AppIcon name="refresh" />{{ run.calc_version > 0 ? 'Hitung ulang' : 'Hitung' }}
         </button>
-        <button v-if="actions.submit" type="button" class="btn sm" :disabled="busy" data-test="submit" @click="submit">
+        <button v-if="actions.submit" type="button" class="btn sm" :disabled="busy" data-test="submit" data-spot="submit" @click="submit">
           <AppIcon name="check" />Minta persetujuan
         </button>
         <button v-if="run.status === 'APPROVED'" type="button" class="btn sm" :disabled="busy" data-test="finalize" @click="finalize">
@@ -284,7 +284,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
       <DemoCrashPanel :run="run" :can-calculate="canRun && actions.calculate" /><!-- mode demo saja -->
       <p v-if="run.status === 'FAILED'" class="alert error">{{ run.failure_reason }}</p>
       <p v-if="run.status === 'CANCELLED'" class="note"><AppIcon name="info" />Dibatalkan: {{ run.cancel_reason }}</p>
-      <p v-if="run.status === 'FINALIZED'" class="note"><AppIcon name="lock" />Final. Periode ini terkunci: gaji tidak bisa diubah lagi. Koreksi dicatat di bulan berikutnya.</p>
+      <p v-if="run.status === 'FINALIZED'" class="note" data-spot="final"><AppIcon name="lock" />Final. Periode ini terkunci: gaji tidak bisa diubah lagi. Koreksi dicatat di bulan berikutnya.</p>
       <p v-if="run.status === 'PENDING_APPROVAL'" class="note"><AppIcon name="clock" />Menunggu persetujuan. Selama menunggu, payroll ini tidak bisa dihitung ulang atau dibatalkan.</p>
 
       <div v-if="run.totals" class="row-wrap">

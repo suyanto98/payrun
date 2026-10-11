@@ -38,7 +38,7 @@ async function verify() {
         <p class="muted">Setiap slip menyimpan salinan data dan aturan yang dipakai saat dihitung. Pemeriksaan ini menghitung ulang semuanya dari salinan itu; hasilnya harus sama persis, berapa lama pun sejak gaji dibayar.</p>
       </div>
     </div>
-    <button type="button" class="btn sm ghost" data-test="verify-run" :disabled="busy" @click="verify">
+    <button type="button" class="btn sm ghost" data-test="verify-run" data-spot="verify" :disabled="busy" @click="verify">
       <AppIcon name="refresh" />{{ busy ? 'Menghitung ulang…' : 'Cek ulang semua slip' }}
     </button>
     <p v-if="error" class="alert error" role="alert">{{ error }}</p>

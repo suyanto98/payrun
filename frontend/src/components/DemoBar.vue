@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AppIcon from './AppIcon.vue'
-import { personaLanding, tour, useDemo, type DemoPersona } from '../stores/demo'
+import { personaLanding, tour, tourLink, useDemo, type DemoPersona } from '../stores/demo'
 
 // Bar mode demo: siapa aku sekarang, ganti peran, langkah tur untuk peran ini (dengan "kenapa penting" dalam
 // bahasa HR), progres lintas peran, dan rangkuman di akhir. Tujuannya: pengunjung awam memahami APA yang hebat,
@@ -85,7 +85,7 @@ async function restart() {
       </div>
       <ol class="demo-steps">
         <li v-for="s in mine" :key="s.key" :class="{ done: isDone(s.key) }" :data-test="`tour-${s.key}`">
-          <RouterLink :to="s.to">
+          <RouterLink :to="tourLink(s.key, demo.sandbox.links)">
             <span class="demo-step-no"><AppIcon v-if="isDone(s.key)" name="check" :size="14" :stroke="3" /><template v-else>{{ tour.indexOf(s) + 1 }}</template></span>
             <span>
               <strong>{{ s.title }}</strong>
