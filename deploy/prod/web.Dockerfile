@@ -18,9 +18,11 @@ FROM caddy:2.11.7-builder-alpine AS caddy
 RUN xcaddy build v2.11.7 --replace golang.org/x/net=golang.org/x/net@v0.60.0
 
 FROM caddy:2.11.7-alpine
-# Binary hasil xcaddy tidak membawa file capability (binary resmi membawa cap_net_bind_service, yang
-# ditolak exec-nya di bawah cap_drop ALL + no-new-privileges). Port 8080 tidak butuh capability.
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
+# Binary caddy (resmi maupun hasil xcaddy di image builder) membawa file capability cap_net_bind_service;
+# dengan cap_drop ALL + no-new-privileges exec-nya ditolak ("operation not permitted"). Port 8080 tidak
+# butuh capability → dicabut.
+RUN apk add --no-cache libcap && setcap -r /usr/bin/caddy && apk del libcap
 COPY deploy/prod/web.Caddyfile /etc/caddy/Caddyfile
 COPY --from=web /web/dist /srv/payrun
 USER 65534:65534
