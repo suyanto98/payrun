@@ -6,6 +6,7 @@ import AppIcon from '../components/AppIcon.vue'
 import PayslipCard from '../components/PayslipCard.vue'
 import { formatDate, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
+import { useDemo } from '../stores/demo'
 import type { Page, Payslip, PayslipSummary } from '../types'
 
 // S1/S2 (PF-15): slip milik sendiri untuk run FINALIZED. Akses pemilik tidak diaudit; slip orang lain → 404.
@@ -39,6 +40,7 @@ async function load(append = false) {
 async function open(id: string) {
   try {
     selected.value = await api<Payslip>(`/me/payslips/${id}`)
+    useDemo().mark('payslip') // tur demo: slip sendiri sudah dibuka
   } catch (e) {
     error.value = errorText(e, 'Gagal memuat slip')
   }

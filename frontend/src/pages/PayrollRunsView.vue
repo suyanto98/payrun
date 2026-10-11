@@ -35,7 +35,7 @@ async function load(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat payroll run')
+    error.value = errorText(e, 'Gagal memuat payroll')
   } finally {
     loading.value = false
   }
@@ -52,7 +52,7 @@ async function create() {
       router.push(`/payroll/${e.extra.existing_resource_id}`) // admin lain sudah membuatnya: buka run itu
       return
     }
-    createError.value = errorText(e, 'Gagal membuat run')
+    createError.value = errorText(e, 'Gagal membuat payroll')
   } finally {
     creating.value = false
   }
@@ -66,7 +66,7 @@ onMounted(() => load())
     <div class="page-head">
       <div>
         <h1>Payroll</h1>
-        <p class="sub">Run dihitung di latar belakang per chunk; hasil bisa ditinjau sebelum diajukan.</p>
+        <p class="sub">Gaji dihitung otomatis di latar belakang. Periksa hasilnya dulu sebelum meminta persetujuan.</p>
       </div>
     </div>
 
@@ -75,7 +75,7 @@ onMounted(() => load())
         <label for="period">Periode</label>
         <input id="period" v-model="period" class="input sm" type="month" required />
       </div>
-      <button type="submit" class="btn sm" :disabled="creating"><AppIcon name="plus" />Buat run</button>
+      <button type="submit" class="btn sm" :disabled="creating"><AppIcon name="plus" />Buat payroll</button>
       <p v-if="createError" class="alert error" role="alert">{{ createError }}</p>
     </form>
 
@@ -87,25 +87,25 @@ onMounted(() => load())
             <tr>
               <th scope="col">Periode</th>
               <th scope="col">Status</th>
-              <th scope="col" class="right">Versi</th>
+              <th scope="col" class="right">Hitungan</th>
               <th scope="col" class="right">Total net</th>
               <th scope="col"><span class="sr-only">Buka</span></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-if="!loading && items.length === 0"><td colspan="5" class="empty">Belum ada payroll run.</td></tr>
+            <tr v-if="!loading && items.length === 0"><td colspan="5" class="empty">Belum ada payroll.</td></tr>
             <tr v-for="r in items" :key="r.id">
               <td><RouterLink :to="`/payroll/${r.id}`">{{ formatPeriod(r.period) }}</RouterLink></td>
               <td><span class="pill" :class="runStatusPill[r.status]">{{ runStatusLabel[r.status] ?? r.status }}</span></td>
               <td class="right num">{{ r.calc_version }}</td>
               <td class="right num">{{ formatMoney(r.total_net) }}</td>
-              <td class="right"><RouterLink :to="`/payroll/${r.id}`" class="icon-btn bare" :aria-label="`Buka run ${r.period}`"><AppIcon name="chevron" /></RouterLink></td>
+              <td class="right"><RouterLink :to="`/payroll/${r.id}`" class="icon-btn bare" :aria-label="`Buka payroll ${r.period}`"><AppIcon name="chevron" /></RouterLink></td>
             </tr>
           </tbody>
         </table>
       </div>
       <div v-if="page.has_more" class="table-foot">
-        <span class="muted">{{ items.length }} run dimuat</span>
+        <span class="muted">{{ items.length }} payroll dimuat</span>
         <button type="button" class="btn sm ghost" :disabled="loading" @click="load(true)">Muat lagi</button>
       </div>
     </div>

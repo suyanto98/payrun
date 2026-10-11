@@ -4,7 +4,7 @@ import { errorText } from './errors'
 
 describe('errorText', () => {
   it('maps a catalogue code to the Indonesian message, not the server detail', () => {
-    expect(errorText(new ApiError(409, 'PERIOD_LOCKED', 'Payroll period is finalized'), 'x')).toBe('Periode payroll ini sudah final dan terkunci.')
+    expect(errorText(new ApiError(409, 'PERIOD_LOCKED', 'Payroll period is finalized'), 'x')).toBe('Gaji di periode itu sudah final dan terkunci, jadi tidak bisa diubah diam-diam. Pilih tanggal di periode yang belum final; selisih bulan lalu dicatat sebagai koreksi gaji.')
   })
   it('names the first invalid field for VALIDATION_ERROR', () => {
     const e = new ApiError(400, 'VALIDATION_ERROR', 'Validation failed', [{ field: 'limit', code: 'OUT_OF_RANGE', message: 'must be 1..100' }])

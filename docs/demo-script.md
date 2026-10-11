@@ -35,6 +35,13 @@ oleh `make seed-demo` (seed-0 = **Alpha**, 100 karyawan; seed-1 = **Beta**, 10�
 2. "Sistem mati di tengah hitung gaji tidak membuat gaji dobel" → Demo B: 100 karyawan = 100 hasil, bukan 110, walaupun worker mati di tengah jalan.
 3. "Gaji yang sudah final tidak bisa diubah diam-diam; koreksi tercatat di bulan berikutnya" → Demo C5.
 
+### Tanpa presenter: tur 7 langkah di bar demo
+Bar demo menampilkan tur lintas peran (Dina 4, Hendra 2, Rizky 1), masing-masing dengan "Kenapa penting" dalam
+bahasa HR. Langkah tercentang saat benar-benar dilakukan (payroll final dibuka, cek ulang lolos, kesimpulan simulasi
+gangguan tampil, payroll diajukan, persetujuan, ubah gaji ditolak/berhasil, slip dibuka); selesai semua → rangkuman
+3 poin + "Hubungi pembuatnya" (`VITE_CONTACT_URL`). Kenaikan gaji Bayu mulai bulan ini sudah ada di sandbox, jadi
+riwayat gaji dan penolakan `PERIOD_LOCKED` bisa dicoba dari profil karyawan. Naskah video: `docs/demo-video-script.md`.
+
 ### Tanpa presenter: "Coba demo" di halaman login
 Pengunjung link demo publik mencoba sendiri. Tombol **Coba demo** membuat perusahaan pribadi **PT Kopi Nusantara**
 (15 karyawan, 3 departemen) dengan payroll bulan lalu yang sudah **final**: benar-benar dihitung worker, diajukan

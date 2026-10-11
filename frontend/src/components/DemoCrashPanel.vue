@@ -45,6 +45,8 @@ async function arm() {
 const crashed = computed(() => tl.value?.chunks.some((c) => c.simulated) ?? false)
 const finished = computed(() => props.run.status !== 'CALCULATING' && props.run.calc_version > 0)
 const okCount = computed(() => props.run.counts.ok ?? 0)
+// Tur demo: kesimpulan tampil = langkah "simulasi gangguan" selesai.
+watch(() => finished.value && crashed.value, (v) => v && demo.mark('crash'), { immediate: true })
 const chunkLabel = (c: Chunk) => {
   if (c.status === 'succeeded') return c.simulated ? `Bagian ${c.no}: mati di tengah → diulang → selesai` : `Bagian ${c.no}: selesai`
   if (c.status === 'running') return `Bagian ${c.no}: menghitung…`

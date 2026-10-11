@@ -9,6 +9,7 @@ import DepartmentCostChart from '../components/DepartmentCostChart.vue'
 import DemoVerifyPanel from '../components/DemoVerifyPanel.vue'
 import { canRunPayroll, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill, runActions, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
+import { useDemo } from '../stores/demo'
 import type { Page, PayrollItem, PayrollItemDetail, PayrollRun, RunPayslip } from '../types'
 
 // Y4 status + progres (polling 2 dtk selama CALCULATING), Y5 hitung, Y6/Y7 item + baris, Y8 exclude,
@@ -31,10 +32,17 @@ async function loadRun() {
     run.value = await api<PayrollRun>(`/payroll-runs/${id.value}`)
     if (run.value.status === 'CALCULATING') poll = setTimeout(loadRun, 2000)
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat run')
+    error.value = errorText(e, 'Gagal memuat payroll')
   }
 }
 onBeforeUnmount(() => clearTimeout(poll))
+
+// Tur demo: membuka payroll final / payroll yang menunggu persetujuan = langkah itu sudah dilihat atau dilakukan.
+const demo = useDemo()
+watch(() => run.value?.status, (st) => {
+  if (st === 'FINALIZED') demo.mark('final')
+  if (st === 'PENDING_APPROVAL') demo.mark('submit')
+})
 
 // ---------------------------------------------------------------- item
 const items = ref<PayrollItem[]>([])
@@ -53,7 +61,7 @@ async function loadItems(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     itemsPage.value = res.page
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat item')
+    error.value = errorText(e, 'Gagal memuat data gaji')
   } finally {
     itemsLoading.value = false
   }
@@ -66,7 +74,7 @@ async function openItem(it: PayrollItem) {
   try {
     detail.value = await api<PayrollItemDetail>(`/payroll-runs/${id.value}/items/${it.id}`)
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat item')
+    error.value = errorText(e, 'Gagal memuat data gaji')
   }
 }
 
@@ -81,7 +89,7 @@ async function exclude(it: PayrollItem) {
     excludeReason.value = ''
     await Promise.all([loadRun(), loadItems()])
   } catch (e) {
-    error.value = errorText(e, 'Gagal mengecualikan item')
+    error.value = errorText(e, 'Gagal mengecualikan karyawan')
   } finally {
     busy.value = false
   }
@@ -121,7 +129,7 @@ async function submit() {
     needReason.value = needApprover.value = false
     notice.value = 'Run diajukan. Approver melihatnya di menu Approval.'
   } catch (e) {
-    if (!(e instanceof ApiError)) { error.value = 'Gagal mengajukan run'; return }
+    if (!(e instanceof ApiError)) { error.value = 'Gagal meminta persetujuan'; return }
     if (e.code === 'SELF_APPROVAL_REASON_REQUIRED') {
       needReason.value = true
       error.value = 'Tidak ada admin lain yang bisa menyetujui. Tulis alasan untuk menyetujui sendiri (tercatat di audit).'
@@ -132,7 +140,7 @@ async function submit() {
     } else if (e.code === 'RUN_HAS_ERRORS') {
       error.value = `${e.extra.error_count} item masih ERROR. Perbaiki datanya lalu hitung ulang, atau kecualikan item tersebut.`
     } else {
-      error.value = errorText(e, 'Gagal mengajukan run')
+      error.value = errorText(e, 'Gagal meminta persetujuan')
     }
   } finally {
     busy.value = false
@@ -181,7 +189,7 @@ async function cancel() {
     run.value = await api<PayrollRun>(`/payroll-runs/${id.value}/cancel`, { method: 'POST', body: { reason: cancelReason.value } })
     cancelling.value = false
   } catch (e) {
-    error.value = errorText(e, 'Gagal membatalkan run')
+    error.value = errorText(e, 'Gagal membatalkan payroll')
   } finally {
     busy.value = false
   }
@@ -221,7 +229,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
         <h1 v-if="run">{{ formatPeriod(run.period) }}</h1>
         <p v-if="run" class="sub">
           <span class="pill" :class="runStatusPill[run.status]">{{ runStatusLabel[run.status] ?? run.status }}</span>
-          · versi {{ run.calc_version }}<template v-if="run.ruleset"> · ruleset {{ run.ruleset.code }} {{ run.ruleset.version }}</template>
+          · hitungan ke-{{ run.calc_version }}<template v-if="run.ruleset"> · aturan {{ run.ruleset.code }} {{ run.ruleset.version }}</template>
         </p>
       </div>
       <div v-if="run && canRun" class="btn-group">
@@ -229,7 +237,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
           <AppIcon name="refresh" />{{ run.calc_version > 0 ? 'Hitung ulang' : 'Hitung' }}
         </button>
         <button v-if="actions.submit" type="button" class="btn sm" :disabled="busy" data-test="submit" @click="submit">
-          <AppIcon name="check" />Ajukan approval
+          <AppIcon name="check" />Minta persetujuan
         </button>
         <button v-if="run.status === 'APPROVED'" type="button" class="btn sm" :disabled="busy" data-test="finalize" @click="finalize">
           <AppIcon name="lock" />Finalisasi
@@ -248,7 +256,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
           <option value="" disabled>Pilih admin</option>
           <option v-for="a in admins" :key="a.id" :value="a.id">{{ a.label }}</option>
         </select>
-        <span v-if="admins.length === 0" class="hint">Daftar admin hanya bisa dibuka Pemilik/Admin HR. Minta Pemilik mengajukan run ini.</span>
+        <span v-if="admins.length === 0" class="hint">Daftar admin hanya bisa dibuka Pemilik/Admin HR. Minta Pemilik mengajukan payroll ini.</span>
       </div>
       <div v-if="needReason" class="field">
         <label for="reason">Alasan menyetujui sendiri</label>
@@ -262,12 +270,12 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
         <label for="cancel-reason">Alasan pembatalan</label>
         <input id="cancel-reason" v-model="cancelReason" class="input" minlength="3" maxlength="500" required />
       </div>
-      <button type="submit" class="btn sm" :disabled="busy">Batalkan run</button>
+      <button type="submit" class="btn sm" :disabled="busy">Batalkan payroll</button>
     </form>
 
     <template v-if="run">
       <div v-if="run.status === 'CALCULATING'" class="card" aria-live="polite">
-        <p class="muted">Menghitung chunk {{ run.progress.chunks_done }} dari {{ run.progress.chunks_total || '…' }}
+        <p class="muted">Menghitung bagian {{ run.progress.chunks_done }} dari {{ run.progress.chunks_total || '…' }}
           <template v-if="run.progress.eligible_count !== null"> · {{ run.progress.eligible_count }} karyawan</template></p>
         <div class="progress" role="progressbar" :aria-valuenow="progressPct" aria-valuemin="0" aria-valuemax="100">
           <span :style="{ width: progressPct + '%' }" />
@@ -276,8 +284,8 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
       <DemoCrashPanel :run="run" :can-calculate="canRun && actions.calculate" /><!-- mode demo saja -->
       <p v-if="run.status === 'FAILED'" class="alert error">{{ run.failure_reason }}</p>
       <p v-if="run.status === 'CANCELLED'" class="note"><AppIcon name="info" />Dibatalkan: {{ run.cancel_reason }}</p>
-      <p v-if="run.status === 'FINALIZED'" class="note"><AppIcon name="lock" />Final. Periode terkunci; hasil tidak bisa diubah dan bisa dihitung ulang dari snapshot.</p>
-      <p v-if="run.status === 'PENDING_APPROVAL'" class="note"><AppIcon name="clock" />Menunggu keputusan approver. Hitung ulang dan pembatalan dikunci sampai diputuskan.</p>
+      <p v-if="run.status === 'FINALIZED'" class="note"><AppIcon name="lock" />Final. Periode ini terkunci: gaji tidak bisa diubah lagi. Koreksi dicatat di bulan berikutnya.</p>
+      <p v-if="run.status === 'PENDING_APPROVAL'" class="note"><AppIcon name="clock" />Menunggu persetujuan. Selama menunggu, payroll ini tidak bisa dihitung ulang atau dibatalkan.</p>
 
       <div v-if="run.totals" class="row-wrap">
         <div class="balance-card total-card">
@@ -298,7 +306,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
 
       <div v-if="showItems" class="card card-flush">
         <div class="card-head">
-          <h2>Item</h2>
+          <h2>Gaji per karyawan</h2>
           <select v-model="itemStatus" class="select sm" aria-label="Filter status item">
             <option value="">Semua</option>
             <option value="OK">OK</option>
@@ -319,7 +327,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
               </tr>
             </thead>
             <tbody>
-              <tr v-if="!itemsLoading && items.length === 0"><td colspan="6" class="empty">Tidak ada item.</td></tr>
+              <tr v-if="!itemsLoading && items.length === 0"><td colspan="6" class="empty">Belum ada data.</td></tr>
               <template v-for="it in items" :key="it.id">
                 <tr>
                   <td class="mono">{{ it.employee_no }}</td>

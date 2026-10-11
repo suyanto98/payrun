@@ -191,7 +191,7 @@ func APIRouter(d Deps) http.Handler {
 			public: v1, authed: read,
 			faults: authed.With(auth.RequireTenant, limiter.Middleware(tiers.HeavyCalculate, byTenant)),
 			iam:    iamSvc, iamH: iamH, tenancy: tenancySvc, org: orgSvc, employees: employeeSvc,
-			payroll: payrollSvc, approvals: approvalSvc, leave: leaveSvc, limiter: limiter, tiers: tiers,
+			payroll: payrollSvc, approvals: approvalSvc, leave: leaveSvc, compensation: compSvc, limiter: limiter, tiers: tiers,
 		}, d)
 	})
 	return r
@@ -208,6 +208,7 @@ type demoWiring struct {
 	payroll                *payroll.Service
 	approvals              *approval.Service
 	leave                  *leave.Service
+	compensation           *compensation.Service
 	limiter                *ratelimit.Limiter
 	tiers                  ratelimit.Tiers
 }

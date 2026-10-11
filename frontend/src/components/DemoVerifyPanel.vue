@@ -20,6 +20,7 @@ async function verify() {
   error.value = ''
   try {
     res.value = await api<Result>(`/demo/runs/${props.run.id}/verify`, { method: 'POST' })
+    if (res.value.ok) demo.mark('verify')
   } catch (e) {
     error.value = e instanceof ApiError && e.code === 'RATE_LIMITED' ? 'Dibatasi 3 kali per menit. Tunggu sebentar.' : 'Pemeriksaan gagal dijalankan. Coba lagi.'
   } finally {
@@ -43,8 +44,8 @@ async function verify() {
     <p v-if="error" class="alert error" role="alert">{{ error }}</p>
     <p v-if="res" class="verdict" :class="{ bad: !res.ok }" data-test="verify-verdict">
       <AppIcon :name="res.ok ? 'check' : 'x'" :size="18" :stroke="2.4" />
-      <template v-if="res.ok">{{ res.items_checked }} dari {{ res.items_checked }} slip cocok persis, dan total run konsisten.</template>
-      <template v-else>{{ res.mismatches }} slip berbeda dari hasil tersimpan{{ res.totals_ok ? '' : ', total run tidak konsisten' }}.</template>
+      <template v-if="res.ok">{{ res.items_checked }} dari {{ res.items_checked }} slip cocok persis, dan totalnya sama.</template>
+      <template v-else>{{ res.mismatches }} slip berbeda dari hasil tersimpan{{ res.totals_ok ? '' : ', total tidak sama' }}.</template>
     </p>
   </section>
 </template>

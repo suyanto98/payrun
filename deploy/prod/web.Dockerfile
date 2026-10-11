@@ -7,6 +7,9 @@ WORKDIR /web
 COPY frontend/package.json frontend/yarn.lock ./
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn yarn install --frozen-lockfile
 COPY frontend/ .
+# Tautan opsional di landing dan rangkuman demo (kosong = disembunyikan, tidak ada tautan rusak).
+ARG VITE_REPO_URL="" VITE_CONTACT_URL="" VITE_VIDEO_URL=""
+ENV VITE_REPO_URL=$VITE_REPO_URL VITE_CONTACT_URL=$VITE_CONTACT_URL VITE_VIDEO_URL=$VITE_VIDEO_URL
 RUN yarn build
 
 FROM caddy:2.10-alpine

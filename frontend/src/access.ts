@@ -55,7 +55,7 @@ export function canRunPayroll(roles: Role[]): boolean {
 }
 
 export const runStatusLabel: Record<string, string> = {
-  DRAFT: 'Draf', CALCULATING: 'Menghitung', CALCULATED: 'Terhitung', PENDING_APPROVAL: 'Menunggu approval',
+  DRAFT: 'Draf', CALCULATING: 'Menghitung', CALCULATED: 'Sudah dihitung', PENDING_APPROVAL: 'Menunggu persetujuan',
   APPROVED: 'Disetujui', FINALIZED: 'Final', FAILED: 'Gagal', CANCELLED: 'Dibatalkan',
 }
 export const runStatusPill: Record<string, string> = {

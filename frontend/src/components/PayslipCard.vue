@@ -74,7 +74,7 @@ async function download() {
       <div><dt>Total potongan</dt><dd class="num">−{{ formatMoney(slip.totals.deductions) }}</dd></div>
       <div class="net"><dt>Gaji bersih</dt><dd class="num">{{ formatMoney(slip.totals.net) }}</dd></div>
     </dl>
-    <p class="muted small">Ruleset {{ slip.ruleset.code }} {{ slip.ruleset.version }} · difinalisasi {{ formatDate(slip.finalized_at) }}</p>
+    <p class="muted small">Aturan perhitungan {{ slip.ruleset.code }} {{ slip.ruleset.version }} · difinalisasi {{ formatDate(slip.finalized_at) }}</p>
   </article>
 </template>
 

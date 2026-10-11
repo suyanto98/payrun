@@ -37,7 +37,7 @@ async function load(append = false) {
     list.value = append ? [...list.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat adjustment')
+    error.value = errorText(e, 'Gagal memuat koreksi gaji')
   }
 }
 
@@ -94,7 +94,7 @@ onMounted(() => Promise.all([load(), loadEmployees()]))
   <div class="stack">
     <div class="page-head">
       <div>
-        <h1>Adjustment</h1>
+        <h1>Koreksi gaji</h1>
         <p class="sub">Payroll yang sudah final tidak diubah. Kekurangan atau kelebihan bayar dikoreksi di payroll bulan berikutnya.</p>
       </div>
     </div>
@@ -140,7 +140,7 @@ onMounted(() => Promise.all([load(), loadEmployees()]))
 
     <div class="card card-flush">
       <div class="card-head">
-        <h2>Daftar adjustment</h2>
+        <h2>Daftar koreksi</h2>
         <select v-model="status" class="select sm" aria-label="Filter status">
           <option value="">Semua</option>
           <option v-for="(label, code) in adjustmentStatusLabel" :key="code" :value="code">{{ label }}</option>
@@ -152,7 +152,7 @@ onMounted(() => Promise.all([load(), loadEmployees()]))
             <tr><th scope="col">Karyawan</th><th scope="col">Koreksi</th><th scope="col" class="right">Jumlah</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Aksi</span></th></tr>
           </thead>
           <tbody>
-            <tr v-if="list.length === 0"><td colspan="5" class="empty">Belum ada adjustment.</td></tr>
+            <tr v-if="list.length === 0"><td colspan="5" class="empty">Belum ada koreksi gaji.</td></tr>
             <template v-for="a in list" :key="a.id">
               <tr>
                 <td>{{ empName[a.employee_id] ?? a.employee_id.slice(0, 8) }}</td>
@@ -163,7 +163,7 @@ onMounted(() => Promise.all([load(), loadEmployees()]))
                 <td class="right num" :class="a.amount.startsWith('-') ? 'out' : 'in'">{{ a.amount.startsWith('-') ? '−' : '' }}{{ formatMoney(a.amount.replace('-', '')) }}</td>
                 <td>
                   <span class="pill" :class="adjustmentStatusPill[a.status]">{{ adjustmentStatusLabel[a.status] }}</span>
-                  <RouterLink v-if="a.applied_run_id" :to="`/payroll/${a.applied_run_id}`" class="muted"> run</RouterLink>
+                  <RouterLink v-if="a.applied_run_id" :to="`/payroll/${a.applied_run_id}`" class="muted"> payroll</RouterLink>
                 </td>
                 <td class="right">
                   <button v-if="a.status === 'PENDING_APPLY'" type="button" class="btn-row" @click="cancelling = cancelling === a.id ? null : a.id">Batalkan</button>
@@ -173,7 +173,7 @@ onMounted(() => Promise.all([load(), loadEmployees()]))
                 <td colspan="5">
                   <form class="inline" @submit.prevent="cancel(a)">
                     <input v-model="cancelReason" class="input sm" maxlength="500" required placeholder="Alasan pembatalan" aria-label="Alasan pembatalan" />
-                    <button type="submit" class="btn sm" :disabled="busy">Batalkan adjustment</button>
+                    <button type="submit" class="btn sm" :disabled="busy">Batalkan koreksi</button>
                   </form>
                 </td>
               </tr>

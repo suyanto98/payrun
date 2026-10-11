@@ -13,6 +13,7 @@ const router = useRouter()
 const busy = ref(false)
 const error = ref('')
 const repoUrl = import.meta.env.VITE_REPO_URL as string | undefined
+const videoUrl = import.meta.env.VITE_VIDEO_URL as string | undefined // video 90 detik (docs/demo-video-script.md)
 
 onMounted(() => demo.detect())
 
@@ -60,6 +61,7 @@ const roles = [
           </button>
           <RouterLink to="/login" class="btn ghost">Masuk</RouterLink>
         </div>
+        <a v-if="videoUrl" :href="videoUrl" class="w-video" target="_blank" rel="noopener"><AppIcon name="play" :size="16" :stroke="2" />Tidak sempat mencoba? Tonton video 90 detik</a>
         <p v-if="error" class="alert error" role="alert">{{ error }}</p>
       </div>
       <div class="w-roles" aria-label="Tiga peran yang bisa dicoba bergantian">
@@ -76,6 +78,15 @@ const roles = [
           <h3>{{ p.q }}</h3>
           <p>{{ p.a }}</p>
         </article>
+      </div>
+    </section>
+
+    <section class="w-problems" aria-labelledby="w-recruiter-title">
+      <h2 id="w-recruiter-title">Untuk recruiter: apa yang ditunjukkan proyek ini tentang pembuatnya</h2>
+      <div class="w-grid">
+        <article class="card w-card"><h3>Memahami urusan HR, bukan hanya kode</h3><p>Persetujuan dua orang, periode gaji yang terkunci, koreksi di bulan berikutnya, slip yang bisa dilihat karyawan sendiri.</p></article>
+        <article class="card w-card"><h3>Membuktikan, bukan sekadar mengklaim</h3><p>Setiap janji di halaman ini bisa kamu coba sendiri di demo, dan dijalankan ulang otomatis oleh ratusan test setiap kali kodenya berubah.</p></article>
+        <article class="card w-card"><h3>Siap untuk banyak pelanggan sekaligus</h3><p>Satu sistem melayani banyak perusahaan dengan data yang terpisah ketat, dan sudah diuji untuk 10.000 karyawan dalam satu perusahaan.</p></article>
       </div>
     </section>
 
@@ -106,6 +117,7 @@ const roles = [
 .w-hero p { color: var(--on-navy-muted); font-size: 16px; line-height: 1.6; max-width: 560px; }
 .w-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: rgba(255, 255, 255, .12); }
 .w-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+.w-video { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; color: #fff; font-size: 14px; font-weight: 700; }
 .w-cta .btn.ghost { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .35); }
 .w-roles { padding: 20px; border-radius: 20px; background: rgba(255, 255, 255, .08); display: flex; flex-direction: column; gap: 14px; }
 .w-roles-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--on-navy-muted); }

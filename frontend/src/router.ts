@@ -41,14 +41,14 @@ export const router = createRouter({
     { path: '/employees', component: EmployeesView, meta: { tenant: true, title: 'Karyawan' } },
     { path: '/employees/:id', component: EmployeeDetailView, meta: { tenant: true, title: 'Detail karyawan' } },
     { path: '/payroll', component: PayrollRunsView, meta: { tenant: true, title: 'Payroll' } },
-    { path: '/payroll/:id', component: PayrollRunView, meta: { tenant: true, title: 'Payroll run' } },
-    { path: '/approvals', component: ApprovalsView, meta: { tenant: true, title: 'Approval' } },
+    { path: '/payroll/:id', component: PayrollRunView, meta: { tenant: true, title: 'Payroll' } },
+    { path: '/approvals', component: ApprovalsView, meta: { tenant: true, title: 'Persetujuan' } },
     { path: '/attendance', component: AttendanceView, meta: { tenant: true, title: 'Absensi' } },
     { path: '/leave', component: LeaveView, meta: { tenant: true, title: 'Cuti' } },
     { path: '/overtime', component: OvertimeView, meta: { tenant: true, title: 'Lembur' } },
     { path: '/payslips', component: PayslipsView, meta: { tenant: true, title: 'Slip gaji' } },
     { path: '/payslips/:id', component: PayslipView, meta: { tenant: true, title: 'Slip gaji karyawan' } },
-    { path: '/adjustments', component: AdjustmentsView, meta: { tenant: true, title: 'Adjustment' } },
+    { path: '/adjustments', component: AdjustmentsView, meta: { tenant: true, title: 'Koreksi gaji' } },
   ],
 })
 

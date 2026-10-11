@@ -135,6 +135,24 @@ func TestDemoSandbox_OneClickCompanyWithPersonas(t *testing.T) {
 	if n := listLen(t, e, "/api/v1/approvals/inbox", owner); n != 1 {
 		t.Fatalf("owner inbox: %d pending, want 1 (Rizky's leave)", n)
 	}
+	// Riwayat gaji Bayu: gaji lama + kenaikan mulai bulan ini (sesudah payroll bulan lalu final). Mengubah gaji
+	// mulai bulan lalu (sudah final) ditolak PERIOD_LOCKED: "final itu final" yang dicoba HR di UI.
+	_, emps := e.do(t, http.MethodGet, "/api/v1/employees?limit=50", owner, nil)
+	var bayu string
+	for _, it := range emps["data"].([]any) {
+		if m := it.(map[string]any); m["employee_no"] == "KN-003" {
+			bayu = m["id"].(string)
+		}
+	}
+	_, hist := e.do(t, http.MethodGet, "/api/v1/employees/"+bayu+"/salary-history", owner, nil)
+	if sal, _ := hist["salary"].([]any); len(sal) != 2 {
+		t.Fatalf("Bayu salary history: %v", hist)
+	}
+	r, locked := e.doH(t, http.MethodPost, "/api/v1/employees/"+bayu+"/salary-changes", owner,
+		map[string]string{"Idempotency-Key": "raise-" + newID().String()}, map[string]any{"base_salary": "9000000.00", "valid_from": "2026-09-01"})
+	if r.StatusCode != http.StatusConflict || locked["code"] != "PERIOD_LOCKED" {
+		t.Fatalf("raise into a finalized month: want 409 PERIOD_LOCKED, got %d %v", r.StatusCode, locked)
+	}
 	// Karyawan: slip gaji bulan lalu, dan tidak bisa membuka daftar payroll (otorisasi asli).
 	status, emp := switchPersona(t, e, owner, "employee")
 	if status != http.StatusOK {

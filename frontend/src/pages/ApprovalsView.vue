@@ -4,6 +4,7 @@ import { onMounted, ref, watch } from 'vue'
 import { api, ApiError } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import { staleReasonLabel } from '../access'
+import { useDemo } from '../stores/demo'
 import { useAuth } from '../stores/auth'
 import type { ApprovalRequest, Page, StaleEmployee } from '../types'
 
@@ -35,7 +36,7 @@ async function load(append = false) {
     items.value = append ? [...items.value, ...res.data] : res.data
     page.value = res.page
   } catch (e) {
-    error.value = errorText(e, 'Gagal memuat approval')
+    error.value = errorText(e, 'Gagal memuat daftar persetujuan')
   } finally {
     loading.value = false
   }
@@ -49,6 +50,7 @@ async function decide(a: ApprovalRequest, approve: boolean) {
   try {
     await api(`/approvals/${a.id}/${approve ? 'approve' : 'reject'}`, { method: 'POST', body: approve ? {} : { note: note.value } })
     notice.value = approve ? 'Disetujui.' : 'Ditolak. Pengaju bisa memperbaiki lalu mengajukan ulang.'
+    if (approve) useDemo().mark('approve')
     rejecting.value = null
     note.value = ''
     await load()
@@ -56,7 +58,7 @@ async function decide(a: ApprovalRequest, approve: boolean) {
     if (e instanceof ApiError && e.code === 'RUN_STALE') {
       stale.value = { id: a.id, employees: (e.extra.employees_changed as StaleEmployee[]) ?? [], count: Number(e.extra.changed_count ?? 0) }
     } else if (e instanceof ApiError && e.code === 'APPROVAL_ALREADY_DECIDED') {
-      notice.value = 'Approval ini sudah diputuskan sebelumnya.'
+      notice.value = 'Permintaan ini sudah diputuskan sebelumnya.'
       await load()
     } else {
       error.value = errorText(e, 'Gagal menyimpan keputusan')
@@ -75,10 +77,10 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
   <div class="stack">
     <div class="page-head">
       <div>
-        <h1>Approval</h1>
+        <h1>Persetujuan</h1>
         <p class="sub">Permintaan yang menunggu keputusan kamu.</p>
       </div>
-      <label v-if="isHR" class="muted"><input v-model="scopeAll" type="checkbox" /> Semua (override HR)</label>
+      <label v-if="isHR" class="muted"><input v-model="scopeAll" type="checkbox" /> Semua (sebagai Admin HR)</label>
       <select v-model="status" class="select sm" aria-label="Filter status">
         <option value="PENDING">Menunggu</option>
         <option value="APPROVED">Disetujui</option>
@@ -89,13 +91,13 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
     <p v-if="error" class="alert error" role="alert">{{ error }}</p>
     <p v-if="notice" class="note" role="status"><AppIcon name="info" />{{ notice }}</p>
 
-    <div v-if="!loading && items.length === 0" class="card empty">Tidak ada approval.</div>
+    <div v-if="!loading && items.length === 0" class="card empty">Tidak ada yang menunggu persetujuanmu.</div>
     <div v-for="a in items" :key="a.id" class="card approval">
       <div class="approval-head">
         <div>
           <strong>{{ a.subject.summary }}</strong>
           <div class="muted">
-            Diajukan {{ a.requester.display_name ?? 'pengguna lain' }} · approver {{ a.approver.display_name ?? '—' }}
+            Diajukan {{ a.requester.display_name ?? 'pengguna lain' }} · penyetuju {{ a.approver.display_name ?? '—' }}
             <template v-if="a.self_approved"> · disetujui sendiri: {{ a.self_approval_reason }}</template>
           </div>
         </div>
@@ -111,7 +113,7 @@ const pill: Record<string, string> = { PENDING: 'warn', APPROVED: 'ok', REJECTED
       </div>
 
       <div v-if="a.status === 'PENDING'" class="btn-group">
-        <RouterLink v-if="a.subject_type === 'PAYROLL_RUN'" :to="`/payroll/${a.subject_id}`" class="btn sm ghost">Lihat run</RouterLink>
+        <RouterLink v-if="a.subject_type === 'PAYROLL_RUN'" :to="`/payroll/${a.subject_id}`" class="btn sm ghost">Lihat payroll</RouterLink>
         <button type="button" class="btn sm" :disabled="busy" @click="decide(a, true)"><AppIcon name="check" />Setujui</button>
         <button type="button" class="btn sm ghost" :disabled="busy" @click="rejecting = rejecting === a.id ? null : a.id"><AppIcon name="x" />Tolak</button>
       </div>

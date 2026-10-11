@@ -96,7 +96,7 @@ onMounted(() => load())
       <div class="card-head"><h2>Permintaan lembur</h2></div>
       <div class="table-scroll">
         <table class="table">
-          <thead><tr><th scope="col">Tanggal</th><th scope="col">Jam</th><th scope="col" class="right">Durasi</th><th scope="col">Status</th><th scope="col">Approver</th><th scope="col"><span class="sr-only">Aksi</span></th></tr></thead>
+          <thead><tr><th scope="col">Tanggal</th><th scope="col">Jam</th><th scope="col" class="right">Durasi</th><th scope="col">Status</th><th scope="col">Penyetuju</th><th scope="col"><span class="sr-only">Aksi</span></th></tr></thead>
           <tbody>
             <tr v-if="requests.length === 0"><td colspan="6" class="empty">Belum ada permintaan.</td></tr>
             <tr v-for="r in requests" :key="r.id">

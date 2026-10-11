@@ -50,7 +50,7 @@ async function submit() {
     const body: Record<string, string> = { leave_type_id: form.value.leave_type_id, start_date: form.value.start_date, end_date: form.value.end_date }
     if (form.value.reason.trim()) body.reason = form.value.reason.trim()
     const r = await api<LeaveRequest>('/leave-requests', { method: 'POST', body, idempotencyKey: submitKey })
-    notice.value = `Diajukan: ${r.days} hari kerja, menunggu ${r.approval?.approver.display_name ?? 'approver'}.`
+    notice.value = `Diajukan: ${r.days} hari kerja, menunggu ${r.approval?.approver.display_name ?? 'penyetuju'}.`
     form.value = { ...form.value, start_date: '', end_date: '', reason: '' }
     await load()
   } catch (e) {
@@ -128,7 +128,7 @@ onMounted(() => load())
       <div class="card-head"><h2>Permintaan cuti</h2></div>
       <div class="table-scroll">
         <table class="table">
-          <thead><tr><th scope="col">Jenis</th><th scope="col">Tanggal</th><th scope="col" class="right">Hari</th><th scope="col">Status</th><th scope="col">Approver</th><th scope="col"><span class="sr-only">Aksi</span></th></tr></thead>
+          <thead><tr><th scope="col">Jenis</th><th scope="col">Tanggal</th><th scope="col" class="right">Hari</th><th scope="col">Status</th><th scope="col">Penyetuju</th><th scope="col"><span class="sr-only">Aksi</span></th></tr></thead>
           <tbody>
             <tr v-if="requests.length === 0"><td colspan="6" class="empty">Belum ada permintaan.</td></tr>
             <tr v-for="r in requests" :key="r.id">

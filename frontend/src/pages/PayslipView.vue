@@ -26,7 +26,7 @@ onMounted(async () => {
   <div class="stack">
     <div class="page-head">
       <div>
-        <RouterLink v-if="slip" :to="`/payroll/${slip.run_id}`" class="back"><AppIcon name="back" :size="16" />Kembali ke run</RouterLink>
+        <RouterLink v-if="slip" :to="`/payroll/${slip.run_id}`" class="back"><AppIcon name="back" :size="16" />Kembali ke payroll</RouterLink>
         <h1>Slip gaji karyawan</h1>
       </div>
     </div>

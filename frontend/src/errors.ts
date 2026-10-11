@@ -4,7 +4,7 @@
 import { ApiError } from './api'
 
 export const errorMessages: Record<string, string> = {
-  ACTIVE_RUN_EXISTS: 'Sudah ada payroll run aktif untuk periode ini.',
+  ACTIVE_RUN_EXISTS: 'Sudah ada payroll yang sedang diproses untuk periode ini.',
   APPROVAL_ALREADY_DECIDED: 'Permintaan ini sudah diputuskan orang lain.',
   CLOCK_OUT_WITHOUT_CLOCK_IN: 'Belum ada clock in untuk hari ini.',
   COMPONENT_CYCLE: 'Komponen saling merujuk (siklus). Periksa referensi persentase.',
@@ -37,15 +37,15 @@ export const errorMessages: Record<string, string> = {
   OVERLAPPING_PERIOD: 'Rentang tanggal beririsan dengan data yang sudah ada.',
   PAYLOAD_TOO_LARGE: 'Data terlalu besar.',
   PAYSLIP_NOT_READY: 'PDF slip gaji sedang dibuat. Coba lagi sebentar lagi.',
-  PERIOD_LOCKED: 'Periode payroll ini sudah final dan terkunci.',
+  PERIOD_LOCKED: 'Gaji di periode itu sudah final dan terkunci, jadi tidak bisa diubah diam-diam. Pilih tanggal di periode yang belum final; selisih bulan lalu dicatat sebagai koreksi gaji.',
   PRECONDITION_REQUIRED: 'Data perlu dimuat ulang sebelum diubah.',
   RATE_LIMITED: 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.',
   REFRESH_TOKEN_REUSED: 'Sesi berakhir demi keamanan. Silakan masuk lagi.',
   REQUEST_IN_PROGRESS: 'Permintaan yang sama sedang diproses.',
   RESOURCE_BUSY: 'Data sedang diproses. Coba lagi sebentar lagi.',
-  RUN_FINALIZED: 'Payroll run ini sudah final dan tidak bisa diubah.',
+  RUN_FINALIZED: 'Payroll ini sudah final dan tidak bisa diubah.',
   RUN_HAS_ERRORS: 'Masih ada karyawan berstatus ERROR. Perbaiki atau kecualikan dulu.',
-  RUN_STALE: 'Data input berubah sejak kalkulasi. Hitung ulang payroll run.',
+  RUN_STALE: 'Data karyawan berubah sejak gaji dihitung. Hitung ulang payroll ini.',
   SELF_APPROVAL_FORBIDDEN: 'Pengaju tidak boleh menyetujui permintaannya sendiri.',
   SELF_APPROVAL_REASON_REQUIRED: 'Alasan wajib diisi karena Anda satu-satunya admin.',
   SERVICE_UNAVAILABLE: 'Layanan sedang sibuk. Coba lagi beberapa saat lagi.',

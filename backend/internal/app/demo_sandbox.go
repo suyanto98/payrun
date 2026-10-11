@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"payrun/internal/modules/compensation"
 	"payrun/internal/modules/employee"
 	"payrun/internal/modules/iam"
 	"payrun/internal/modules/leave"
@@ -333,7 +334,33 @@ func (s *sandboxer) populate(ctx context.Context, sb sandboxRow, meta reqmeta.Me
 	if err := s.pendingLeave(ctx, sb, meta); err != nil {
 		return err
 	}
-	return s.lastMonthPayroll(ctx, sb, meta)
+	if err := s.lastMonthPayroll(ctx, sb, meta); err != nil {
+		return err
+	}
+	return s.raiseAfterFinal(ctx, sb, raiseTo, meta)
+}
+
+// raiseTo: Bayu (karyawan ke-3) naik gaji mulai awal bulan ini, SESUDAH payroll bulan lalu final. Riwayat gaji
+// menunjukkan dua periode, payroll bulan lalu tetap memakai gaji lama, dan payroll bulan ini memakai yang baru.
+const raiseTo = "8200000"
+
+func (s *sandboxer) raiseAfterFinal(ctx context.Context, sb sandboxRow, amount string, meta reqmeta.Meta) error {
+	jkt, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		return err
+	}
+	now := s.d.Clock.Now().In(jkt)
+	from := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, jkt).Format(time.DateOnly)
+	reason := "Kenaikan tahunan"
+	owner := auth.Principal{UserID: sb.ownerUser, TenantID: sb.tenantID, Roles: personaOwner.Roles}
+	return db.WithTenantTx(ctx, s.d.Pool, func(tx pgx.Tx) error {
+		var bayu uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT id FROM employees WHERE employee_no = 'KN-003'`).Scan(&bayu); err != nil {
+			return err
+		}
+		_, err := s.w.compensation.ChangeSalaryTx(ctx, tx, owner, bayu, compensation.SalaryChange{BaseSalary: amount, ValidFrom: from, ChangeReason: &reason}, meta)
+		return err
+	})
 }
 
 // pendingLeave: Rizky mengajukan cuti tahunan dua hari, minggu depan. Approver dipilih server (atasan →

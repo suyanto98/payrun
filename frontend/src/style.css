@@ -387,3 +387,19 @@ h1, h2, h3, p { margin: 0; }
   .persona-role { display: none; }
   .guide-toggle { margin-left: 0; }
 }
+
+/* Tur demo: progres, "kenapa penting", rangkuman */
+.tour-progress { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tour-track { flex: 1; min-width: 120px; height: 8px; border-radius: 999px; background: #f6dfae; overflow: hidden; }
+.tour-track span { display: block; height: 100%; background: var(--navy); transition: width .4s ease; }
+.demo-steps li.done a { background: #fff; }
+.demo-steps li.done .demo-step-no { background: var(--ok-icon); }
+.demo-step-why { display: block; font-size: 12px; color: var(--text-2); margin-top: 4px; line-height: 1.45; }
+.demo-step-why b { font-weight: 700; }
+.next-roles { font-size: 13px; }
+.next-roles .link-btn { color: var(--warn); text-decoration: underline; font-size: 13px; }
+.summary { margin-top: 4px; padding: 18px; border-radius: 14px; background: #fff; color: var(--text); display: flex; flex-direction: column; gap: 12px; border: 1px solid #f0d49b; }
+.summary h2 { font-size: 18px; font-weight: 800; }
+.summary-points { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.summary-points strong { color: var(--text); }
+.summary-note { font-size: 13px; color: var(--muted); line-height: 1.5; }

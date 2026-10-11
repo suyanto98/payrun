@@ -58,7 +58,7 @@ watch(
             <AppIcon name="bank" />Payroll
           </RouterLink>
           <RouterLink v-if="canReadPayroll(auth.roles)" to="/adjustments" class="nav-link" :class="{ active: route.path === '/adjustments' }">
-            <AppIcon name="undo" />Adjustment
+            <AppIcon name="undo" />Koreksi gaji
           </RouterLink>
           <RouterLink v-if="auth.employeeId" to="/payslips" class="nav-link" :class="{ active: route.path === '/payslips' }">
             <AppIcon name="download" />Slip gaji
@@ -73,7 +73,7 @@ watch(
             <AppIcon name="chart" />Lembur
           </RouterLink>
           <RouterLink v-if="auth.tenant" to="/approvals" class="nav-link" :class="{ active: route.path === '/approvals' }">
-            <AppIcon name="check" />Approval
+            <AppIcon name="check" />Persetujuan
           </RouterLink>
           <RouterLink to="/select-tenant" class="nav-link" :class="{ active: route.path === '/select-tenant' }">
             <AppIcon name="building" />Ganti perusahaan
