@@ -18,6 +18,8 @@ ROOT=${PR_ROOT:-/srv/payrun}
 EDGE=${PR_EDGE_CONTAINER:-ledgerpay-prod-edge-1}
 SITES=${PR_EDGE_SITES:-/srv/edge/sites}
 export PR_ENV_DIR=$ROOT/env PR_VERSION=$SHA PR_IMAGE_PREFIX=${PR_IMAGE_PREFIX:-}
+# Build arg SPA (VITE_REPO_URL, VITE_CONTACT_URL, VITE_VIDEO_URL): opsional, bukan secret.
+if [ -f "$PR_ENV_DIR/build.env" ]; then set -a; . "$PR_ENV_DIR/build.env"; set +a; fi
 # Satu deploy pada satu waktu di VM INI, lintas project (lock bersama dengan deploy LedgerPay): dua
 # deploy yang membangun image bersamaan di VM 8 GB = OOM, dan keduanya me-reload edge yang sama.
 exec 9>"${PR_DEPLOY_LOCK:-/srv/deploy.lock}"

@@ -3,7 +3,7 @@
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
 **Status:** M7 code-complete (Sprints 0–10): tenancy with forced row-level security, employees with encrypted PII, effective-dated compensation, a pure payroll engine with 33 golden cases, async and resumable payroll runs, approval with stale detection, attendance/leave/overtime, finalize with period lock, payslips (web + deterministic PDF), post-final adjustments, observability, demo mode, backups with a restore drill, and a laptop performance baseline. Still owed by the author: the public deployment, the demo video, and performance numbers on the target VM ([DoD audit](docs/dod-audit.md)).
-**Live demo:** `[LINK: https://payrun.<domain> after the first deploy]` · **Demo video:** `[LINK: video]`
+**Live demo:** https://payrun.suyantolabs.my.id · **Demo video:** `[LINK: video]`
 
 Production-oriented, small in scope, strict about isolation and reproducibility. Built for learning and as a portfolio project.
 

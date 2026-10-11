@@ -67,7 +67,8 @@ services:
     deploy: { resources: { limits: { memory: 384m } } }
 
   payrun-web:
-    build: { context: ../.., dockerfile: deploy/prod/web.Dockerfile }
+    # Tautan landing (repo, kontak, video) dari $PR_ENV_DIR/build.env, dibaca remote-deploy.sh.
+    build: { context: ../.., dockerfile: deploy/prod/web.Dockerfile, args: { VITE_REPO_URL: "${VITE_REPO_URL:-}", VITE_CONTACT_URL: "${VITE_CONTACT_URL:-}", VITE_VIDEO_URL: "${VITE_VIDEO_URL:-}" } }
     image: ${PR_IMAGE_PREFIX:-}payrun-web:${PR_VERSION:?}
     networks: [edge]
     tmpfs: [/tmp, /data, /config]
