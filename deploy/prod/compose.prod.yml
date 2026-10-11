@@ -30,8 +30,11 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    # VM 2 vCPU / 4 GB untuk DUA project: buffer kecil, cukup untuk data demo.
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "effective_cache_size=512MB",
+              "-c", "work_mem=4MB", "-c", "maintenance_work_mem=64MB"]
     restart: unless-stopped
-    deploy: { resources: { limits: { memory: 1g } } }
+    deploy: { resources: { limits: { memory: 512m } } }
 
   # Migrasi utama + migrasi demo (image build tag demo). DSN owner HANYA di sini.
   migrate:
