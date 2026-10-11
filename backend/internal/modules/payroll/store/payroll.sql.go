@@ -2752,6 +2752,57 @@ func (q *Queries) SubmitRun(ctx context.Context, arg SubmitRunParams) (int64, er
 	return result.RowsAffected(), nil
 }
 
+const summarizeItemsByDepartment = `-- name: SummarizeItemsByDepartment :many
+SELECT department_id, count(*)::int AS employees,
+       COALESCE(sum(gross), 0)::numeric AS gross, COALESCE(sum(deductions), 0)::numeric AS deductions,
+       COALESCE(sum(net), 0)::numeric AS net
+FROM payroll_items
+WHERE run_id = $1 AND calc_version = $2 AND status = 'OK'
+GROUP BY department_id
+ORDER BY sum(net) DESC NULLS LAST, department_id
+`
+
+type SummarizeItemsByDepartmentParams struct {
+	RunID       uuid.UUID
+	CalcVersion int32
+}
+
+type SummarizeItemsByDepartmentRow struct {
+	DepartmentID *uuid.UUID
+	Employees    int32
+	Gross        pgtype.Numeric
+	Deductions   pgtype.Numeric
+	Net          pgtype.Numeric
+}
+
+// Y6s: total per departemen (saat perhitungan, kolom denormalisasi R3-4) untuk versi terkini, item OK saja.
+// Satu query agregat: tidak bergantung jumlah karyawan di sisi client (tenant 10.000 karyawan, PR-1).
+func (q *Queries) SummarizeItemsByDepartment(ctx context.Context, arg SummarizeItemsByDepartmentParams) ([]SummarizeItemsByDepartmentRow, error) {
+	rows, err := q.db.Query(ctx, summarizeItemsByDepartment, arg.RunID, arg.CalcVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SummarizeItemsByDepartmentRow
+	for rows.Next() {
+		var i SummarizeItemsByDepartmentRow
+		if err := rows.Scan(
+			&i.DepartmentID,
+			&i.Employees,
+			&i.Gross,
+			&i.Deductions,
+			&i.Net,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRunCounts = `-- name: UpdateRunCounts :exec
 UPDATE payroll_runs SET item_error_count = item_error_count - 1, item_excluded_count = item_excluded_count + 1
 WHERE id = $1 AND status = 'CALCULATED'

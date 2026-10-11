@@ -51,6 +51,7 @@ func (h *Handler) Routes(read, write chi.Router, heavy, heavyFinalize func(http.
 	read.With(hidden).Get("/payroll-runs/{id}", h.get)
 	write.With(hidden, auth.RequireAnyRole(runners...), heavy).Post("/payroll-runs/{id}/calculate", h.calculate)
 	read.With(hidden).Get("/payroll-runs/{id}/items", h.items)
+	read.With(hidden).Get("/payroll-runs/{id}/summary", h.summary)
 	read.With(hidden).Get("/payroll-runs/{id}/items/{item_id}", h.item)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/items/{item_id}/exclude", h.exclude)
 	write.With(hidden, auth.RequireAnyRole(runners...)).Post("/payroll-runs/{id}/cancel", h.cancel)
@@ -390,6 +391,27 @@ func (h *Handler) items(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"data": items, "page": page})
+}
+
+// summary (Y6s): total per departemen versi terkini (grafik biaya gaji di halaman run).
+func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
+	id, err := ids(r, "id")
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if err := httpx.OnlyQuery(r); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	rows, err := h.svc.SummarizeByDepartment(r.Context(), p.UserID, id[0], reqmeta.From(r))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"by_department": rows})
 }
 
 func (h *Handler) item(w http.ResponseWriter, r *http.Request) {

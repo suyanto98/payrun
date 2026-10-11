@@ -309,6 +309,12 @@ routes:
     audit: payroll.bulk_read   # SETIAP request, semua role (Step 12 R2-6)
     cases:
       - {target: run_item, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
+  - id: Y6s
+    route: "GET /payroll-runs/{id}/summary"
+    access: tenant
+    audit: payroll.bulk_read   # total departemen kecil = gaji perorangan: diperlakukan seperti Y6
+    cases:
+      - {target: run_item, expect: {O: 200, H: 200, P: 200, M: 404, E: 404}}
   - id: Y7
     route: "GET /payroll-runs/{id}/items/{item_id}"
     access: tenant

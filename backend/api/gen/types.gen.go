@@ -2425,6 +2425,30 @@ type PayrollRunListItem struct {
 // PayrollRunStatus defines model for PayrollRunStatus.
 type PayrollRunStatus string
 
+// PayrollRunSummary defines model for PayrollRunSummary.
+type PayrollRunSummary struct {
+	ByDepartment []struct {
+		// Deductions Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+		//
+		// Examples: 6888609.00
+		Deductions Money `json:"deductions"`
+
+		// DepartmentId null = employees without a placement
+		DepartmentId *openapi_types.UUID `json:"department_id"`
+		Employees    int                 `json:"employees"`
+
+		// Gross Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+		//
+		// Examples: 6888609.00
+		Gross Money `json:"gross"`
+
+		// Net Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).
+		//
+		// Examples: 6888609.00
+		Net Money `json:"net"`
+	} `json:"by_department"`
+}
+
 // PayrollRunTotals defines model for PayrollRunTotals.
 type PayrollRunTotals struct {
 	// Deductions Decimal amount with exactly 2 fraction digits, as a string (no floats). IDR. Negative only where documented (adjustments).

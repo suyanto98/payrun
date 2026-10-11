@@ -118,7 +118,9 @@ func registerSandboxRoutes(w demoWiring, d Deps) {
 	// Endpoint yang MENERBITKAN cookie sesi: CSRF guard mencegah situs lain diam-diam me-login-kan browser korban.
 	csrf := httpx.CSRFGuard(d.AllowedOrigins)
 	w.public.With(csrf, w.limiter.Middleware(w.tiers.DemoSession, ratelimit.ByIP)).Post("/demo/sessions", s.createSession)
-	w.public.With(w.limiter.Middleware(w.tiers.AuthIP, ratelimit.ByIP)).Get("/demo", func(rw http.ResponseWriter, _ *http.Request) {
+	// Tier read (per IP), BUKAN auth-ip: halaman login memanggil ini setiap dibuka; memakai kuota login
+	// membuat pengguna di belakang satu NAT (dan suite E2E) kehabisan jatah login.
+	w.public.With(w.limiter.Middleware(w.tiers.Read, ratelimit.ByIP)).Get("/demo", func(rw http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(rw, http.StatusOK, map[string]any{"sandbox": true, "ttl_seconds": int64(s.ttl / time.Second)})
 	})
 	w.authed.Get("/demo/sandbox", s.getSandbox)

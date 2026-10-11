@@ -5,6 +5,15 @@
 Skeleton (`internal/platform`, `cmd`, `deploy`, CI) disalin dari LedgerPay, bukan dibagi sebagai module
 (docs/design/32-repository-structure.md). Setiap perubahan skeleton dicatat di sini dan harus di-port ke repo lain.
 
+### 0.0.13 — Demo publik pasca-M7 (2026-10-11, sudah di kedua repo)
+- `ratelimit`: tier `DemoSession` (3/menit + 30/jam LedgerPay, 20/jam PayRun) untuk `POST /demo/sessions` per IP dan
+  uji ketahanan/simulasi gangguan per user; ikut `Unlimited()`.
+- `config`: `DEMO_SANDBOX_TTL` (24 jam), `DEMO_SANDBOX_DAILY_MAX` (LedgerPay 2000, PayRun 500); berlaku hanya di binary
+  build tag `demo` dengan `DEMO_MODE=true`.
+- Pola: `GET /demo` (penemuan fitur untuk SPA) memakai tier **read** per IP, bukan `auth-ip` (temuan E2E: halaman login
+  memanggilnya setiap dibuka dan menghabiskan kuota login satu IP). Test `TestDemoSandbox_DiscoveryDoesNotConsumeLoginQuota` di kedua repo.
+- CSS: `.table-scroll { position: relative }` (`.sr-only` absolut di header tabel keluar dari area scroll di mobile).
+
 ### 0.0.12 — PayRun Sprint 10 (belum di-port ke LedgerPay)
 - **Layout repo (2026-10-10):** Go module pindah ke `backend/` (cmd, internal, db, api, go.mod, sqlc.yaml, .golangci.yml),
   SPA ke `frontend/`; Makefile, Dockerfile (`COPY backend/`), compose, workflow (`working-directory: backend`) menyesuaikan.

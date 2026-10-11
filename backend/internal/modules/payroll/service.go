@@ -459,6 +459,44 @@ func (s *Service) ListItems(ctx context.Context, actor, runID uuid.UUID, iq Item
 	return out, page, nil
 }
 
+// DepartmentTotal adalah total satu departemen di run (Y6s). DepartmentID nil = karyawan tanpa penempatan.
+type DepartmentTotal struct {
+	DepartmentID *uuid.UUID `json:"department_id"`
+	Employees    int32      `json:"employees"`
+	Gross        *string    `json:"gross"`
+	Deductions   *string    `json:"deductions"`
+	Net          *string    `json:"net"`
+}
+
+// SummarizeByDepartment (Y6s): total per departemen untuk versi terkini, role dan audit sama dengan Y6
+// (total satu departemen kecil bisa mengungkap gaji perorangan, jadi diperlakukan seperti bulk read).
+// Nama departemen tidak di-join di sini: tabelnya milik modul org (ADR-001); SPA memetakan lewat GET /departments.
+func (s *Service) SummarizeByDepartment(ctx context.Context, actor, runID uuid.UUID, meta reqmeta.Meta) ([]DepartmentTotal, error) {
+	tid, _ := tenantctx.From(ctx)
+	out := []DepartmentTotal{}
+	err := db.WithTenantTx(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := s.readerRolesTx(ctx, tx, actor); err != nil {
+			return err
+		}
+		q := store.New(tx)
+		run, err := s.loadRun(ctx, q, runID)
+		if err != nil {
+			return err
+		}
+		rs, err := q.SummarizeItemsByDepartment(ctx, store.SummarizeItemsByDepartmentParams{RunID: runID, CalcVersion: run.CalcVersion})
+		if err != nil {
+			return err
+		}
+		for _, r := range rs {
+			out = append(out, DepartmentTotal{DepartmentID: r.DepartmentID, Employees: r.Employees,
+				Gross: fixed(r.Gross), Deductions: fixed(r.Deductions), Net: fixed(r.Net)})
+		}
+		return audit.Record(ctx, tx, s.ids.New(), audit.Entry{TenantID: tid, ActorID: actor, Action: "payroll.bulk_read",
+			TargetType: "payroll_run", TargetID: runID, Diff: map[string]any{"summary": "department", "rows": len(out)}}, meta)
+	})
+	return out, db.MapError(err)
+}
+
 // GetItem (Y7): item versi terkini + baris + issues; item versi lama → 404. Dibaca HR_ADMIN tanpa role
 // runner (menurut DB) → audit (file 17 ᴬ: HR boleh membaca hasil payroll, setiap akses detail tercatat).
 func (s *Service) GetItem(ctx context.Context, actor uuid.UUID, runID, itemID uuid.UUID, meta reqmeta.Meta) (ItemDetail, error) {

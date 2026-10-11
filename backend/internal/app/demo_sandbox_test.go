@@ -4,6 +4,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -269,5 +270,56 @@ func TestDemoSandbox_CrashTestChunkRetriesWithoutDuplicates(t *testing.T) {
 	f := e.newTenantFx(t, "regular")
 	if r, _ := e.doH(t, http.MethodPost, "/api/v1/demo/crash-test", f.tokens["OWNER"], nil, nil); r.StatusCode != http.StatusNotFound {
 		t.Fatalf("regular tenant arming a crash: want 404, got %d", r.StatusCode)
+	}
+}
+
+// Y6s di sandbox: total per departemen (3 departemen) menjumlah persis ke total net run final.
+func TestDemoSandbox_DepartmentSummaryAddsUpToRunTotal(t *testing.T) {
+	e, _ := sandboxEnv(t, testTiers(), nil)
+	s := startSandbox(t, e, "203.0.113.25")
+	_, runs := e.do(t, http.MethodGet, "/api/v1/payroll-runs", s.token, nil)
+	runID := runs["data"].([]any)[0].(map[string]any)["id"].(string)
+	_, run := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+runID, s.token, nil)
+	r, sum := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+runID+"/summary", s.token, nil)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("summary: %d %v", r.StatusCode, sum)
+	}
+	rows := sum["by_department"].([]any)
+	if len(rows) != 3 {
+		t.Fatalf("departments: %d, want 3", len(rows))
+	}
+	var cents, employees int64
+	for _, row := range rows {
+		m := row.(map[string]any)
+		var rp, sen int64
+		if _, err := fmt.Sscanf(m["net"].(string), "%d.%d", &rp, &sen); err != nil {
+			t.Fatal(err)
+		}
+		cents += rp*100 + sen
+		employees += int64(m["employees"].(float64))
+	}
+	var rp, sen int64
+	if _, err := fmt.Sscanf(run["totals"].(map[string]any)["net"].(string), "%d.%d", &rp, &sen); err != nil {
+		t.Fatal(err)
+	}
+	if cents != rp*100+sen || employees != 15 {
+		t.Fatalf("summary net %d sen over %d employees, run total %d sen", cents, employees, rp*100+sen)
+	}
+}
+
+// Regresi: GET /demo (dipanggil setiap halaman login dibuka) tidak boleh memakan kuota login per IP.
+func TestDemoSandbox_DiscoveryDoesNotConsumeLoginQuota(t *testing.T) {
+	tiers := ratelimit.DefaultTiers() // auth-ip asli: 30/menit per IP
+	e, _ := sandboxEnv(t, &tiers, nil)
+	f := e.newTenantFx(t, "nat")
+	ip := map[string]string{"X-Forwarded-For": "198.51.100.77"}
+	for range 35 {
+		if r, _ := e.doH(t, http.MethodGet, "/api/v1/demo", "", ip, nil); r.StatusCode != http.StatusOK {
+			t.Fatalf("GET /demo: %d", r.StatusCode)
+		}
+	}
+	r, _ := e.doH(t, http.MethodPost, "/api/v1/auth/login", "", ip, map[string]string{"email": f.emails[roleO], "password": password})
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("login after 35 discovery calls from the same IP: want 200, got %d", r.StatusCode)
 	}
 }

@@ -47,6 +47,8 @@ tombol **Ganti peran**, dan langkah berikutnya. Diuji `TestDemoSandbox_OneClickC
    rollback, diulang otomatis (backoff ±2 dtk). Timeline: "Bagian N: mati di tengah → diulang → selesai"; hasil
    "15 karyawan, 15 hasil". Versi aman dari Demo B: `panic` (satu percobaan chunk tenant pengunjung), bukan `exit`
    yang mematikan worker bersama di VM publik (`TestDemoSandbox_CrashTestChunkRetriesWithoutDuplicates`).
+5. **Biaya gaji per departemen** (halaman run): grafik dari `GET /payroll-runs/{id}/summary` (Y6s), totalnya sama persis
+   dengan Total net run (`TestDemoSandbox_DepartmentSummaryAddsUpToRunTotal`).
 
 ## Kalau ada yang salah saat live
 | Gejala | Tindakan |

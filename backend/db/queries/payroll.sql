@@ -557,3 +557,14 @@ LIMIT @lim;
 -- name: SetCustomPlans :exec
 -- Lihat loadChunk/customPlans (S9 PR-1): rencana per eksekusi dengan nilai tenant aktual.
 SET LOCAL plan_cache_mode = force_custom_plan;
+
+-- name: SummarizeItemsByDepartment :many
+-- Y6s: total per departemen (saat perhitungan, kolom denormalisasi R3-4) untuk versi terkini, item OK saja.
+-- Satu query agregat: tidak bergantung jumlah karyawan di sisi client (tenant 10.000 karyawan, PR-1).
+SELECT department_id, count(*)::int AS employees,
+       COALESCE(sum(gross), 0)::numeric AS gross, COALESCE(sum(deductions), 0)::numeric AS deductions,
+       COALESCE(sum(net), 0)::numeric AS net
+FROM payroll_items
+WHERE run_id = @run_id AND calc_version = @calc_version AND status = 'OK'
+GROUP BY department_id
+ORDER BY sum(net) DESC NULLS LAST, department_id;

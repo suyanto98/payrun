@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import DemoCrashPanel from '../components/DemoCrashPanel.vue'
+import DepartmentCostChart from '../components/DepartmentCostChart.vue'
 import { canRunPayroll, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill, runActions, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
 import type { Page, PayrollItem, PayrollItemDetail, PayrollRun, RunPayslip } from '../types'
@@ -290,6 +291,8 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
           <div><dt>Peringatan</dt><dd class="num">{{ run.counts.warnings ?? 0 }}</dd></div>
         </dl>
       </div>
+
+      <DepartmentCostChart v-if="run.totals" :run-id="run.id" :calc-version="run.calc_version" />
 
       <div v-if="showItems" class="card card-flush">
         <div class="card-head">

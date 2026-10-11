@@ -158,6 +158,8 @@ func TestContract_S4ResponsesMatchSpec(t *testing.T) {
 
 	_, items := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run+"/items", p, nil)
 	assertMatchesSpec(t, "items", items, &gen.PayrollItemList{})
+	_, summary := e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+run+"/summary", p, nil)
+	assertMatchesSpec(t, "summary", summary, &gen.PayrollRunSummary{})
 	var okItem, errItem string
 	for _, it := range items["data"].([]any) {
 		m := it.(map[string]any)

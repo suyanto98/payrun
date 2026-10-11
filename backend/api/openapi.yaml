@@ -1891,6 +1891,34 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /payroll-runs/{id}/summary:
+    get:
+      tags: [payroll]
+      operationId: getPayrollRunSummary
+      summary: Totals per department for the current calc_version
+      x-endpoint: Y6s
+      x-feature: PF-13
+      x-roles: "O, P; H (audited)"
+      x-rate-tier: read
+      x-priority: P2
+      description: >-
+        One aggregate over OK items of the current `calc_version`, grouped by the department stored on the item at
+        calculation time (R3-4). Department names are not included (owned by the org module); map them with
+        `GET /departments`. A small department's total can reveal an individual salary, so roles and audit match Y6
+        (`payroll.bulk_read` on every request).
+      parameters:
+        - $ref: '#/components/parameters/ResourceId'
+      responses:
+        '200':
+          description: "OK. Ordered by net, highest first. `Cache-Control: no-store`."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollRunSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /payroll-runs/{id}/items/{item_id}:
     get:
       tags: [payroll]
@@ -3103,6 +3131,21 @@ components:
           type: array
           items: { type: string }
         excluded_reason: { type: [string, 'null'] }
+    PayrollRunSummary:
+      type: object
+      required: [by_department]
+      properties:
+        by_department:
+          type: array
+          items:
+            type: object
+            required: [department_id, employees, gross, deductions, net]
+            properties:
+              department_id: { type: [string, 'null'], format: uuid, description: null = employees without a placement }
+              employees: { type: integer, minimum: 1 }
+              gross: { $ref: '#/components/schemas/Money' }
+              deductions: { $ref: '#/components/schemas/Money' }
+              net: { $ref: '#/components/schemas/Money' }
     PayrollItemList:
       type: object
       required: [data, page]
