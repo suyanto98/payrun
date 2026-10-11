@@ -31,7 +31,8 @@ else
     scp -q "$ENV_DIR"/*.env "$ENV_DIR"/s3.json "$USER_AT:$ROOT/env/" && ssh -o BatchMode=yes "$USER_AT" "chmod 600 $ROOT/env/*"
   fi
 fi
-REGISTRY=${PR_IMAGE_PREFIX%%/*}
+PREFIX=${PR_IMAGE_PREFIX:-}
+REGISTRY=${PREFIX%%/*}
 if [ -n "${PR_REGISTRY_TOKEN:-}" ] && [ -n "$REGISTRY" ]; then
   printf %s "$PR_REGISTRY_TOKEN" | run "docker login $REGISTRY -u ${PR_REGISTRY_USER:-ci} --password-stdin >/dev/null"
   trap 'run "docker logout $REGISTRY >/dev/null" || true' EXIT
