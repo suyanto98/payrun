@@ -15,7 +15,7 @@ type Step = { to: string; title: string; hint: string }
 const steps: Record<DemoPersona['key'], Step[]> = {
   payroll: [
     { to: '/payroll', title: 'Lihat payroll bulan lalu', hint: 'Sudah final: dihitung, diajukan, disetujui Pak Hendra.' },
-    { to: '/payroll', title: 'Buat payroll bulan ini, lalu Hitung', hint: 'Dihitung di latar belakang per bagian; progresnya terlihat.' },
+    { to: '/payroll', title: 'Buat payroll bulan ini, lalu Hitung', hint: 'Coba "Pasang gangguan" dulu: satu bagian mati di tengah, lalu diulang otomatis.' },
     { to: '/payroll', title: 'Ajukan ke Pak Hendra', hint: 'Kamu tidak bisa menyetujui pengajuanmu sendiri. Ganti peran ke owner.' },
   ],
   owner: [

@@ -123,6 +123,13 @@ func registerSandboxRoutes(w demoWiring, d Deps) {
 	})
 	w.authed.Get("/demo/sandbox", s.getSandbox)
 	w.authed.With(csrf).Post("/demo/persona", s.switchPersona)
+	// Simulasi gangguan (demo_crash.go): token harus ber-tenant sandbox pemanggil.
+	byUser := func(r *http.Request) string {
+		p, _ := auth.PrincipalFrom(r.Context())
+		return "crash|" + p.UserID.String()
+	}
+	w.authed.With(w.limiter.Middleware(w.tiers.DemoSession, byUser)).Post("/demo/crash-test", s.armCrash)
+	w.authed.Get("/demo/runs/{id}/timeline", s.runTimeline)
 }
 
 type sandboxRow struct {

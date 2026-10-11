@@ -220,3 +220,54 @@ func TestDemoSandbox_RateLimitAndDailyQuota(t *testing.T) {
 		t.Fatalf("daily quota reached: want 503, got %d", s.status)
 	}
 }
+
+// Simulasi gangguan: satu chunk "mati" di tengah (panic sebelum COMMIT), diulang otomatis; hasil tetap 15 item
+// untuk 15 karyawan (tidak dobel, tidak hilang). Invariant payroll dicek di akhir test (newEnv).
+func TestDemoSandbox_CrashTestChunkRetriesWithoutDuplicates(t *testing.T) {
+	e, _ := sandboxEnv(t, testTiers(), nil)
+	s := startSandbox(t, e, "203.0.113.24")
+	idem := func(k string) map[string]string { return map[string]string{"Idempotency-Key": k} }
+	r, run := e.doH(t, http.MethodPost, "/api/v1/payroll-runs", s.token, idem("crash-create-"+newID().String()), map[string]string{"period": "2026-10"})
+	if r.StatusCode != http.StatusCreated {
+		t.Fatalf("create run: %d %v", r.StatusCode, run)
+	}
+	runID := run["id"].(string)
+	if r, b := e.doH(t, http.MethodPost, "/api/v1/demo/crash-test", s.token, nil, nil); r.StatusCode != http.StatusCreated || b["armed"] != true {
+		t.Fatalf("arm crash: %d %v", r.StatusCode, b)
+	}
+	if r, b := e.doH(t, http.MethodPost, "/api/v1/payroll-runs/"+runID+"/calculate", s.token, idem("crash-calc-"+newID().String()), nil); r.StatusCode != http.StatusAccepted {
+		t.Fatalf("calculate: %d %v", r.StatusCode, b)
+	}
+	var cur map[string]any
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		_, cur = e.do(t, http.MethodGet, "/api/v1/payroll-runs/"+runID, s.token, nil)
+		if cur["status"] == "CALCULATED" || cur["status"] == "FAILED" {
+			break
+		}
+	}
+	if cur["status"] != "CALCULATED" {
+		t.Fatalf("run after crash test: %v", cur["status"])
+	}
+	if ok := cur["counts"].(map[string]any)["ok"]; ok != float64(15) {
+		t.Fatalf("items ok = %v, want 15 (one per employee, no duplicates)", ok)
+	}
+	_, tl := e.do(t, http.MethodGet, "/api/v1/demo/runs/"+runID+"/timeline", s.token, nil)
+	retried := 0
+	for _, c := range tl["chunks"].([]any) {
+		m := c.(map[string]any)
+		if m["status"] != "succeeded" {
+			t.Fatalf("chunk not finished: %v", m)
+		}
+		if m["failed_once"] == true && m["simulated"] == true && m["attempts"] == float64(2) {
+			retried++
+		}
+	}
+	if retried != 1 || tl["crash_armed"] != false {
+		t.Fatalf("timeline: want exactly one chunk failed once (simulated) and retried, fault consumed; got %v", tl)
+	}
+	// Token tenant lain tidak bisa memasang gangguan di sandbox ini (dan user biasa tidak punya sandbox).
+	f := e.newTenantFx(t, "regular")
+	if r, _ := e.doH(t, http.MethodPost, "/api/v1/demo/crash-test", f.tokens["OWNER"], nil, nil); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("regular tenant arming a crash: want 404, got %d", r.StatusCode)
+	}
+}

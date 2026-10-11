@@ -43,6 +43,10 @@ tombol **Ganti peran**, dan langkah berikutnya. Diuji `TestDemoSandbox_OneClickC
 1. **Dina (admin payroll):** buka payroll bulan lalu (Final), buat payroll bulan ini → Hitung → Ajukan.
 2. **Ganti peran ke Hendra (owner):** kotak approval berisi cuti Rizky (dan payroll yang baru diajukan). "Dina tidak bisa menyetujui pengajuannya sendiri."
 3. **Ganti peran ke Rizky (karyawan):** slip gaji bulan lalu + unduh PDF; ajukan cuti. Menu payroll tidak ada (otorisasi server, bukan sekadar UI).
+4. **Simulasi gangguan** (halaman run, sebelum Hitung): "Pasang gangguan" → satu chunk panic tepat sebelum COMMIT,
+   rollback, diulang otomatis (backoff ±2 dtk). Timeline: "Bagian N: mati di tengah → diulang → selesai"; hasil
+   "15 karyawan, 15 hasil". Versi aman dari Demo B: `panic` (satu percobaan chunk tenant pengunjung), bukan `exit`
+   yang mematikan worker bersama di VM publik (`TestDemoSandbox_CrashTestChunkRetriesWithoutDuplicates`).
 
 ## Kalau ada yang salah saat live
 | Gejala | Tindakan |

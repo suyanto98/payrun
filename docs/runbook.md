@@ -144,3 +144,8 @@ yang gagal di tengah tetap ikut dibersihkan. Job `demo.sandbox_expire` (5 menit)
 20/jam per IP, `DEMO_SANDBOX_DAILY_MAX` (500) per 24 jam → 503. Pantau:
 `SELECT count(*) FROM demo_sandboxes WHERE created_at > now() - interval '1 day'`. Disk menipis: turunkan kuota atau
 reset volume demo di luar jam ramai.
+
+Simulasi gangguan pengunjung: `POST /api/v1/demo/crash-test` (3/menit per user) memasang SATU fault `panic` di
+`payroll.calc_chunk.before_commit` untuk tenant sandbox itu saja (berlaku 15 menit, pemasangan ulang mengganti
+yang lama). Worker tidak mati; chunk itu rollback dan diulang. `GET /api/v1/demo/runs/{id}/timeline` membaca
+status chunk dari `jobs` (tanpa pesan error mentah). Fault `exit` tetap hanya untuk presenter (`X-Demo-Token`).

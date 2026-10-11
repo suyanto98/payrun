@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import DemoCrashPanel from '../components/DemoCrashPanel.vue'
 import { canRunPayroll, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill, runActions, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
 import type { Page, PayrollItem, PayrollItemDetail, PayrollRun, RunPayslip } from '../types'
@@ -270,13 +271,14 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
           <span :style="{ width: progressPct + '%' }" />
         </div>
       </div>
+      <DemoCrashPanel :run="run" :can-calculate="canRun && actions.calculate" /><!-- mode demo saja -->
       <p v-if="run.status === 'FAILED'" class="alert error">{{ run.failure_reason }}</p>
       <p v-if="run.status === 'CANCELLED'" class="note"><AppIcon name="info" />Dibatalkan: {{ run.cancel_reason }}</p>
       <p v-if="run.status === 'FINALIZED'" class="note"><AppIcon name="lock" />Final. Periode terkunci; hasil tidak bisa diubah dan bisa dihitung ulang dari snapshot.</p>
       <p v-if="run.status === 'PENDING_APPROVAL'" class="note"><AppIcon name="clock" />Menunggu keputusan approver. Hitung ulang dan pembatalan dikunci sampai diputuskan.</p>
 
       <div v-if="run.totals" class="row-wrap">
-        <div class="balance-card stat">
+        <div class="balance-card total-card">
           <span class="balance-label">Total net</span>
           <span class="balance">{{ formatMoney(run.totals.net) }}</span>
           <span class="balance-meta">Bruto {{ formatMoney(run.totals.gross) }} · Potongan {{ formatMoney(run.totals.deductions) }}</span>
@@ -396,7 +398,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
 <style scoped>
 .progress { height: 10px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 10px; }
 .progress span { display: block; height: 100%; background: var(--blue); transition: width .4s ease; }
-.stat { flex: 1 1 320px; }
+.total-card { flex: 1 1 320px; } /* bukan .stat: kelas global .stat (kartu putih) menimpa latar navy → teks putih tak terlihat */
 .counts { flex: 1 1 280px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 0; }
 .counts dt { font-size: 12px; color: var(--muted); }
 .counts dd { margin: 0; font-size: 22px; font-weight: 800; }
