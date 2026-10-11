@@ -126,7 +126,11 @@ func newEnvTiers(t *testing.T, tiers *ratelimit.Tiers) env {
 	t.Helper()
 	dbtest.SkipIfShort(t)
 	tdb := dbtest.New(t)
-	clk, ids := clock.NewFake(time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)), idgen.V7{}
+	// Jam palsu: tanggal dasar digeser kelipatan 7 hari ke minggu berjalan. Hari dan jamnya tetap
+	// (test deterministik), tapi tidak pernah > 7 hari di belakang now() Postgres yang dipakai job
+	// cleanup/sweep. Tanggal tetap membuat idempotency key "kedaluwarsa" dan test gagal sendiri.
+	base, week := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC), 7*24*time.Hour
+	clk, ids := clock.NewFake(base.Add(time.Since(base)/week*week)), idgen.V7{}
 	tokens, err := auth.NewTokens(map[string][]byte{"k1": []byte("0123456789abcdef0123456789abcdef")}, "k1", "payrun", 15*time.Minute, clk, ids)
 	if err != nil {
 		t.Fatal(err)
