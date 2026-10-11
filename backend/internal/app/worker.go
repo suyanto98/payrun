@@ -69,15 +69,19 @@ func NewWorker(d Deps, cfg WorkerConfig) *Worker {
 		docs := payroll.NewJobs(d.Pool, d.IDs, cfg.ChunkSize).WithDocuments(d.Storage, d.Clock)
 		w.Documents = jobs.NewRunner(d.Pool, rc("documents", 2), docs.DocumentKinds()...)
 	}
-	w.Maintenance = jobs.NewRunner(d.Pool, rc("maintenance", 1),
+	demoKinds, demoEvery := demoMaintenanceKinds(d) // kosong di build release
+	w.Maintenance = jobs.NewRunner(d.Pool, rc("maintenance", 1), append(demoKinds,
 		jobs.Kind{Name: "maintenance.jobs_cleanup", MaxAttempts: 3, Timeout: 2 * time.Minute,
 			Handler: func(ctx context.Context, _ *jobs.Job) error {
 				n, err := jobs.Cleanup(ctx, d.Pool)
 				observability.Logger(ctx).Info("jobs.cleanup_done", "deleted", n)
 				return err
 			}},
-	)
+	)...)
 	w.Maintenance.Every("maintenance.jobs_cleanup", time.Hour)
+	for kind, every := range demoEvery {
+		w.Maintenance.Every(kind, every)
+	}
 	return w
 }
 

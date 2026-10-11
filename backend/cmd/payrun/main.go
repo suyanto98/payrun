@@ -132,6 +132,7 @@ func runAPI() error {
 		Mailer: mail.SMTP{Addr: cfg.SMTPAddr, From: cfg.MailFrom, Username: cfg.SMTPUsername,
 			Password: cfg.SMTPPassword, Timeout: cfg.MailTimeout},
 		Keyring: cfg.Keyring, BlindIndex: cfg.BlindIndex, DemoMode: cfg.DemoMode, DemoToken: cfg.DemoToken,
+		DemoSandboxTTL: cfg.DemoSandboxTTL, DemoSandboxDailyMax: cfg.DemoSandboxDailyMax,
 	}
 	if cfg.DemoMode && !faults.Enabled() {
 		logger.Warn("demo.mode_ignored", "reason", "DEMO_MODE=true but this is a release build (no demo tag)")

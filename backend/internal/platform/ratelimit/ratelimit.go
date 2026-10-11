@@ -39,6 +39,8 @@ type Tiers struct {
 	// Heavy* dikunci per TENANT (bukan per user): melindungi worker bersama dari satu tenant
 	// yang memicu kalkulasi/import/finalize berulang (konvensi API §7, PF-29).
 	HeavyCalculate, HeavyImport, HeavyFinalize Tier
+	// DemoSession: POST /demo/sessions per IP (build demo). Satu sandbox = tenant + 15 karyawan + payroll satu bulan.
+	DemoSession Tier
 	// PIIView: full view PII (W6) per USER, di atas tier read: pengurasan PII massal oleh akun yang
 	// sah tetap terbatas dan memicu alert (T-PR-10).
 	PIIView Tier
@@ -48,7 +50,7 @@ type Tiers struct {
 // Unlimited: semua tier dengan batas yang tidak pernah tercapai (HANYA perf env, lihat config).
 func Unlimited() Tiers {
 	t := DefaultTiers()
-	for _, tier := range []*Tier{&t.AuthStrict, &t.AuthIP, &t.Write, &t.Read, &t.HeavyCalculate, &t.HeavyImport, &t.HeavyFinalize, &t.PIIView} {
+	for _, tier := range []*Tier{&t.AuthStrict, &t.AuthIP, &t.Write, &t.Read, &t.HeavyCalculate, &t.HeavyImport, &t.HeavyFinalize, &t.PIIView, &t.DemoSession} {
 		tier.Rules = []Rule{{1_000_000_000, time.Minute}}
 	}
 	return t
@@ -64,6 +66,7 @@ func DefaultTiers() Tiers {
 		HeavyImport:    Tier{"heavy-import", []Rule{{10, time.Hour}}},
 		HeavyFinalize:  Tier{"heavy-finalize", []Rule{{5, time.Hour}}},
 		PIIView:        Tier{"pii-view", []Rule{{30, time.Hour}}},
+		DemoSession:    Tier{"demo-session", []Rule{{3, time.Minute}, {20, time.Hour}}},
 	}
 }
 

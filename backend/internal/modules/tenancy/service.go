@@ -202,26 +202,7 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 				return err
 			}
 		}
-		// Fase tenant (13-db-rls §2.3, Step 12 C2): app.tenant_id = tenant baru, app.user_id kosong.
-		if err := db.SetTenant(ctx, tx, tenantID); err != nil {
-			return err
-		}
-		if err := q.CreateTenant(ctx, store.CreateTenantParams{ID: tenantID, Slug: in.Slug, Name: in.CompanyName, Status: status}); err != nil {
-			return err
-		}
-		if err := q.CreateTenantSettings(ctx, store.CreateTenantSettingsParams{TenantID: tenantID, Timezone: in.Timezone, CreatedBy: &userID}); err != nil {
-			return err
-		}
-		if err := q.SeedSystemComponents(ctx, store.SeedSystemComponentsParams{TenantID: tenantID, Actor: userID}); err != nil {
-			return err
-		}
-		if err := q.SeedLeaveTypes(ctx, store.SeedLeaveTypesParams{TenantID: tenantID, Actor: userID}); err != nil {
-			return err
-		}
-		if err := s.accounts.AddOwnerTx(ctx, tx, tenantID, userID); err != nil {
-			return err
-		}
-		if err := s.audit(ctx, q, tenantID, userID, "tenant.created", meta); err != nil {
+		if err := s.createTenantTx(ctx, tx, tenantID, userID, in.CompanyName, in.Slug, in.Timezone, status, meta); err != nil {
 			return err
 		}
 		body, _ := json.Marshal(res.Body)
@@ -246,6 +227,51 @@ func (s *Service) Signup(ctx context.Context, key string, in SignupInput, meta r
 		}
 	}
 	return res, nil
+}
+
+// createTenantTx: fase tenant signup (13-db-rls §2.3, Step 12 C2): app.tenant_id = tenant baru, app.user_id
+// kosong; tenant + settings + komponen sistem + jenis cuti + membership OWNER + audit.
+func (s *Service) createTenantTx(ctx context.Context, tx pgx.Tx, tenantID, ownerID uuid.UUID, name, slug, timezone, status string, meta reqmeta.Meta) error {
+	if err := db.SetTenant(ctx, tx, tenantID); err != nil {
+		return err
+	}
+	q := store.New(tx)
+	if err := q.CreateTenant(ctx, store.CreateTenantParams{ID: tenantID, Slug: slug, Name: name, Status: status}); err != nil {
+		return err
+	}
+	if err := q.CreateTenantSettings(ctx, store.CreateTenantSettingsParams{TenantID: tenantID, Timezone: timezone, CreatedBy: &ownerID}); err != nil {
+		return err
+	}
+	if err := q.SeedSystemComponents(ctx, store.SeedSystemComponentsParams{TenantID: tenantID, Actor: ownerID}); err != nil {
+		return err
+	}
+	if err := q.SeedLeaveTypes(ctx, store.SeedLeaveTypesParams{TenantID: tenantID, Actor: ownerID}); err != nil {
+		return err
+	}
+	if err := s.accounts.AddOwnerTx(ctx, tx, tenantID, ownerID); err != nil {
+		return err
+	}
+	return s.audit(ctx, q, tenantID, ownerID, "tenant.created", meta)
+}
+
+// CreateActiveTenantTx membuat tenant ACTIVE untuk owner yang sudah ada di tx (sandbox demo: email owner
+// sintetis tidak perlu diverifikasi). Isi tenant sama persis dengan signup; transaksi berakhir di mode tenant.
+func (s *Service) CreateActiveTenantTx(ctx context.Context, tx pgx.Tx, tenantID, ownerID uuid.UUID, name, slug string, meta reqmeta.Meta) error {
+	name = strings.TrimSpace(name)
+	if n := utf8.RuneCountInString(name); n < 2 || n > 120 || !slugRe.MatchString(slug) {
+		return apperr.ErrValidation.WithDetail("company name 2–120 characters, slug 3–40 of a-z, 0-9 and single hyphens")
+	}
+	return s.createTenantTx(ctx, tx, tenantID, ownerID, name, slug, defaultTZ, "ACTIVE", meta)
+}
+
+// SuspendTenantTx: tenant ACTIVE → SUSPENDED (mode tenant). Sesi baru tidak lagi mendapat tenant ini
+// (pickTenant hanya memilih tenant ACTIVE). Fungsi paket: dipanggil worker (kedaluwarsa sandbox demo).
+func SuspendTenantTx(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, now time.Time) error {
+	if err := db.SetTenant(ctx, tx, tenantID); err != nil {
+		return err
+	}
+	_, err := store.New(tx).SuspendTenant(ctx, store.SuspendTenantParams{Now: &now, ID: tenantID})
+	return db.MapError(err)
 }
 
 // errReplayed membawa hasil replay keluar dari WithTx (transaksi di-rollback: tidak ada yang ditulis).

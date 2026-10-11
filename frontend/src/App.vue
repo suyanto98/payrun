@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './components/AppIcon.vue'
+import DemoBar from './components/DemoBar.vue'
 import { canEditEmployees, canListEmployees, canReadPayroll, rolesText } from './access'
 import { useAuth } from './stores/auth'
+import { useDemo } from './stores/demo'
 
 const auth = useAuth()
 const route = useRoute()
@@ -22,6 +24,17 @@ async function logout() {
   await auth.logout()
   router.push('/login')
 }
+
+// Mode demo: info sandbox dimuat setiap kali sesi berganti (login, demo baru, ganti peran, logout).
+const demo = useDemo()
+watch(
+  () => auth.token,
+  async (token) => {
+    if (token && (await demo.detect())) await demo.load().catch(() => demo.clear())
+    else demo.clear()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -83,6 +96,7 @@ async function logout() {
       <p v-if="!auth.emailVerified" class="alert error" role="status">
         Email kamu belum diverifikasi. Buka link di email untuk mengaktifkan perusahaan dan menerima undangan.
       </p>
+      <DemoBar />
       <RouterView />
     </main>
   </div>

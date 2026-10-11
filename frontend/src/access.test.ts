@@ -13,6 +13,9 @@ describe('access', () => {
     expect(formatDate('2026-01-05')).toBe('5 Jan 2026')
     expect(formatDate('2026-12-31')).toBe('31 Des 2026')
     expect(formatDate(null)).toBe('—')
+    // Timestamp (finalized_at): tanggal WIB. 20:30 UTC = 03:30 WIB hari berikutnya.
+    expect(formatDate('2026-10-11T03:12:45.123Z')).toBe('11 Okt 2026')
+    expect(formatDate('2026-10-11T20:30:00Z')).toBe('12 Okt 2026')
   })
   it('formats money strings without floats', () => {
     expect(formatMoney('6600000.00')).toBe('Rp6.600.000')

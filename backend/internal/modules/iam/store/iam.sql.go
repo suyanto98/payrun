@@ -121,6 +121,33 @@ func (q *Queries) ActorRoles(ctx context.Context, userID *uuid.UUID) ([]string, 
 	return roles, err
 }
 
+const addActiveMembership = `-- name: AddActiveMembership :exec
+INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by, updated_by)
+VALUES ($1, $2, $3, $4, 'ACTIVE', $5, $6, $6)
+`
+
+type AddActiveMembershipParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	UserID   *uuid.UUID
+	Roles    []string
+	Now      *time.Time
+	Actor    *uuid.UUID
+}
+
+// [tenant] Anggota ACTIVE langsung (tanpa undangan): hanya provisioning sandbox demo; jalur produk = undangan.
+func (q *Queries) AddActiveMembership(ctx context.Context, arg AddActiveMembershipParams) error {
+	_, err := q.db.Exec(ctx, addActiveMembership,
+		arg.TenantID,
+		arg.ID,
+		arg.UserID,
+		arg.Roles,
+		arg.Now,
+		arg.Actor,
+	)
+	return err
+}
+
 const addOwnerMembership = `-- name: AddOwnerMembership :exec
 INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by)
 VALUES ($1, $2, $3, ARRAY['OWNER'], 'ACTIVE', $4, $3)

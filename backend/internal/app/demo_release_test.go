@@ -32,4 +32,17 @@ func TestDemoMode_ReleaseBuildHasNoDemoRoutes(t *testing.T) {
 			t.Fatalf("%s /demo/faults on a release build: want 404, got %d", m, resp.StatusCode)
 		}
 	}
+	// Sandbox pengunjung juga tidak ada: tidak ada tenant + user tanpa signup di binary release.
+	for _, path := range []string{"/api/v1/demo/sessions", "/api/v1/demo/persona"} {
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+path, nil)
+		req.Header.Set("X-Requested-With", "fetch")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("POST %s on a release build: want 404, got %d", path, resp.StatusCode)
+		}
+	}
 }

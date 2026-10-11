@@ -6,8 +6,6 @@ import (
 	"crypto/subtle"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-
 	"payrun/internal/platform/apperr"
 	"payrun/internal/platform/auth"
 	"payrun/internal/platform/faults"
@@ -21,10 +19,12 @@ var demoPoints = map[string]bool{faults.PointChunkBeforeCommit: true, faults.Poi
 // (lapis "runtime"), setiap request wajib X-Demo-Token yang cocok (lapis "request"), dan hanya OWNER
 // tenant aktif. Token salah → 404, sama dengan rute yang tidak ada. Fault berlaku untuk tenant pemanggil
 // saja (kolom tenant_id), jadi presenter tidak bisa mematikan pekerjaan tenant lain.
-func registerDemoRoutes(tenant chi.Router, d Deps) {
+func registerDemoRoutes(w demoWiring, d Deps) {
 	if !d.DemoMode || d.DemoToken == "" {
 		return
 	}
+	registerSandboxRoutes(w, d) // sandbox pengunjung (demo_sandbox.go)
+	tenant := w.faults
 	guard := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Demo-Token")), []byte(d.DemoToken)) != 1 {

@@ -71,7 +71,8 @@ func TestBuild_DemoEndpointsAbsentWithoutDemoMode(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds binaries")
 	}
-	demoOnly := []string{"payrun/internal/app.demoPoints", "payrun/db/migrations_demo.files", "payrun/internal/platform/faults.exit"}
+	// demoEmployees: data perusahaan contoh sandbox pengunjung (POST /demo/sessions).
+	demoOnly := []string{"payrun/internal/app.demoPoints", "payrun/internal/app.demoEmployees", "payrun/db/migrations_demo.files", "payrun/internal/platform/faults.exit"}
 	release, demo := symbols(t, ""), symbols(t, "demo")
 	for _, sym := range demoOnly {
 		if strings.Contains(release, sym) {

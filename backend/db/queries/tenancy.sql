@@ -95,3 +95,7 @@ SELECT holiday_date FROM holidays WHERE id = @id;
 -- name: CalendarSettings :one
 -- [tenant] Zona waktu + hari kerja mingguan (kalender kerja, dipakai modul input S6).
 SELECT timezone, work_days, coalesce(overtime_max_hours_per_day::text, '')::text AS overtime_max FROM tenant_settings WHERE tenant_id = @tenant_id;
+
+-- name: SuspendTenant :execrows
+-- [tenant]
+UPDATE tenants SET status = 'SUSPENDED', suspended_at = @now WHERE id = @id AND status = 'ACTIVE';

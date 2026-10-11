@@ -270,3 +270,8 @@ ORDER BY user_id;
 SELECT user_id::uuid AS user_id FROM memberships
 WHERE status = 'ACTIVE' AND @role::text = ANY (roles)
 ORDER BY created_at, user_id;
+
+-- name: AddActiveMembership :exec
+-- [tenant] Anggota ACTIVE langsung (tanpa undangan): hanya provisioning sandbox demo; jalur produk = undangan.
+INSERT INTO memberships (tenant_id, id, user_id, roles, status, accepted_at, created_by, updated_by)
+VALUES (@tenant_id, @id, @user_id, @roles, 'ACTIVE', @now, @actor, @actor);

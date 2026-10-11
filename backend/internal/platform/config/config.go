@@ -71,6 +71,10 @@ type Config struct {
 	// setiap request wajib header X-Demo-Token. DEMO_MODE=true tanpa token (≥ 24 karakter) = gagal start.
 	DemoMode  bool   `env:"DEMO_MODE"`
 	DemoToken string `env:"DEMO_TOKEN"`
+	// Sandbox pengunjung ("Coba demo tanpa daftar", binary demo + DEMO_MODE): umur sandbox dan batas sandbox
+	// baru per 24 jam (di atasnya POST /demo/sessions → 503, melindungi disk dan worker VM demo).
+	DemoSandboxTTL      time.Duration `env:"DEMO_SANDBOX_TTL" envDefault:"24h"`
+	DemoSandboxDailyMax int           `env:"DEMO_SANDBOX_DAILY_MAX" envDefault:"500"`
 
 	// Enkripsi PII at-rest (ADR-P08): {"v1":"base64-32B"}; versi aktif untuk enkripsi baru.
 	PIIKeyringJSON   string `env:"PII_KEYRING"`

@@ -72,6 +72,9 @@ type Deps struct {
 	// Mode demo (O15): berpengaruh HANYA di binary build tag `demo` (lihat demo_routes.go).
 	DemoMode  bool
 	DemoToken string
+
+	DemoSandboxTTL      time.Duration // umur sandbox pengunjung; 0 → 24 jam
+	DemoSandboxDailyMax int           // sandbox baru per 24 jam; 0 → 500
 }
 
 // ValidateAPI memastikan dependency wajib API terisi. Wiring yang lupa harus menggagalkan boot,
@@ -182,10 +185,31 @@ func APIRouter(d Deps) http.Handler {
 		attendanceH.Routes(tenantRead, tenantWrite)
 		leaveH.Routes(tenantRead, tenantWrite)
 		overtimeH.Routes(tenantRead, tenantWrite)
-		// /api/v1/demo/*: build tag `demo` + DEMO_MODE + X-Demo-Token + OWNER; no-op di build release.
-		registerDemoRoutes(authed.With(auth.RequireTenant, limiter.Middleware(tiers.HeavyCalculate, byTenant)), d)
+		// /api/v1/demo/*: build tag `demo` + DEMO_MODE; no-op di build release. Fault: + X-Demo-Token + OWNER;
+		// sandbox pengunjung: publik, rate limit per IP + kuota harian.
+		registerDemoRoutes(demoWiring{
+			public: v1, authed: read,
+			faults: authed.With(auth.RequireTenant, limiter.Middleware(tiers.HeavyCalculate, byTenant)),
+			iam:    iamSvc, iamH: iamH, tenancy: tenancySvc, org: orgSvc, employees: employeeSvc,
+			payroll: payrollSvc, approvals: approvalSvc, leave: leaveSvc, limiter: limiter, tiers: tiers,
+		}, d)
 	})
 	return r
+}
+
+// demoWiring: apa yang dibutuhkan rute demo (demo_routes.go, demo_sandbox.go). Tidak dipakai build release.
+type demoWiring struct {
+	public, authed, faults chi.Router
+	iam                    *iam.Service
+	iamH                   *iam.Handler
+	tenancy                *tenancy.Service
+	org                    *org.Service
+	employees              *employee.Service
+	payroll                *payroll.Service
+	approvals              *approval.Service
+	leave                  *leave.Service
+	limiter                *ratelimit.Limiter
+	tiers                  ratelimit.Tiers
 }
 
 // OpsRouter: /healthz, /readyz, dan /metrics di port internal (tidak diekspos Caddy; Step 8 `01` §2).

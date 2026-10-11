@@ -134,3 +134,13 @@ Restore sungguhan memakai langkah yang sama ke DB target. RPO 24 jam (backup har
 ### Demo (image build tag `demo` saja)
 `make up-demo && make seed-demo && make demo-live` (stack terpisah `payrun-demo`, API `:8082`). Fault tertinggal dari
 latihan: `DELETE /api/v1/demo/faults` dengan `X-Demo-Token` sebagai OWNER tenant itu, atau `make demo-down`.
+
+Sandbox pengunjung ("Coba demo" di halaman login): `POST /api/v1/demo/sessions` membuat tenant baru (PT Kopi
+Nusantara, 15 karyawan, cuti menunggu approval) dan menjalankan payroll bulan lalu sampai final lewat pipeline asli.
+Request **menunggu worker** menghitung (normal 1–3 detik, batas 45 detik → 503); worker mati = tombol demo gagal,
+jadi cek `docker logs <project>-worker-1` dulu. Baris `demo_sandboxes` ditulis di transaksi pertama, sehingga sandbox
+yang gagal di tengah tetap ikut dibersihkan. Job `demo.sandbox_expire` (5 menit): tenant lewat `DEMO_SANDBOX_TTL`
+(24 jam) → `SUSPENDED` + refresh token anggota dicabut; data payroll final tidak dihapus (PI-05). Batas: 3/menit +
+20/jam per IP, `DEMO_SANDBOX_DAILY_MAX` (500) per 24 jam → 503. Pantau:
+`SELECT count(*) FROM demo_sandboxes WHERE created_at > now() - interval '1 day'`. Disk menipis: turunkan kuota atau
+reset volume demo di luar jam ramai.

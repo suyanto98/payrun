@@ -35,6 +35,15 @@ oleh `make seed-demo` (seed-0 = **Alpha**, 100 karyawan; seed-1 = **Beta**, 10�
 2. "Sistem mati di tengah hitung gaji tidak membuat gaji dobel" → Demo B: 100 karyawan = 100 hasil, bukan 110, walaupun worker mati di tengah jalan.
 3. "Gaji yang sudah final tidak bisa diubah diam-diam; koreksi tercatat di bulan berikutnya" → Demo C5.
 
+### Tanpa presenter: "Coba demo" di halaman login
+Pengunjung link demo publik mencoba sendiri. Tombol **Coba demo** membuat perusahaan pribadi **PT Kopi Nusantara**
+(15 karyawan, 3 departemen) dengan payroll bulan lalu yang sudah **final**: benar-benar dihitung worker, diajukan
+Dina, disetujui Pak Hendra, lalu slip gaji dirender. Bar demo di atas setiap halaman menunjukkan peran aktif,
+tombol **Ganti peran**, dan langkah berikutnya. Diuji `TestDemoSandbox_OneClickCompanyWithPersonas`.
+1. **Dina (admin payroll):** buka payroll bulan lalu (Final), buat payroll bulan ini → Hitung → Ajukan.
+2. **Ganti peran ke Hendra (owner):** kotak approval berisi cuti Rizky (dan payroll yang baru diajukan). "Dina tidak bisa menyetujui pengajuannya sendiri."
+3. **Ganti peran ke Rizky (karyawan):** slip gaji bulan lalu + unduh PDF; ajukan cuti. Menu payroll tidak ada (otorisasi server, bukan sekadar UI).
+
 ## Kalau ada yang salah saat live
 | Gejala | Tindakan |
 |---|---|

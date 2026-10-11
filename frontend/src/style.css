@@ -179,7 +179,9 @@ h1, h2, h3, p { margin: 0; }
 .out { color: var(--text); }
 
 /* ---------- Tabel ---------- */
-.table-scroll { overflow-x: auto; }
+/* position: relative = containing block untuk .sr-only (absolute) di header tabel: tanpa ini span itu keluar dari
+   area scroll dan membuat SELURUH halaman bisa digeser ke samping di mobile. */
+.table-scroll { overflow-x: auto; position: relative; }
 .table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px; }
 .table th { text-align: left; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; font-weight: 700; padding: 12px 16px; border-bottom: 1px solid var(--divider); }
 .table td { padding: 14px 16px; border-bottom: 1px solid #f1f3f8; vertical-align: middle; }
@@ -351,4 +353,37 @@ h1, h2, h3, p { margin: 0; }
   .filters .field { flex: 1 1 140px; }
   .status-hero .big { font-size: 28px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* =====================================================================
+   Mode demo (image demo saja; tersembunyi kalau GET /api/v1/demo = 404)
+   ===================================================================== */
+.demo-cta { display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 18px; background: var(--blue-tint); border: 1px solid #cddbf8; }
+.auth-form .demo-cta h2 { font-size: 22px; }
+.demo-cta p { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.demo-cta-badge { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--blue); color: #fff; }
+.or-divider { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); }
+.or-divider::before, .or-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.demo-bar { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--warn-bg); color: var(--warn); font-size: 13px; line-height: 1.45; }
+.demo-bar-top { display: flex; gap: 10px; align-items: flex-start; }
+.demo-bar-top > svg { flex-shrink: 0; margin-top: 2px; }
+.demo-bar-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.demo-bar .link-btn { color: var(--warn); text-decoration: underline; white-space: nowrap; }
+.persona-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.persona-label { font-weight: 700; }
+.persona-btn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #f0d49b; background: #fffaf0; color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; }
+.persona-btn.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.persona-btn:disabled { cursor: default; }
+.persona-role { font-weight: 500; opacity: .75; }
+.guide-toggle { margin-left: auto; }
+.demo-steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.demo-steps a { display: flex; gap: 10px; align-items: flex-start; height: 100%; padding: 10px 12px; border-radius: 12px; background: #fffaf0; color: var(--text); text-decoration: none; }
+.demo-steps a:hover { background: #fff; color: var(--text); }
+.demo-step-no { width: 24px; height: 24px; border-radius: 999px; background: var(--navy); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.demo-step-hint { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+@media (max-width: 768px) {
+  .persona-role { display: none; }
+  .guide-toggle { margin-left: 0; }
 }

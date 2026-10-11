@@ -439,3 +439,21 @@ func (q *Queries) SeedSystemComponents(ctx context.Context, arg SeedSystemCompon
 	_, err := q.db.Exec(ctx, seedSystemComponents, arg.TenantID, arg.Actor)
 	return err
 }
+
+const suspendTenant = `-- name: SuspendTenant :execrows
+UPDATE tenants SET status = 'SUSPENDED', suspended_at = $1 WHERE id = $2 AND status = 'ACTIVE'
+`
+
+type SuspendTenantParams struct {
+	Now *time.Time
+	ID  uuid.UUID
+}
+
+// [tenant]
+func (q *Queries) SuspendTenant(ctx context.Context, arg SuspendTenantParams) (int64, error) {
+	result, err := q.db.Exec(ctx, suspendTenant, arg.Now, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

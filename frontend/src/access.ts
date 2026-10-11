@@ -18,8 +18,13 @@ export function canEditEmployees(roles: Role[]): boolean {
 export const statusLabel: Record<string, string> = { ACTIVE: 'Aktif', RESIGNED: 'Resign', TERMINATED: 'Diberhentikan' }
 
 /** Tanggal API (YYYY-MM-DD) → "5 Jan 2026" tanpa pergeseran zona waktu. */
+const jakartaDate = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: 'numeric' })
+
+/** Tanggal "6 Okt 2026". Tanggal kalender (YYYY-MM-DD) dibaca apa adanya (tanpa geser zona waktu);
+ *  timestamp (finalized_at, …) ditampilkan dalam tanggal WIB. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
+  if (iso.length > 10) return jakartaDate.format(new Date(iso)) // dulu: "NaN Okt 2026" untuk timestamp
   const [y, m, d] = iso.split('-').map(Number)
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
   return `${d} ${months[m - 1]} ${y}`
