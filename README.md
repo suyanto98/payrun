@@ -2,8 +2,8 @@
 
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
-**Status:** M7 code-complete (Sprints 0–10): tenancy with forced row-level security, employees with encrypted PII, effective-dated compensation, a pure payroll engine with 33 golden cases, async and resumable payroll runs, approval with stale detection, attendance/leave/overtime, finalize with period lock, payslips (web + deterministic PDF), post-final adjustments, observability, demo mode, backups with a restore drill, and a laptop performance baseline. Still owed by the author: the public deployment, the demo video, and performance numbers on the target VM ([DoD audit](docs/dod-audit.md)).
-**Live demo:** https://payrun.suyantolabs.my.id · **Demo video:** `[LINK: video]`
+**Status:** M7 code-complete (Sprints 0–10): tenancy with forced row-level security, employees with encrypted PII, effective-dated compensation, a pure payroll engine with 33 golden cases, async and resumable payroll runs, approval with stale detection, attendance/leave/overtime, finalize with period lock, payslips (web + deterministic PDF), post-final adjustments, observability, demo mode, backups with a restore drill, and a laptop performance baseline. Deployed on one 2 vCPU / 4 GB VM together with LedgerPay. Still owed by the author: the demo video and performance numbers on that VM ([DoD audit](docs/dod-audit.md)).
+**Live demo:** https://payrun.suyantolabs.my.id (one click on *Coba demo* creates a demo company with three roles; no sign-up)
 
 Production-oriented, small in scope, strict about isolation and reproducibility. Built for learning and as a portfolio project.
 
@@ -128,7 +128,7 @@ Deploy to a VM: `deploy/prod/` (shared edge with LedgerPay, `init-env.sh` genera
 - Two provisioned Grafana dashboards (*Payroll & Tenancy*, *Platform*), alert rules tested with `promtool`, each linked to a section of the [runbook](docs/runbook.md).
 - Traces: request → DB (sqlc query names only) → enqueued jobs; chunk jobs start a new root span linked to the calculate request.
 
-`[SCREENSHOT: Grafana Payroll & Tenancy during Demo B]`
+Dashboards are provisioned from [`deploy/grafana/dashboards/`](deploy/grafana/dashboards/); `make up-obs` starts the stack locally with Grafana.
 
 ## Performance baseline
 
