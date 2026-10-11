@@ -16,6 +16,7 @@ import OvertimeView from './pages/OvertimeView.vue'
 import PayslipsView from './pages/PayslipsView.vue'
 import PayslipView from './pages/PayslipView.vue'
 import AdjustmentsView from './pages/AdjustmentsView.vue'
+import WelcomeView from './pages/WelcomeView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -31,6 +32,7 @@ declare module 'vue-router' {
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/welcome', component: WelcomeView, meta: { public: true } },
     { path: '/login', component: LoginView, meta: { guest: true } },
     { path: '/invite', component: InviteView, meta: { public: true, title: 'Undangan' } },
     { path: '/verify-email', component: VerifyEmailView, meta: { public: true, title: 'Verifikasi email' } },
@@ -70,7 +72,8 @@ router.beforeEach(async (to) => {
   }
   if (to.meta.public) return
   // `next` memakai path + query saja, TANPA hash: fragment bisa berisi rahasia (undangan).
-  if (!to.meta.guest && !auth.loggedIn) return { path: '/login', query: { next: to.path } }
+  // Pengunjung baru di "/" (redirect ke /employees) melihat landing; halaman lain tetap ke login dan kembali (?next=).
+  if (!to.meta.guest && !auth.loggedIn) return to.redirectedFrom?.path === '/' ? '/welcome' : { path: '/login', query: { next: to.path } }
   if (to.meta.guest && auth.loggedIn) return '/'
   if (to.meta.tenant && !auth.tenant) return '/select-tenant'
   // EMPLOYEE tanpa akses daftar (W1 → 403): langsung ke profilnya sendiri.

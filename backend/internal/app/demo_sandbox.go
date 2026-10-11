@@ -132,6 +132,7 @@ func registerSandboxRoutes(w demoWiring, d Deps) {
 	}
 	w.authed.With(w.limiter.Middleware(w.tiers.DemoSession, byUser)).Post("/demo/crash-test", s.armCrash)
 	w.authed.Get("/demo/runs/{id}/timeline", s.runTimeline)
+	w.authed.With(w.limiter.Middleware(w.tiers.DemoSession, byUser)).Post("/demo/runs/{id}/verify", s.verifyRun)
 }
 
 type sandboxRow struct {

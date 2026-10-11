@@ -127,3 +127,28 @@ func (s *sandboxer) runTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"run_id": runID, "calc_version": version, "chunks": chunks, "crash_armed": armed})
 }
+
+// verifyRun (demo): "Cek ulang hasil" = payroll.VerifyRun (PI-12): setiap item versi terkini dihitung ulang dari
+// snapshot input + ruleset yang tersimpan dan harus identik. Di produk ini perintah ops (`payrun verify-run`), bukan
+// endpoint API; di sandbox aman dibuka karena 15 karyawan, tenant pengunjung sendiri, dan dibatasi per user.
+func (s *sandboxer) verifyRun(w http.ResponseWriter, r *http.Request) {
+	p, _ := auth.PrincipalFrom(r.Context())
+	sb, err := s.sandboxForTenant(r.Context(), p)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	runID, err := httpx.ParseID(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	rep, err := s.w.payroll.VerifyRun(r.Context(), sb.tenantID, runID)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	// Ringkasan untuk publik: jumlah item dan jumlah selisih (alasan per item tidak dikirim).
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"run_id": runID, "status": rep.Status, "calc_version": rep.CalcVersion,
+		"items_checked": rep.ItemsChecked, "mismatches": len(rep.Mismatches), "totals_ok": rep.Totals.OK, "ok": rep.OK()})
+}

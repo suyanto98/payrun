@@ -149,3 +149,6 @@ Simulasi gangguan pengunjung: `POST /api/v1/demo/crash-test` (3/menit per user) 
 `payroll.calc_chunk.before_commit` untuk tenant sandbox itu saja (berlaku 15 menit, pemasangan ulang mengganti
 yang lama). Worker tidak mati; chunk itu rollback dan diulang. `GET /api/v1/demo/runs/{id}/timeline` membaca
 status chunk dari `jobs` (tanpa pesan error mentah). Fault `exit` tetap hanya untuk presenter (`X-Demo-Token`).
+Cek ulang hasil pengunjung: `POST /api/v1/demo/runs/{id}/verify` menjalankan `VerifyRun` (sama dengan `payrun verify-run`)
+untuk tenant sandbox pemanggil saja, dibatasi 3/menit per user; respons hanya jumlah item dan jumlah selisih.
+`ok=false` di run final demo = perlakukan seperti alert reproducibility (PI-12).

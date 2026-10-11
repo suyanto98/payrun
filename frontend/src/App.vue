@@ -12,7 +12,7 @@ const route = useRoute()
 const router = useRouter()
 
 // Halaman tamu punya layout sendiri; halaman lain memakai sidebar (desktop) atau app bar (mobile).
-const guest = computed(() => route.meta.guest === true || !auth.loggedIn)
+const guest = computed(() => route.meta.guest === true || route.path === '/welcome' || !auth.loggedIn)
 const employeesLink = computed(() => (canListEmployees(auth.roles) ? '/employees' : auth.employeeId ? `/employees/${auth.employeeId}` : ''))
 
 function back() {

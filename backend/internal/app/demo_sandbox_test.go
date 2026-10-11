@@ -116,6 +116,12 @@ func TestDemoSandbox_OneClickCompanyWithPersonas(t *testing.T) {
 	if len(list) != 1 || list[0].(map[string]any)["status"] != "FINALIZED" || list[0].(map[string]any)["period"] != "2026-09" {
 		t.Fatalf("last month payroll: %v", runs)
 	}
+	// Cek ulang hasil: 15 item dihitung ulang dari snapshot, identik (PI-12).
+	runID := list[0].(map[string]any)["id"].(string)
+	if r, v := e.do(t, http.MethodPost, "/api/v1/demo/runs/"+runID+"/verify", s.token, nil); r.StatusCode != http.StatusOK ||
+		v["ok"] != true || v["items_checked"] != float64(15) || v["mismatches"] != float64(0) {
+		t.Fatalf("verify run: %d %v", r.StatusCode, v)
+	}
 	_, sb := e.do(t, http.MethodGet, "/api/v1/demo/sandbox", s.token, nil)
 	if sb["persona"] != "payroll" || len(sb["personas"].([]any)) != 3 {
 		t.Fatalf("sandbox info: %v", sb)

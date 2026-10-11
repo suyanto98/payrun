@@ -6,6 +6,7 @@ import { api, ApiError, newIdempotencyKey } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import DemoCrashPanel from '../components/DemoCrashPanel.vue'
 import DepartmentCostChart from '../components/DepartmentCostChart.vue'
+import DemoVerifyPanel from '../components/DemoVerifyPanel.vue'
 import { canRunPayroll, formatMoney, formatPeriod, pdfStatusLabel, pdfStatusPill, runActions, runStatusLabel, runStatusPill } from '../access'
 import { useAuth } from '../stores/auth'
 import type { Page, PayrollItem, PayrollItemDetail, PayrollRun, RunPayslip } from '../types'
@@ -293,6 +294,7 @@ const itemPill: Record<string, string> = { OK: 'ok', ERROR: 'bad', EXCLUDED: '' 
       </div>
 
       <DepartmentCostChart v-if="run.totals" :run-id="run.id" :calc-version="run.calc_version" />
+      <DemoVerifyPanel :run="run" /><!-- mode demo saja -->
 
       <div v-if="showItems" class="card card-flush">
         <div class="card-head">

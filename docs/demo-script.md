@@ -49,6 +49,8 @@ tombol **Ganti peran**, dan langkah berikutnya. Diuji `TestDemoSandbox_OneClickC
    yang mematikan worker bersama di VM publik (`TestDemoSandbox_CrashTestChunkRetriesWithoutDuplicates`).
 5. **Biaya gaji per departemen** (halaman run): grafik dari `GET /payroll-runs/{id}/summary` (Y6s), totalnya sama persis
    dengan Total net run (`TestDemoSandbox_DepartmentSummaryAddsUpToRunTotal`).
+6. **Di balik layar: cek ulang hasil** (run final): `POST /api/v1/demo/runs/{id}/verify` = `VerifyRun` (PI-12), "15 dari 15
+   slip cocok persis". Pengunjung tanpa sesi yang membuka `/` melihat landing `/welcome`.
 
 ## Kalau ada yang salah saat live
 | Gejala | Tindakan |
