@@ -3,7 +3,7 @@
 # user non-root). Permukaan serangan kecil (C-28). Satu binary untuk api/migrate/healthcheck
 # (worker menyusul Sprint 4).
 
-FROM golang:1.26.9-alpine AS build
+FROM golang:1.27.0-alpine AS build
 WORKDIR /src
 # Context = akar repo; hanya Go module (backend/) yang masuk ke stage build.
 COPY backend/ .
