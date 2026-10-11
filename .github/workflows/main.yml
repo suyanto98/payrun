@@ -29,7 +29,7 @@ jobs:
     outputs:
       prefix: ${{ steps.prefix.outputs.prefix }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: prefix
         run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/" >> "$GITHUB_OUTPUT"
       - name: Login GHCR
@@ -71,7 +71,7 @@ jobs:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       PR_IMAGE_PREFIX: ${{ needs.images.outputs.prefix }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: SSH key + pinned host key
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

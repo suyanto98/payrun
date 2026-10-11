@@ -38,7 +38,7 @@ jobs:
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex chars"; exit 1; }
           [ "${#REASON}" -ge 10 ] || { echo "reason must be at least 10 characters"; exit 1; }
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # deploy.sh mengirim `git archive <sha>` (konfigurasi rilis lama)
       - name: SSH key + pinned host key
