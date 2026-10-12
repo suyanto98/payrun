@@ -13,7 +13,7 @@ const router = useRouter()
 const busy = ref(false)
 const error = ref('')
 const repoUrl = import.meta.env.VITE_REPO_URL as string | undefined
-const videoUrl = import.meta.env.VITE_VIDEO_URL as string | undefined // video 90 detik (docs/demo-video-script.md)
+const videoUrl = import.meta.env.VITE_VIDEO_URL as string | undefined // video demo 2 menit (docs/demo-video-script.md)
 
 onMounted(() => demo.detect())
 
@@ -61,7 +61,7 @@ const roles = [
           </button>
           <RouterLink to="/login" class="btn ghost">Masuk</RouterLink>
         </div>
-        <a v-if="videoUrl" :href="videoUrl" class="w-video" target="_blank" rel="noopener"><AppIcon name="play" :size="16" :stroke="2" />Tidak sempat mencoba? Tonton video 90 detik</a>
+        <a v-if="videoUrl" :href="videoUrl" class="w-video" target="_blank" rel="noopener"><AppIcon name="play" :size="16" :stroke="2" />Tidak sempat mencoba? Tonton video 2 menit</a>
         <p v-if="error" class="alert error" role="alert">{{ error }}</p>
       </div>
       <div class="w-roles" aria-label="Tiga peran yang bisa dicoba bergantian">

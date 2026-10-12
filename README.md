@@ -2,8 +2,11 @@
 
 > Multi-tenant workforce and payroll platform: one database, many companies, and no tenant can ever see another tenant's data.
 
-**Status:** M7 code-complete (Sprints 0–10): tenancy with forced row-level security, employees with encrypted PII, effective-dated compensation, a pure payroll engine with 33 golden cases, async and resumable payroll runs, approval with stale detection, attendance/leave/overtime, finalize with period lock, payslips (web + deterministic PDF), post-final adjustments, observability, demo mode, backups with a restore drill, and a laptop performance baseline. Deployed on one 2 vCPU / 4 GB VM together with LedgerPay. Still owed by the author: the demo video and performance numbers on that VM ([DoD audit](docs/dod-audit.md)).
+**Status:** M7 code-complete (Sprints 0–10): tenancy with forced row-level security, employees with encrypted PII, effective-dated compensation, a pure payroll engine with 33 golden cases, async and resumable payroll runs, approval with stale detection, attendance/leave/overtime, finalize with period lock, payslips (web + deterministic PDF), post-final adjustments, observability, demo mode, backups with a restore drill, and a laptop performance baseline. Deployed on one 2 vCPU / 4 GB VM together with LedgerPay. Still owed: performance numbers on that VM ([DoD audit](docs/dod-audit.md)).
+
 **Live demo:** https://payrun.suyantolabs.my.id (one click on *Coba demo* creates a demo company with three roles; no sign-up)
+
+**Demo video:** https://suyantolabs.my.id/video/payrun.mp4 (2 min, Indonesian narration)
 
 Production-oriented, small in scope, strict about isolation and reproducibility. Built for learning and as a portfolio project.
 

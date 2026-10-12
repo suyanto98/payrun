@@ -71,10 +71,10 @@ bagian terakhir). Yang tersisa membutuhkan environment publik dan waktu: 7 hari 
 | DC5 | Demo script | ✅ | `docs/demo-script.md`, dijalankan dengan asersi oleh `make demo-live` |
 | DC6 | Limitations jujur | ✅ | README |
 | DM1 | `demo-verify` nightly 7 malam | ⏳ | `nightly.yml` siap; lokal hijau |
-| DM2 | Video demo | ⏳ | Setelah deploy |
-| DM3 | URL publik | ⏳ | Setelah deploy |
+| DM2 | Video demo | ✅ | https://suyantolabs.my.id/video/payrun.mp4 (2 menit, dengan narasi) |
+| DM3 | URL publik | ✅ | https://payrun.suyantolabs.my.id |
 | DM4 | Token demo aman | ✅ | Tidak ada di README; VM memakai secret (`init-env.sh`); token default `compose.demo.yml` hanya untuk stack lokal di 127.0.0.1 |
-| H1 | Lisensi | ⚠️ | `LICENSE` MIT, nama pemilik masih placeholder `<NAMA ANDA>` (diisi pemilik) |
+| H1 | Lisensi | ✅ | `LICENSE` MIT |
 | H2 | Tanpa TODO/FIXME di jalur kritis | ✅ | `grep` kosong di `internal`, `cmd`, `db`, `frontend/src` |
 | H3 | Dependency di-pin + Dependabot | ✅ | `go.sum`, action di-pin ke SHA, `.github/dependabot.yml` |
 | H4 | Tidak ada kode/penamaan dari pekerjaan kantor | ✅ | Review diri |
