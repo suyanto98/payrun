@@ -47,7 +47,7 @@ Contoh expand/contract (rename `wallets.name` → `wallets.label`):
 
 ### Catatan implementasi (Sprint 7, LedgerPay)
 
-Skrip deploy disiapkan dan diuji lokal (`deploy/prod/`, mode `DEPLOY_HOST=local`); deploy ke VM sungguhan dijalankan pemilik project. Deviasi dari tabel di atas, sengaja untuk tahap ini:
+Skrip deploy disiapkan dan diuji lokal (`deploy/prod/`, mode `DEPLOY_HOST=local`); sejak 2026-10-11 berjalan di VM sungguhan (2 vCPU / 4 GB, bersama project lain). Deviasi dari tabel di atas, sengaja untuk tahap ini:
 
 | Aspek | Desain | Implementasi S7 | Kapan disamakan |
 |---|---|---|---|
